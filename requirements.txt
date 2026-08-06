@@ -1,0 +1,7 @@
+
+fastapi
+supabase
+python-dotenv
+pydantic
+groq
+groq
