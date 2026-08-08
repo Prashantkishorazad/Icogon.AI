@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
-import PromptInput from "./PromptInput";
+// import PromptInput from "./PromptInput";
 
 const Hero = () => {
   return (
@@ -27,11 +27,7 @@ const Hero = () => {
           transition={{ duration: 0.5 }}
           className="mb-8"
         >
-          <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-5 py-2 text-sm font-medium text-cyan-300">
 
-            🚀 AI Software Engineer
-
-          </div>
         </motion.div>
 
         {/* Heading */}
@@ -84,8 +80,8 @@ const Hero = () => {
 
         </motion.p>
 
-        {/* CTA Buttons */}
-          <PromptInput />
+         CTA Buttons
+          {/*<PromptInput />*/}
 
         <motion.div
           initial={{ opacity: 0, y: 25 }}
