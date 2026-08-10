@@ -4,7 +4,7 @@ import {
   Mail,
   Lock,
   Eye,
-  EyeOff,
+  EyeOff, Phone,
 } from "lucide-react";
 
 import { useForm } from "react-hook-form";
@@ -221,6 +221,14 @@ const LoginPage = () => {
         >
           Create account
         </Link>
+
+        <Link
+  to="/phone-login"
+  className="mt-4 flex h-14 w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-[#191a1c] text-sm font-medium text-slate-300 transition hover:border-cyan-500 hover:text-white"
+>
+  <Phone size={19} />
+  Continue with Mobile
+</Link>
 
       </p>
 
