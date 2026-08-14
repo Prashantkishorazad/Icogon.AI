@@ -45,12 +45,18 @@ Every transition is validated. Terminal runs cannot be executed twice. Each run
 stores immutable step history, token counters, model-call counters, repair count,
 failure classification, timestamps, and a version number.
 
+Every status and step change also produces an ordered event. Consumers request
+events after the last sequence they observed, which supports polling now and SSE
+or a broker-backed stream later without changing the event contract.
+
 ## API
 
 Authenticated endpoints:
 
 - `POST /orchestrator/runs` submits an idempotent run and returns `202`.
 - `GET /orchestrator/runs/{run_id}` returns the run only to its owner.
+- `GET /orchestrator/runs/{run_id}/events?after=N` returns ordered run events.
+- `POST /orchestrator/runs/{run_id}/cancel` requests cooperative cancellation.
 
 Example request:
 

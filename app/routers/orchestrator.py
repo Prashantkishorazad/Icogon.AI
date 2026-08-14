@@ -2,7 +2,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.middleware.jwtauth import get_current_user
-from app.orchestrator.models import AgentRun, RunBudget, RunRequest
+from app.orchestrator.models import AgentRun, RunBudget, RunEvent, RunRequest
 from app.orchestrator.runtime import service
 
 
@@ -42,3 +42,23 @@ async def get_run(run_id: str, current_user=Depends(get_current_user)):
     if run is None or run.user_id != str(current_user.id):
         raise HTTPException(status_code=404, detail="Run not found")
     return run
+
+
+@router.get("/runs/{run_id}/events", response_model=list[RunEvent])
+async def get_run_events(
+    run_id: str,
+    after: int = 0,
+    current_user=Depends(get_current_user),
+):
+    run = await service.get(run_id)
+    if run is None or run.user_id != str(current_user.id):
+        raise HTTPException(status_code=404, detail="Run not found")
+    return await service.list_events(run_id, after=max(0, after))
+
+
+@router.post("/runs/{run_id}/cancel", response_model=AgentRun)
+async def cancel_run(run_id: str, current_user=Depends(get_current_user)):
+    run = await service.get(run_id)
+    if run is None or run.user_id != str(current_user.id):
+        raise HTTPException(status_code=404, detail="Run not found")
+    return await service.request_cancel(run_id)

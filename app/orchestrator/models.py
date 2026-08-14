@@ -125,6 +125,15 @@ class RunFailure(BaseModel):
     retryable: bool = False
 
 
+class RunEvent(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    run_id: str
+    sequence: int = Field(default=0, ge=0)
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class AgentRun(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     user_id: str
@@ -142,6 +151,7 @@ class AgentRun(BaseModel):
     verification: VerificationResult | None = None
     steps: list[RunStep] = Field(default_factory=list)
     failure: RunFailure | None = None
+    cancel_requested_at: datetime | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
     version: int = 1

@@ -8,6 +8,7 @@ from app.orchestrator.models import (
     ChangeSet,
     GenerationPlan,
     PlanResponse,
+    RunEvent,
     RunRequest,
     VerificationResult,
 )
@@ -47,3 +48,7 @@ class RunRepository(Protocol):
     ) -> AgentRun | None: ...
 
     async def save(self, run: AgentRun) -> AgentRun: ...
+
+    async def append_event(self, event: RunEvent) -> RunEvent: ...
+
+    async def list_events(self, run_id: str, after: int = 0) -> list[RunEvent]: ...

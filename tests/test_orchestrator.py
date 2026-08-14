@@ -64,6 +64,9 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
         second = await service.submit(request())
         self.assertEqual(first.id, second.id)
 
+        events = await service.list_events(first.id)
+        self.assertEqual([event.event_type for event in events], ["run.created"])
+
     async def test_failed_verification_triggers_bounded_repair(self):
         verifier = FailOnceVerifier()
         service = self.make_service(verifier)
@@ -105,6 +108,32 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
                     )
                 )
                 self.assertFalse(result.passed)
+
+    async def test_run_events_are_ordered_and_incremental(self):
+        service = self.make_service()
+        submitted = await service.submit(request("request-0005"))
+        await service.execute(submitted.id)
+
+        events = await service.list_events(submitted.id)
+        self.assertEqual(
+            [event.sequence for event in events],
+            list(range(1, len(events) + 1)),
+        )
+        self.assertEqual(events[0].event_type, "run.created")
+        self.assertEqual(events[-1].payload["to"], RunStatus.COMPLETED.value)
+        tail = await service.list_events(submitted.id, after=events[-2].sequence)
+        self.assertEqual([event.sequence for event in tail], [events[-1].sequence])
+
+    async def test_queued_run_can_be_cancelled(self):
+        service = self.make_service()
+        submitted = await service.submit(request("request-0006"))
+        cancelled = await service.request_cancel(submitted.id)
+        executed = await service.execute(submitted.id)
+
+        self.assertEqual(cancelled.status, RunStatus.CANCELLED)
+        self.assertEqual(executed.status, RunStatus.CANCELLED)
+        events = await service.list_events(submitted.id)
+        self.assertIn("run.cancel_requested", [event.event_type for event in events])
 
 
 if __name__ == "__main__":

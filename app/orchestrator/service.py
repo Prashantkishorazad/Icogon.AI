@@ -7,6 +7,7 @@ from app.orchestrator.models import (
     ChangeResponse,
     ProviderUsage,
     RunFailure,
+    RunEvent,
     RunRequest,
     RunStatus,
     RunStep,
@@ -39,10 +40,28 @@ class OrchestratorService:
         if existing:
             return existing
         run = AgentRun(**request.model_dump())
-        return await self._repository.create(run)
+        created = await self._repository.create(run)
+        if created.id == run.id:
+            await self._emit(created, "run.created", {"status": created.status.value})
+        return created
 
     async def get(self, run_id: str) -> AgentRun | None:
         return await self._repository.get(run_id)
+
+    async def list_events(self, run_id: str, after: int = 0) -> list[RunEvent]:
+        return await self._repository.list_events(run_id, after)
+
+    async def request_cancel(self, run_id: str) -> AgentRun:
+        run = await self._require_run(run_id)
+        if run.is_terminal:
+            return run
+        if run.cancel_requested_at is None:
+            run.cancel_requested_at = utc_now()
+            await self._repository.save(run)
+            await self._emit(run, "run.cancel_requested")
+        if run.status == RunStatus.QUEUED:
+            await self._change_status(run, RunStatus.CANCELLED)
+        return await self._require_run(run_id)
 
     async def execute(self, run_id: str) -> AgentRun:
         lock = self._run_locks.setdefault(run_id, asyncio.Lock())
@@ -53,6 +72,9 @@ class OrchestratorService:
             if run.status != RunStatus.QUEUED:
                 return run
 
+            if await self._stop_if_cancelled(run):
+                return await self._require_run(run_id)
+
             request = RunRequest(
                 user_id=run.user_id,
                 project_id=run.project_id,
@@ -62,7 +84,11 @@ class OrchestratorService:
             )
             try:
                 await self._planning_step(run, request)
+                if run.is_terminal:
+                    return await self._require_run(run_id)
                 await self._generation_step(run, request)
+                if run.is_terminal:
+                    return await self._require_run(run_id)
                 await self._verification_loop(run, request)
             except BudgetExceededError as exc:
                 await self._fail(run, "budget_exceeded", str(exc), retryable=False)
@@ -71,37 +97,41 @@ class OrchestratorService:
             return await self._require_run(run_id)
 
     async def _planning_step(self, run: AgentRun, request: RunRequest) -> None:
-        run.transition_to(RunStatus.PLANNING)
-        step = self._start_step(run, "planning")
-        await self._repository.save(run)
+        await self._change_status(run, RunStatus.PLANNING)
+        step = await self._start_step(run, "planning")
         try:
             self._reserve_model_call(run)
             response = await self._provider.create_plan(request)
             self._record_usage(run, response.usage)
             run.plan = response.plan
-            self._finish_step(step, {"task_count": len(response.plan.tasks)})
-            await self._repository.save(run)
+            await self._finish_step(
+                run,
+                step,
+                {"task_count": len(response.plan.tasks)},
+            )
         except Exception as exc:
-            self._finish_step(step, error=str(exc))
-            await self._repository.save(run)
+            await self._finish_step(run, step, error=str(exc))
             raise
 
     async def _generation_step(self, run: AgentRun, request: RunRequest) -> None:
         if run.plan is None:
             raise RuntimeError("Cannot generate changes without a plan")
-        run.transition_to(RunStatus.GENERATING)
-        step = self._start_step(run, "generating")
-        await self._repository.save(run)
+        if await self._stop_if_cancelled(run):
+            return
+        await self._change_status(run, RunStatus.GENERATING)
+        step = await self._start_step(run, "generating")
         try:
             self._reserve_model_call(run)
             response = await self._provider.generate_changes(request, run.plan)
             self._record_usage(run, response.usage)
             run.changes = response.changes
-            self._finish_step(step, {"file_count": len(response.changes.files)})
-            await self._repository.save(run)
+            await self._finish_step(
+                run,
+                step,
+                {"file_count": len(response.changes.files)},
+            )
         except Exception as exc:
-            self._finish_step(step, error=str(exc))
-            await self._repository.save(run)
+            await self._finish_step(run, step, error=str(exc))
             raise
 
     async def _verification_loop(self, run: AgentRun, request: RunRequest) -> None:
@@ -109,23 +139,24 @@ class OrchestratorService:
             raise RuntimeError("Cannot verify an empty plan or change set")
 
         while True:
-            run.transition_to(RunStatus.VERIFYING)
-            step = self._start_step(run, "verifying")
-            await self._repository.save(run)
+            if await self._stop_if_cancelled(run):
+                return
+            await self._change_status(run, RunStatus.VERIFYING)
+            step = await self._start_step(run, "verifying")
             try:
                 result = await self._verifier.verify(run.changes)
                 run.verification = result
-                self._finish_step(step, {"checks": result.checks, "passed": result.passed})
-                await self._repository.save(run)
+                await self._finish_step(
+                    run,
+                    step,
+                    {"checks": result.checks, "passed": result.passed},
+                )
             except Exception as exc:
-                self._finish_step(step, error=str(exc))
-                await self._repository.save(run)
+                await self._finish_step(run, step, error=str(exc))
                 raise
 
-
             if result.passed:
-                run.transition_to(RunStatus.COMPLETED)
-                await self._repository.save(run)
+                await self._change_status(run, RunStatus.COMPLETED)
                 return
 
             if run.repair_attempts >= run.budget.max_repair_attempts:
@@ -137,10 +168,10 @@ class OrchestratorService:
                 )
                 return
 
-            run.transition_to(RunStatus.REPAIRING)
+            await self._change_status(run, RunStatus.REPAIRING)
             run.repair_attempts += 1
-            repair_step = self._start_step(run, "repairing")
             await self._repository.save(run)
+            repair_step = await self._start_step(run, "repairing")
             try:
                 self._reserve_model_call(run)
                 response: ChangeResponse = await self._provider.repair_changes(
@@ -151,14 +182,13 @@ class OrchestratorService:
                 )
                 self._record_usage(run, response.usage)
                 run.changes = response.changes
-                self._finish_step(
+                await self._finish_step(
+                    run,
                     repair_step,
                     {"attempt": run.repair_attempts, "feedback": result.feedback},
                 )
-                await self._repository.save(run)
             except Exception as exc:
-                self._finish_step(repair_step, error=str(exc))
-                await self._repository.save(run)
+                await self._finish_step(run, repair_step, error=str(exc))
                 raise
 
     async def _fail(
@@ -168,10 +198,17 @@ class OrchestratorService:
         message: str,
         retryable: bool,
     ) -> None:
+        if run.status == RunStatus.CANCELLED:
+            return
         if not run.is_terminal:
-            run.transition_to(RunStatus.FAILED)
+            await self._change_status(run, RunStatus.FAILED)
         run.failure = RunFailure(code=code, message=message, retryable=retryable)
         await self._repository.save(run)
+        await self._emit(
+            run,
+            "run.failed",
+            {"code": code, "retryable": retryable},
+        )
 
     async def _require_run(self, run_id: str) -> AgentRun:
         run = await self._repository.get(run_id)
@@ -179,14 +216,33 @@ class OrchestratorService:
             raise KeyError(f"Run not found: {run_id}")
         return run
 
-    @staticmethod
-    def _start_step(run: AgentRun, name: str) -> RunStep:
+    async def _change_status(self, run: AgentRun, target: RunStatus) -> None:
+        previous = run.status
+        run.transition_to(target)
+        await self._repository.save(run)
+        await self._emit(
+            run,
+            "run.status_changed",
+            {"from": previous.value, "to": target.value},
+        )
+
+    async def _stop_if_cancelled(self, run: AgentRun) -> bool:
+        if run.cancel_requested_at is None:
+            return False
+        if not run.is_terminal:
+            await self._change_status(run, RunStatus.CANCELLED)
+        return True
+
+    async def _start_step(self, run: AgentRun, name: str) -> RunStep:
         step = RunStep(name=name)
         run.steps.append(step)
+        await self._repository.save(run)
+        await self._emit(run, "step.started", {"step_id": step.id, "name": name})
         return step
 
-    @staticmethod
-    def _finish_step(
+    async def _finish_step(
+        self,
+        run: AgentRun,
         step: RunStep,
         details: dict | None = None,
         error: str | None = None,
@@ -195,6 +251,22 @@ class OrchestratorService:
         step.details = details or {}
         step.error = error
         step.status = "failed" if error else "completed"
+        await self._repository.save(run)
+        await self._emit(
+            run,
+            "step.failed" if error else "step.completed",
+            {"step_id": step.id, "name": step.name, "details": step.details},
+        )
+
+    async def _emit(
+        self,
+        run: AgentRun,
+        event_type: str,
+        payload: dict | None = None,
+    ) -> RunEvent:
+        return await self._repository.append_event(
+            RunEvent(run_id=run.id, event_type=event_type, payload=payload or {})
+        )
 
     @staticmethod
     def _reserve_model_call(run: AgentRun) -> None:
