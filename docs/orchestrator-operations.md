@@ -14,7 +14,7 @@ that mode.
 
 ## PostgreSQL setup
 
-1. Apply `infra/migrations/001_agent_orchestrator.sql` to the Supabase database.
+1. Apply migrations from `infra/migrations` in filename order.
 2. Set the backend API and worker environment:
 
 ```dotenv

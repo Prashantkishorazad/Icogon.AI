@@ -1,11 +1,11 @@
-# AI Orchestrator Architecture — Phase 1
+# AI Orchestrator Architecture
 
 ## Scope
 
-This phase introduces a backend-only orchestration core. It does not modify the
-existing frontend and does not require a model API key. The implementation uses
-a deterministic mock provider while keeping the provider, verifier, and run
-repository behind replaceable interfaces.
+The orchestration core is backend-only and does not require a model API key in
+local development. Agent roles, model providers, verification, and persistence
+are replaceable interfaces. PostgreSQL mode uses a dedicated worker; memory mode
+executes inline for local development and tests.
 
 ## Research decisions
 
@@ -46,11 +46,13 @@ Primary sources:
 
 ```text
 queued
+  -> analyzing
+  -> designing
   -> planning
   -> generating
-  -> verifying
-       -> completed
-       -> repairing -> verifying
+  -> reviewing
+       -> verifying -> completed
+       -> repairing -> reviewing
        -> failed
 ```
 
@@ -103,17 +105,14 @@ Example request:
 - Provider output is validated through typed Pydantic schemas.
 - The mock provider is deterministic, so orchestration tests need no network or key.
 
-## Deliberate Phase 1 limitations
+## Current limitations
 
-- Run state is in memory and is lost after process restart.
-- FastAPI background tasks are not a durable job queue.
-- Verification checks artifact shape and path safety, not compilation in a sandbox.
+- Memory mode is non-durable and must remain single-instance.
+- PostgreSQL migrations must be applied before enabling production mode.
+- Verification checks policy and artifact shape, not compilation in a sandbox.
 - Generated changes are returned as artifacts and are not written to the repository.
-- Streaming run events, cancellation, approvals, and real model routing are deferred.
-
-These limitations keep Phase 1 small while preserving stable ports. Phase 2 should
-add Postgres persistence, a durable queue/worker, append-only run events, and SSE.
-The sandbox adapter should follow after those durable foundations are in place.
+- A real model gateway and provider routing are not connected yet.
+- Human approval and sandbox execution are deferred.
 
 The PostgreSQL contract for durable runs, events, RLS, and queue claiming lives in
 `infra/migrations/001_agent_orchestrator.sql`. `PostgresRunRepository` implements

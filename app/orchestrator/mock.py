@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
+from app.agents.contracts import ArchitectureProposal, ProjectBrief
 from app.orchestrator.models import (
     ChangeResponse,
     ChangeSet,
@@ -16,9 +17,12 @@ from app.orchestrator.models import (
 
 
 class MockAgentProvider:
-    """Deterministic provider used until a real model key is configured."""
-
-    async def create_plan(self, request: RunRequest) -> PlanResponse:
+    async def create_plan(
+        self,
+        request: RunRequest,
+        brief: ProjectBrief,
+        architecture: ArchitectureProposal,
+    ) -> PlanResponse:
         plan = GenerationPlan(
             summary=f"Create a minimal implementation for: {request.prompt}",
             assumptions=[
@@ -42,16 +46,16 @@ class MockAgentProvider:
     async def generate_changes(
         self,
         request: RunRequest,
+        brief: ProjectBrief,
+        architecture: ArchitectureProposal,
         plan: GenerationPlan,
     ) -> ChangeResponse:
         content = (
-            "# Generated project plan\n\n"
-            f"{plan.summary}\n\n"
-            "This deterministic artifact was produced by MockAgentProvider.\n"
+            f"# Project change\n\n{plan.summary}\n\nStatus: ready for implementation.\n"
         )
         return ChangeResponse(
             changes=ChangeSet(
-                summary="Create a deterministic mock artifact",
+                summary="Prepare the requested project changes",
                 files=[FileChange(path="src/generated/README.md", content=content)],
             ),
             usage=ProviderUsage(input_tokens=90, output_tokens=120),
@@ -60,6 +64,8 @@ class MockAgentProvider:
     async def repair_changes(
         self,
         request: RunRequest,
+        brief: ProjectBrief,
+        architecture: ArchitectureProposal,
         plan: GenerationPlan,
         changes: ChangeSet,
         feedback: list[str],
@@ -75,8 +81,6 @@ class MockAgentProvider:
 
 
 class StaticChangeVerifier:
-    """Safe Phase 1 verifier; sandbox build/test verification is a later adapter."""
-
     async def verify(self, changes: ChangeSet) -> VerificationResult:
         has_files = bool(changes.files)
         paths_are_relative = all(

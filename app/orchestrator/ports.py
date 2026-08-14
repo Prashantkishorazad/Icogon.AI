@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from app.agents.contracts import ArchitectureProposal, ProjectBrief
 from app.orchestrator.models import (
     AgentRun,
     ChangeResponse,
@@ -16,17 +17,26 @@ from app.orchestrator.models import (
 
 
 class AgentProvider(Protocol):
-    async def create_plan(self, request: RunRequest) -> PlanResponse: ...
+    async def create_plan(
+        self,
+        request: RunRequest,
+        brief: ProjectBrief,
+        architecture: ArchitectureProposal,
+    ) -> PlanResponse: ...
 
     async def generate_changes(
         self,
         request: RunRequest,
+        brief: ProjectBrief,
+        architecture: ArchitectureProposal,
         plan: GenerationPlan,
     ) -> ChangeResponse: ...
 
     async def repair_changes(
         self,
         request: RunRequest,
+        brief: ProjectBrief,
+        architecture: ArchitectureProposal,
         plan: GenerationPlan,
         changes: ChangeSet,
         feedback: list[str],

@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from app.agents.contracts import ArchitectureProposal, ChangeReview, ProjectBrief
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -14,8 +16,11 @@ def utc_now() -> datetime:
 
 class RunStatus(str, Enum):
     QUEUED = "queued"
+    ANALYZING = "analyzing"
+    DESIGNING = "designing"
     PLANNING = "planning"
     GENERATING = "generating"
+    REVIEWING = "reviewing"
     VERIFYING = "verifying"
     REPAIRING = "repairing"
     COMPLETED = "completed"
@@ -31,16 +36,28 @@ TERMINAL_STATUSES = {
 
 
 ALLOWED_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
-    RunStatus.QUEUED: {RunStatus.PLANNING, RunStatus.CANCELLED, RunStatus.FAILED},
+    RunStatus.QUEUED: {RunStatus.ANALYZING, RunStatus.CANCELLED, RunStatus.FAILED},
+    RunStatus.ANALYZING: {
+        RunStatus.DESIGNING,
+        RunStatus.CANCELLED,
+        RunStatus.FAILED,
+    },
+    RunStatus.DESIGNING: {RunStatus.PLANNING, RunStatus.CANCELLED, RunStatus.FAILED},
     RunStatus.PLANNING: {RunStatus.GENERATING, RunStatus.CANCELLED, RunStatus.FAILED},
-    RunStatus.GENERATING: {RunStatus.VERIFYING, RunStatus.CANCELLED, RunStatus.FAILED},
+    RunStatus.GENERATING: {RunStatus.REVIEWING, RunStatus.CANCELLED, RunStatus.FAILED},
+    RunStatus.REVIEWING: {
+        RunStatus.VERIFYING,
+        RunStatus.REPAIRING,
+        RunStatus.CANCELLED,
+        RunStatus.FAILED,
+    },
     RunStatus.VERIFYING: {
         RunStatus.REPAIRING,
         RunStatus.COMPLETED,
         RunStatus.CANCELLED,
         RunStatus.FAILED,
     },
-    RunStatus.REPAIRING: {RunStatus.VERIFYING, RunStatus.CANCELLED, RunStatus.FAILED},
+    RunStatus.REPAIRING: {RunStatus.REVIEWING, RunStatus.CANCELLED, RunStatus.FAILED},
     RunStatus.COMPLETED: set(),
     RunStatus.FAILED: set(),
     RunStatus.CANCELLED: set(),
@@ -154,8 +171,11 @@ class AgentRun(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     repair_attempts: int = 0
+    brief: ProjectBrief | None = None
+    architecture: ArchitectureProposal | None = None
     plan: GenerationPlan | None = None
     changes: ChangeSet | None = None
+    review: ChangeReview | None = None
     verification: VerificationResult | None = None
     steps: list[RunStep] = Field(default_factory=list)
     failure: RunFailure | None = None
