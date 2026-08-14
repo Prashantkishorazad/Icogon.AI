@@ -1,7 +1,8 @@
 
 fastapi
+uvicorn[standard]
 supabase
 python-dotenv
-pydantic
+pydantic[email]
 groq
-groq
+python-multipart
