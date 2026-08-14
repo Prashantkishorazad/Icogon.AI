@@ -134,6 +134,14 @@ class RunEvent(BaseModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class WorkerLease(BaseModel):
+    run_id: str
+    worker_id: str
+    token: str = Field(default_factory=lambda: str(uuid4()))
+    expires_at: datetime
+    recovered: bool = False
+
+
 class AgentRun(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     user_id: str
@@ -152,6 +160,11 @@ class AgentRun(BaseModel):
     steps: list[RunStep] = Field(default_factory=list)
     failure: RunFailure | None = None
     cancel_requested_at: datetime | None = None
+    lease_owner: str | None = None
+    lease_token: str | None = Field(default=None, exclude=True)
+    lease_expires_at: datetime | None = None
+    last_heartbeat_at: datetime | None = None
+    execution_attempts: int = 0
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
     version: int = 1

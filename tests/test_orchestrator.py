@@ -1,13 +1,18 @@
+import asyncio
 import unittest
+from datetime import timedelta
 
 from app.orchestrator.mock import MockAgentProvider, StaticChangeVerifier
 from app.orchestrator.models import (
+    AgentRun,
     ChangeSet,
     FileChange,
+    PlanResponse,
     RunBudget,
     RunRequest,
     RunStatus,
     VerificationResult,
+    utc_now,
 )
 from app.orchestrator.repository import InMemoryRunRepository
 from app.orchestrator.service import OrchestratorService
@@ -34,6 +39,12 @@ class FailOnceVerifier:
             checks={"build": self.calls > 1},
             feedback=[] if self.calls > 1 else ["Build failed once"],
         )
+
+
+class SlowMockProvider(MockAgentProvider):
+    async def create_plan(self, request: RunRequest) -> PlanResponse:
+        await asyncio.sleep(1.2)
+        return await super().create_plan(request)
 
 
 class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
@@ -120,7 +131,13 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
             list(range(1, len(events) + 1)),
         )
         self.assertEqual(events[0].event_type, "run.created")
-        self.assertEqual(events[-1].payload["to"], RunStatus.COMPLETED.value)
+        completed_event = next(
+            event
+            for event in events
+            if event.event_type == "run.status_changed"
+            and event.payload.get("to") == RunStatus.COMPLETED.value
+        )
+        self.assertIsNotNone(completed_event)
         tail = await service.list_events(submitted.id, after=events[-2].sequence)
         self.assertEqual([event.sequence for event in tail], [events[-1].sequence])
 
@@ -134,6 +151,77 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(executed.status, RunStatus.CANCELLED)
         events = await service.list_events(submitted.id)
         self.assertIn("run.cancel_requested", [event.event_type for event in events])
+
+    async def test_active_lease_prevents_a_second_worker_claim(self):
+        repository = InMemoryRunRepository()
+        run = await repository.create(
+            AgentRun(**request("request-0007").model_dump())
+        )
+        first = await repository.claim(run.id, "worker-a", 30)
+        second = await repository.claim(run.id, "worker-b", 30)
+
+        self.assertIsNotNone(first)
+        self.assertIsNone(second)
+        self.assertTrue(await repository.release(first.token))
+        third = await repository.claim(run.id, "worker-b", 30)
+        self.assertIsNotNone(third)
+
+    async def test_expired_worker_run_recovers_from_durable_checkpoint(self):
+        repository = InMemoryRunRepository()
+        service = OrchestratorService(
+            repository=repository,
+            provider=MockAgentProvider(),
+            verifier=StaticChangeVerifier(),
+        )
+        submitted = await service.submit(request("request-0008"))
+        stale_lease = await repository.claim(submitted.id, "dead-worker", 30)
+        interrupted = await repository.get(submitted.id)
+        interrupted.status = RunStatus.PLANNING
+        interrupted.lease_expires_at = utc_now() - timedelta(seconds=1)
+        await repository.save(interrupted)
+
+        completed = await service.execute(submitted.id, worker_id="recovery-worker")
+
+        self.assertEqual(completed.status, RunStatus.COMPLETED)
+        self.assertEqual(completed.execution_attempts, 2)
+        events = await service.list_events(submitted.id)
+        recovered = [event for event in events if event.event_type == "run.recovered"]
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual(recovered[0].payload["checkpoint"], "queued")
+        self.assertIsNotNone(stale_lease)
+
+    async def test_stale_worker_cannot_overwrite_new_lease_owner(self):
+        repository = InMemoryRunRepository()
+        run = await repository.create(
+            AgentRun(**request("request-0009").model_dump())
+        )
+        stale_lease = await repository.claim(run.id, "worker-a", 30)
+        stale_snapshot = await repository.get(run.id)
+        stale_snapshot.lease_expires_at = utc_now() - timedelta(seconds=1)
+        await repository.save(stale_snapshot)
+        current_lease = await repository.claim(run.id, "worker-b", 30)
+
+        self.assertIsNotNone(current_lease)
+        with self.assertRaises(PermissionError):
+            await repository.save(stale_snapshot, stale_lease.token)
+
+    async def test_heartbeat_keeps_lease_active_during_long_model_call(self):
+        repository = InMemoryRunRepository()
+        service = OrchestratorService(
+            repository=repository,
+            provider=SlowMockProvider(),
+            verifier=StaticChangeVerifier(),
+        )
+        submitted = await service.submit(request("request-0010"))
+
+        completed = await service.execute(
+            submitted.id,
+            worker_id="slow-worker",
+            lease_seconds=1,
+        )
+
+        self.assertEqual(completed.status, RunStatus.COMPLETED)
+        self.assertIsNotNone(completed.last_heartbeat_at)
 
 
 if __name__ == "__main__":

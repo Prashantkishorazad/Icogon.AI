@@ -21,6 +21,15 @@ repository behind replaceable interfaces.
 - **Workflow before autonomy:** Anthropic's production guidance recommends simple,
   composable workflows before dynamic multi-agent systems. The orchestrator is a
   deterministic state machine; planner/coder/verifier are roles behind ports.
+- **Durable worker semantics:** Temporal's activity guidance treats retries as
+  potentially repeated execution and recommends idempotency, heartbeats, and
+  timeouts. Worker leases and fencing tokens enforce those constraints here.
+- **Queue concurrency:** PostgreSQL documents `SKIP LOCKED` as appropriate for
+  queue-like multi-consumer access. The migration uses it only for claiming work,
+  not for general reads.
+- **Controlled multi-agent growth:** Published multi-agent failure analysis groups
+  common failures around specification, inter-agent alignment, verification, and
+  termination. Specialized workers remain behind explicit contracts and budgets.
 
 Primary sources:
 
@@ -28,6 +37,10 @@ Primary sources:
 - Reflexion: https://arxiv.org/abs/2303.11366
 - SWE-agent: https://arxiv.org/abs/2405.15793
 - Building effective agents: https://www.anthropic.com/engineering/building-effective-agents
+- Temporal activity semantics: https://docs.temporal.io/activity-definition
+- PostgreSQL locking: https://www.postgresql.org/docs/current/sql-select.html
+- Why Do Multi-Agent LLM Systems Fail?: https://arxiv.org/abs/2503.13657
+- AgentBench: https://arxiv.org/abs/2308.03688
 
 ## State machine
 
@@ -49,6 +62,11 @@ Every status and step change also produces an ordered event. Consumers request
 events after the last sequence they observed, which supports polling now and SSE
 or a broker-backed stream later without changing the event contract.
 
+Workers claim runs with expiring leases. The opaque lease token prevents a stale
+worker from releasing a newer worker's lease. If a lease expires during a step,
+the next worker marks that step interrupted and rewinds to the last persisted
+plan/change-set checkpoint before continuing.
+
 ## API
 
 Authenticated endpoints:
@@ -56,6 +74,7 @@ Authenticated endpoints:
 - `POST /orchestrator/runs` submits an idempotent run and returns `202`.
 - `GET /orchestrator/runs/{run_id}` returns the run only to its owner.
 - `GET /orchestrator/runs/{run_id}/events?after=N` returns ordered run events.
+- `GET /orchestrator/runs/{run_id}/events/stream?after=N` streams SSE events.
 - `POST /orchestrator/runs/{run_id}/cancel` requests cooperative cancellation.
 
 Example request:
@@ -79,6 +98,8 @@ Example request:
 - Model calls, output tokens, and repair attempts have hard per-run limits.
 - Repeated submission with the same user/idempotency key returns the original run.
 - Per-process run locks prevent duplicate concurrent execution in development.
+- Expiring worker leases prevent concurrent processing across worker identities.
+- Interrupted runs recover from persisted planning or generation checkpoints.
 - Provider output is validated through typed Pydantic schemas.
 - The mock provider is deterministic, so orchestration tests need no network or key.
 
@@ -93,3 +114,8 @@ Example request:
 These limitations keep Phase 1 small while preserving stable ports. Phase 2 should
 add Postgres persistence, a durable queue/worker, append-only run events, and SSE.
 The sandbox adapter should follow after those durable foundations are in place.
+
+The PostgreSQL contract for durable runs, events, RLS, and queue claiming lives in
+`infra/migrations/001_agent_orchestrator.sql`. The production repository adapter
+is intentionally deferred until the team confirms how Supabase migrations and
+service-role credentials are provisioned in each environment.

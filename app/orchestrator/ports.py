@@ -10,6 +10,7 @@ from app.orchestrator.models import (
     PlanResponse,
     RunEvent,
     RunRequest,
+    WorkerLease,
     VerificationResult,
 )
 
@@ -47,8 +48,29 @@ class RunRepository(Protocol):
         idempotency_key: str,
     ) -> AgentRun | None: ...
 
-    async def save(self, run: AgentRun) -> AgentRun: ...
+    async def save(
+        self,
+        run: AgentRun,
+        lease_token: str | None = None,
+    ) -> AgentRun: ...
 
-    async def append_event(self, event: RunEvent) -> RunEvent: ...
+    async def append_event(
+        self,
+        event: RunEvent,
+        lease_token: str | None = None,
+    ) -> RunEvent: ...
 
     async def list_events(self, run_id: str, after: int = 0) -> list[RunEvent]: ...
+
+    async def claim(
+        self,
+        run_id: str,
+        worker_id: str,
+        lease_seconds: int,
+    ) -> WorkerLease | None: ...
+
+    async def heartbeat(self, token: str, lease_seconds: int) -> WorkerLease | None: ...
+
+    async def release(self, token: str) -> bool: ...
+
+    async def request_cancel(self, run_id: str) -> AgentRun | None: ...

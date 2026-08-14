@@ -1,4 +1,7 @@
+import asyncio
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.middleware.jwtauth import get_current_user
@@ -62,3 +65,37 @@ async def cancel_run(run_id: str, current_user=Depends(get_current_user)):
     if run is None or run.user_id != str(current_user.id):
         raise HTTPException(status_code=404, detail="Run not found")
     return await service.request_cancel(run_id)
+
+
+@router.get("/runs/{run_id}/events/stream")
+async def stream_run_events(
+    run_id: str,
+    after: int = 0,
+    current_user=Depends(get_current_user),
+):
+    run = await service.get(run_id)
+    if run is None or run.user_id != str(current_user.id):
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    async def event_stream():
+        cursor = max(0, after)
+        while True:
+            events = await service.list_events(run_id, cursor)
+            for event in events:
+                cursor = event.sequence
+                yield (
+                    f"id: {event.sequence}\n"
+                    f"event: {event.event_type}\n"
+                    f"data: {event.model_dump_json()}\n\n"
+                )
+
+            current = await service.get(run_id)
+            if current is None or (current.is_terminal and not events):
+                return
+            await asyncio.sleep(0.25)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

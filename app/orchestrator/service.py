@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
+from uuid import uuid4
 
 from app.orchestrator.models import (
     AgentRun,
@@ -31,6 +33,10 @@ class OrchestratorService:
         self._provider = provider
         self._verifier = verifier
         self._run_locks: dict[str, asyncio.Lock] = {}
+        self._lease_token: ContextVar[str | None] = ContextVar(
+            "orchestrator_lease_token",
+            default=None,
+        )
 
     async def submit(self, request: RunRequest) -> AgentRun:
         existing = await self._repository.get_by_idempotency_key(
@@ -56,51 +62,124 @@ class OrchestratorService:
         if run.is_terminal:
             return run
         if run.cancel_requested_at is None:
-            run.cancel_requested_at = utc_now()
-            await self._repository.save(run)
-            await self._emit(run, "run.cancel_requested")
-        if run.status == RunStatus.QUEUED:
-            await self._change_status(run, RunStatus.CANCELLED)
+            previous = run.status
+            updated = await self._repository.request_cancel(run_id)
+            if updated is None:
+                raise KeyError(f"Run not found: {run_id}")
+            run = updated
+            if run.cancel_requested_at is not None:
+                await self._emit(run, "run.cancel_requested")
+            if previous == RunStatus.QUEUED and run.status == RunStatus.CANCELLED:
+                await self._emit(
+                    run,
+                    "run.status_changed",
+                    {"from": previous.value, "to": RunStatus.CANCELLED.value},
+                )
         return await self._require_run(run_id)
 
-    async def execute(self, run_id: str) -> AgentRun:
+    async def execute(
+        self,
+        run_id: str,
+        worker_id: str | None = None,
+        lease_seconds: int = 30,
+    ) -> AgentRun:
         lock = self._run_locks.setdefault(run_id, asyncio.Lock())
         async with lock:
             run = await self._require_run(run_id)
             if run.is_terminal:
                 return run
-            if run.status != RunStatus.QUEUED:
+            lease = await self._repository.claim(
+                run_id,
+                worker_id or f"inline-{uuid4()}",
+                max(1, lease_seconds),
+            )
+            if lease is None:
                 return run
-
-            if await self._stop_if_cancelled(run):
-                return await self._require_run(run_id)
-
-            request = RunRequest(
-                user_id=run.user_id,
-                project_id=run.project_id,
-                prompt=run.prompt,
-                idempotency_key=run.idempotency_key,
-                budget=run.budget,
+            token_context = self._lease_token.set(lease.token)
+            stop_heartbeat = asyncio.Event()
+            heartbeat_task = asyncio.create_task(
+                self._heartbeat_loop(lease.token, lease_seconds, stop_heartbeat)
             )
             try:
-                await self._planning_step(run, request)
-                if run.is_terminal:
-                    return await self._require_run(run_id)
-                await self._generation_step(run, request)
-                if run.is_terminal:
-                    return await self._require_run(run_id)
-                await self._verification_loop(run, request)
-            except BudgetExceededError as exc:
-                await self._fail(run, "budget_exceeded", str(exc), retryable=False)
-            except Exception as exc:
-                await self._fail(run, "orchestration_error", str(exc), retryable=True)
+                run = await self._require_run(run_id)
+                await self._emit(
+                    run,
+                    "worker.claimed",
+                    {
+                        "worker_id": lease.worker_id,
+                        "attempt": run.execution_attempts,
+                        "recovered": lease.recovered,
+                    },
+                )
+                await self._execute_claimed_run(run, lease.recovered)
+            finally:
+                stop_heartbeat.set()
+                await asyncio.gather(heartbeat_task, return_exceptions=True)
+                released = False
+                try:
+                    released = await self._repository.release(lease.token)
+                finally:
+                    self._lease_token.reset(token_context)
+                if released:
+                    current = await self._require_run(run_id)
+                    await self._emit(
+                        current,
+                        "worker.released",
+                        {"worker_id": lease.worker_id},
+                    )
             return await self._require_run(run_id)
+
+    async def _execute_claimed_run(self, run: AgentRun, recovered: bool) -> None:
+        if recovered:
+            await self._recover_interrupted_run(run)
+        if await self._stop_if_cancelled(run):
+            return
+
+        request = RunRequest(
+            user_id=run.user_id,
+            project_id=run.project_id,
+            prompt=run.prompt,
+            idempotency_key=run.idempotency_key,
+            budget=run.budget,
+        )
+        try:
+            if run.plan is None:
+                await self._planning_step(run, request)
+            if run.is_terminal:
+                return
+            if run.changes is None:
+                await self._generation_step(run, request)
+            if run.is_terminal:
+                return
+            await self._verification_loop(run, request)
+        except BudgetExceededError as exc:
+            await self._fail(run, "budget_exceeded", str(exc), retryable=False)
+        except Exception as exc:
+            await self._fail(run, "orchestration_error", str(exc), retryable=True)
+
+    async def _heartbeat_loop(
+        self,
+        lease_token: str,
+        lease_seconds: int,
+        stop: asyncio.Event,
+    ) -> None:
+        interval = max(0.25, lease_seconds / 3)
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=interval)
+            except TimeoutError:
+                renewed = await self._repository.heartbeat(
+                    lease_token,
+                    max(1, lease_seconds),
+                )
+                if renewed is None:
+                    return
 
     async def _planning_step(self, run: AgentRun, request: RunRequest) -> None:
         await self._change_status(run, RunStatus.PLANNING)
         step = await self._start_step(run, "planning")
         try:
-            self._reserve_model_call(run)
+            await self._reserve_model_call(run)
             response = await self._provider.create_plan(request)
             self._record_usage(run, response.usage)
             run.plan = response.plan
@@ -121,7 +200,7 @@ class OrchestratorService:
         await self._change_status(run, RunStatus.GENERATING)
         step = await self._start_step(run, "generating")
         try:
-            self._reserve_model_call(run)
+            await self._reserve_model_call(run)
             response = await self._provider.generate_changes(request, run.plan)
             self._record_usage(run, response.usage)
             run.changes = response.changes
@@ -170,10 +249,10 @@ class OrchestratorService:
 
             await self._change_status(run, RunStatus.REPAIRING)
             run.repair_attempts += 1
-            await self._repository.save(run)
+            await self._save(run)
             repair_step = await self._start_step(run, "repairing")
             try:
-                self._reserve_model_call(run)
+                await self._reserve_model_call(run)
                 response: ChangeResponse = await self._provider.repair_changes(
                     request,
                     run.plan,
@@ -203,7 +282,7 @@ class OrchestratorService:
         if not run.is_terminal:
             await self._change_status(run, RunStatus.FAILED)
         run.failure = RunFailure(code=code, message=message, retryable=retryable)
-        await self._repository.save(run)
+        await self._save(run)
         await self._emit(
             run,
             "run.failed",
@@ -216,10 +295,36 @@ class OrchestratorService:
             raise KeyError(f"Run not found: {run_id}")
         return run
 
+    async def _recover_interrupted_run(self, run: AgentRun) -> None:
+        previous = run.status
+        for step in reversed(run.steps):
+            if step.status == "running":
+                step.status = "interrupted"
+                step.finished_at = utc_now()
+                step.error = "Worker lease expired before the step completed"
+                break
+
+        if run.plan is None:
+            checkpoint = RunStatus.QUEUED
+        elif run.changes is None:
+            checkpoint = RunStatus.PLANNING
+        else:
+            checkpoint = RunStatus.GENERATING
+
+        run.status = checkpoint
+        run.updated_at = utc_now()
+        run.version += 1
+        await self._save(run)
+        await self._emit(
+            run,
+            "run.recovered",
+            {"from": previous.value, "checkpoint": checkpoint.value},
+        )
+
     async def _change_status(self, run: AgentRun, target: RunStatus) -> None:
         previous = run.status
         run.transition_to(target)
-        await self._repository.save(run)
+        await self._save(run)
         await self._emit(
             run,
             "run.status_changed",
@@ -236,7 +341,7 @@ class OrchestratorService:
     async def _start_step(self, run: AgentRun, name: str) -> RunStep:
         step = RunStep(name=name)
         run.steps.append(step)
-        await self._repository.save(run)
+        await self._save(run)
         await self._emit(run, "step.started", {"step_id": step.id, "name": name})
         return step
 
@@ -251,7 +356,7 @@ class OrchestratorService:
         step.details = details or {}
         step.error = error
         step.status = "failed" if error else "completed"
-        await self._repository.save(run)
+        await self._save(run)
         await self._emit(
             run,
             "step.failed" if error else "step.completed",
@@ -265,14 +370,23 @@ class OrchestratorService:
         payload: dict | None = None,
     ) -> RunEvent:
         return await self._repository.append_event(
-            RunEvent(run_id=run.id, event_type=event_type, payload=payload or {})
+            RunEvent(run_id=run.id, event_type=event_type, payload=payload or {}),
+            self._lease_token.get(),
         )
 
-    @staticmethod
-    def _reserve_model_call(run: AgentRun) -> None:
+    async def _save(self, run: AgentRun) -> AgentRun:
+        return await self._repository.save(run, self._lease_token.get())
+
+    async def _reserve_model_call(self, run: AgentRun) -> None:
         if run.model_calls >= run.budget.max_model_calls:
             raise BudgetExceededError("Maximum model call budget reached")
         run.model_calls += 1
+        await self._save(run)
+        await self._emit(
+            run,
+            "budget.model_call_reserved",
+            {"model_calls": run.model_calls, "limit": run.budget.max_model_calls},
+        )
 
     @staticmethod
     def _record_usage(run: AgentRun, usage: ProviderUsage) -> None:
