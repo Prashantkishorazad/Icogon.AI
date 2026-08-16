@@ -1,23 +1,36 @@
-import { Github } from "lucide-react";
+import { signInWithGoogle } from "./supabaseAuth";
 
 interface SocialLoginProps {
-  onGoogle?: () => void;
   onGithub?: () => void;
   onApple?: () => void;
 }
 
 const SocialLogin = ({
-  onGoogle,
   onGithub,
   onApple,
 }: SocialLoginProps) => {
+
+  const handleGoogleLogin = async () => {
+    try {
+      console.log("Google login clicked");
+
+      await signInWithGoogle();
+
+    } catch (error) {
+      console.error("Google login failed:", error);
+
+      alert("Google login failed. Please try again.");
+    }
+  };
+
   return (
     <div className="space-y-4">
 
       {/* Google */}
 
       <button
-        onClick={onGoogle}
+        type="button"
+        onClick={handleGoogleLogin}
         className="
           flex
           w-full
@@ -50,6 +63,7 @@ const SocialLogin = ({
       {/* GitHub */}
 
       <button
+        type="button"
         onClick={onGithub}
         className="
           flex
@@ -71,7 +85,7 @@ const SocialLogin = ({
           hover:scale-[1.02]
         "
       >
-        <Github size={22} />
+        <span className="text-xl">GitHub</span>
 
         Continue with GitHub
       </button>
@@ -79,6 +93,7 @@ const SocialLogin = ({
       {/* Apple */}
 
       <button
+        type="button"
         onClick={onApple}
         className="
           flex

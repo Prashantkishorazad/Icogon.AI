@@ -10,7 +10,7 @@ from app.routers.orchestrator import router as orchestrator_router
 
 app = FastAPI(
     title="ICOGON AI API",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 
@@ -30,20 +30,16 @@ app.add_middleware(
         "http://localhost:5174",
         "http://127.0.0.1:5174",
 
-        # Frontend - CURRENT PORT
+        # Frontend - Current port
         "http://localhost:5175",
         "http://127.0.0.1:5175",
     ],
 
     allow_credentials=True,
 
-    allow_methods=[
-        "*"
-    ],
+    allow_methods=["*"],
 
-    allow_headers=[
-        "*"
-    ],
+    allow_headers=["*"],
 )
 
 
@@ -67,7 +63,7 @@ app.include_router(orchestrator_router)
 # ==========================================
 
 @app.get("/")
-def home():
+async def home():
     return {
         "message": "ICOGON AI API Running 🚀"
     }
@@ -78,7 +74,7 @@ def home():
 # ==========================================
 
 @app.get("/health")
-def health():
+async def health():
     return {
         "status": "ok"
     }

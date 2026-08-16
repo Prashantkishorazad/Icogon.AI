@@ -1,4 +1,5 @@
 import axios from "axios";
+import { supabase } from "../lib/supabase";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -8,87 +9,51 @@ const api = axios.create({
   },
 });
 
-
-// ===============================
-// REQUEST INTERCEPTOR
-// ===============================
-
+// Attach Supabase access token to every API request
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
+    try {
+      const { data } = await supabase.auth.getSession();
 
-    const token =
-      localStorage.getItem("access_token");
+      const session = data.session;
 
-    if (token) {
-      config.headers.Authorization =
-        `Bearer ${token}`;
+      if (session?.access_token) {
+        config.headers.Authorization =
+          `Bearer ${session.access_token}`;
+      }
+
+      console.log(
+        "API REQUEST:",
+        config.method?.toUpperCase(),
+        config.url
+      );
+
+    } catch (error) {
+      console.error("SESSION ERROR:", error);
     }
-
-    console.log(
-      "API REQUEST:",
-      config.method?.toUpperCase(),
-      config.url
-    );
 
     return config;
   },
-
   (error) => {
     return Promise.reject(error);
   }
 );
 
-
-// ===============================
-// RESPONSE INTERCEPTOR
-// ===============================
-
+// Handle API responses/errors
 api.interceptors.response.use(
-  (response) => {
+  (response) => response,
 
-    console.log(
-      "API RESPONSE:",
-      response.status,
-      response.config.url
-    );
-
-    return response;
-  },
-
-  (error) => {
-
+  async (error) => {
     console.error(
       "API ERROR:",
-      error.response?.status,
-      error.config?.url,
-      error.response?.data
+      error?.response?.status,
+      error?.config?.url,
+      error?.response?.data
     );
 
-    if (
-      error.response?.status === 401
-    ) {
-
-      const requestUrl =
-        error.config?.url || "";
-
-      // Don't redirect when the LOGIN request
-      // itself fails.
-      const isLoginRequest =
-        requestUrl.includes("/auth/login");
-
-      if (!isLoginRequest) {
-
-        localStorage.removeItem(
-          "access_token"
-        );
-
-        localStorage.removeItem(
-          "user"
-        );
-
-        window.location.href =
-          "/login";
-      }
+    if (error?.response?.status === 401) {
+      await supabase.auth.signOut();
+      window.location.href = "/login";
     }
 
     return Promise.reject(error);

@@ -1,24 +1,82 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
+import { supabase } from "./lib/supabase";
+import { useAuthStore } from "./store/authStore";
+
+import ProfilePage from "./pages/Profile/ProfilePage";
 import LandingPage from "./pages/Landing/LandingPage";
 import LoginPage from "./pages/Auth/LoginPage";
 import SignupPage from "./pages/Auth/SignupPage";
-import OTPVerificationPage from "./pages/Auth/OTPVerificationPage";
-import PhoneLoginPage from "./pages/Auth/PhoneLoginPage";
 import DashboardPage from "./pages/Dashboard/DashboardPage";
+import AuthCallback from "./pages/Auth/AuthCallback";
+
+import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 function App() {
+  const setSession = useAuthStore(
+    (state) => state.setSession
+  );
+
+  const setLoading = useAuthStore(
+    (state) => state.setLoading
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    const initializeAuth = async () => {
+      try {
+        setLoading(true);
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (mounted) {
+          setSession(session);
+        }
+      } catch (error) {
+        console.error(
+          "AUTH INITIALIZATION ERROR:",
+          error
+        );
+
+        if (mounted) {
+          setSession(null);
+        }
+      }
+    };
+
+    initializeAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (mounted) {
+          setSession(session);
+        }
+      }
+    );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [setSession, setLoading]);
+
   return (
     <BrowserRouter>
       <Routes>
 
-        {/* Landing Page */}
+        {/* Public Routes */}
+
         <Route
           path="/"
           element={<LandingPage />}
         />
 
-        {/* Authentication */}
         <Route
           path="/login"
           element={<LoginPage />}
@@ -29,22 +87,26 @@ function App() {
           element={<SignupPage />}
         />
 
-        {/* Mobile Authentication */}
         <Route
-          path="/phone-login"
-          element={<PhoneLoginPage />}
+          path="/auth/callback"
+          element={<AuthCallback />}
         />
 
-        <Route
-          path="/verify-otp"
-          element={<OTPVerificationPage />}
-        />
+        {/* Protected Routes */}
 
-        {/* Dashboard */}
-        <Route
-          path="/dashboard"
-          element={<DashboardPage />}
-        />
+        <Route element={<ProtectedRoute />}>
+
+          <Route
+            path="/dashboard"
+            element={<DashboardPage />}
+          />
+
+          <Route
+            path="/profile"
+            element={<ProfilePage />}
+          />
+
+        </Route>
 
       </Routes>
     </BrowserRouter>
