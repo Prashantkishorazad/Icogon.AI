@@ -79,15 +79,25 @@ SANDBOX_MEMORY_MB=1024
 SANDBOX_PIDS=256
 SANDBOX_TIMEOUT_SECONDS=120
 SANDBOX_OUTPUT_BYTES=1000000
+SANDBOX_PROJECTS_ROOT=/srv/icogon/projects
 ```
 
 Pin the production image by digest. Prebuild dependencies into the image because
 network access stays disabled during verification. Do not mount the Docker socket,
 cloud credentials, repository credentials, or host secret directories.
 
-The current materializer supports self-contained upserts. It rejects deletions
-because verifying a deletion correctly requires a trusted repository snapshot.
-Repository checkout and artifact publishing are the next execution-plane increment.
+When `SANDBOX_PROJECTS_ROOT` is configured, each trusted source workspace must be
+stored at `<root>/<project_id>`. Verification copies that workspace into a disposable
+directory before applying the generated change set. It excludes repository metadata,
+dependency/build caches, Python environments, and common credential files. It also
+rejects symlinks, non-regular files, path traversal, directory deletion, oversized
+snapshots, and oversized generated changes. The trusted source is never mounted or
+modified directly.
+
+Without `SANDBOX_PROJECTS_ROOT`, verification remains self-contained and rejects
+deletions because there is no base state to validate. A production artifact service
+can implement the same workspace-provider contract later without changing the agent
+pipeline.
 
 ## Hosting phases
 

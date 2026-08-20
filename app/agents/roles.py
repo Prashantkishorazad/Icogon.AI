@@ -70,4 +70,8 @@ class SecurityAgent(Protocol):
 
 
 class VerificationAgent(Protocol):
-    async def verify(self, changes: ChangeSet) -> VerificationResult: ...
+    async def verify(
+        self,
+        project_id: str,
+        changes: ChangeSet,
+    ) -> VerificationResult: ...

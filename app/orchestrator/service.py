@@ -339,7 +339,10 @@ class OrchestratorService:
                 await self._change_status(run, RunStatus.VERIFYING)
                 verification_step = await self._start_step(run, "verification")
                 try:
-                    result = await self._agents.verification.verify(run.changes)
+                    result = await self._agents.verification.verify(
+                        run.project_id,
+                        run.changes,
+                    )
                     run.verification = result
                     await self._finish_step(
                         run,

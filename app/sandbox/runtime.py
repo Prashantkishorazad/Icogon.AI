@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from app.orchestrator.mock import StaticChangeVerifier
 from app.orchestrator.ports import ChangeVerifier
 from app.sandbox.docker import DockerSandbox
 from app.sandbox.models import ResourceLimits, SandboxCommand
 from app.sandbox.verifier import SandboxChangeVerifier
+from app.sandbox.workspace import DirectoryWorkspaceProvider
 
 
 def build_change_verifier() -> ChangeVerifier:
@@ -42,8 +44,13 @@ def build_change_verifier() -> ChangeVerifier:
         timeout_seconds=int(os.getenv("SANDBOX_TIMEOUT_SECONDS", "120")),
         output_bytes=int(os.getenv("SANDBOX_OUTPUT_BYTES", "1000000")),
     )
+    projects_root = os.getenv("SANDBOX_PROJECTS_ROOT", "").strip()
+    workspaces = (
+        DirectoryWorkspaceProvider(Path(projects_root)) if projects_root else None
+    )
     return SandboxChangeVerifier(
         sandbox=DockerSandbox(image=image),
         commands=commands,
         limits=limits,
+        workspaces=workspaces,
     )

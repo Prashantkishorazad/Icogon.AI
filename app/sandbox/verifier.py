@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.orchestrator.models import ChangeSet, VerificationResult
 from app.sandbox.models import ResourceLimits, SandboxCommand
 from app.sandbox.ports import Sandbox
-from app.sandbox.workspace import MaterializedChangeSet
+from app.sandbox.workspace import EmptyWorkspaceProvider, WorkspaceProvider
 
 
 class SandboxChangeVerifier:
@@ -12,25 +12,34 @@ class SandboxChangeVerifier:
         sandbox: Sandbox,
         commands: list[SandboxCommand],
         limits: ResourceLimits | None = None,
+        workspaces: WorkspaceProvider | None = None,
     ) -> None:
         if not commands:
             raise ValueError("At least one verification command is required")
         self._sandbox = sandbox
         self._commands = commands
         self._limits = limits or ResourceLimits()
+        self._workspaces = workspaces or EmptyWorkspaceProvider()
 
-    async def verify(self, changes: ChangeSet) -> VerificationResult:
+    async def verify(
+        self,
+        project_id: str,
+        changes: ChangeSet,
+    ) -> VerificationResult:
         checks: dict[str, bool] = {}
         feedback: list[str] = []
-        if any(change.operation == "delete" for change in changes.files):
+        if any(change.operation == "delete" for change in changes.files) and isinstance(
+            self._workspaces,
+            EmptyWorkspaceProvider,
+        ):
             return VerificationResult(
                 passed=False,
-                checks={"self_contained_change_set": False},
+                checks={"repository_snapshot_available": False},
                 feedback=[
-                    "Deletion verification requires a repository-backed workspace snapshot."
+                    "Deletion verification requires a project workspace snapshot."
                 ],
             )
-        with MaterializedChangeSet(changes) as workspace:
+        with self._workspaces.materialize(project_id, changes) as workspace:
             for index, command in enumerate(self._commands, start=1):
                 name = f"sandbox_command_{index}"
                 result = await self._sandbox.execute(workspace, command, self._limits)
