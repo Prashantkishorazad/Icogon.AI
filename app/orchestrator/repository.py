@@ -5,10 +5,10 @@ from copy import deepcopy
 from datetime import timedelta
 
 from app.orchestrator.models import (
+    TERMINAL_STATUSES,
     AgentRun,
     RunEvent,
     RunStatus,
-    TERMINAL_STATUSES,
     WorkerLease,
     utc_now,
 )
@@ -131,7 +131,10 @@ class InMemoryRunRepository:
 
     async def heartbeat(self, token: str, lease_seconds: int) -> WorkerLease | None:
         async with self._lock:
-            run = next((item for item in self._runs.values() if item.lease_token == token), None)
+            run = next(
+                (item for item in self._runs.values() if item.lease_token == token),
+                None,
+            )
             if run is None:
                 return None
             now = utc_now()
@@ -149,7 +152,10 @@ class InMemoryRunRepository:
 
     async def release(self, token: str) -> bool:
         async with self._lock:
-            run = next((item for item in self._runs.values() if item.lease_token == token), None)
+            run = next(
+                (item for item in self._runs.values() if item.lease_token == token),
+                None,
+            )
             if run is None:
                 return False
             run.lease_owner = None
@@ -170,3 +176,16 @@ class InMemoryRunRepository:
                 run.updated_at = utc_now()
                 run.version += 1
             return deepcopy(run)
+
+    async def next_claimable_run_id(self) -> str | None:
+        async with self._lock:
+            now = utc_now()
+            candidates = [
+                run
+                for run in self._runs.values()
+                if run.status not in TERMINAL_STATUSES
+                and (run.lease_expires_at is None or run.lease_expires_at <= now)
+            ]
+            if not candidates:
+                return None
+            return min(candidates, key=lambda run: (run.created_at, run.id)).id

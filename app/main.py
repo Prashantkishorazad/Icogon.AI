@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,11 +9,19 @@ from app.routers.chat import router as chat_router
 from app.routers.upload import router as upload_router
 from app.routers.orchestrator import router as orchestrator_router
 from app.routers.project import router as project_router
+from app.orchestrator.runtime import runtime as orchestrator_runtime
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    await orchestrator_runtime.close()
 
 
 app = FastAPI(
     title="ICOGON AI API",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 
@@ -31,16 +41,20 @@ app.add_middleware(
         "http://localhost:5174",
         "http://127.0.0.1:5174",
 
-        # Frontend - Current port
+        # Frontend - CURRENT PORT
         "http://localhost:5175",
         "http://127.0.0.1:5175",
     ],
 
     allow_credentials=True,
 
-    allow_methods=["*"],
+    allow_methods=[
+        "*"
+    ],
 
-    allow_headers=["*"],
+    allow_headers=[
+        "*"
+    ],
 )
 
 
@@ -66,7 +80,7 @@ app.include_router(project_router)
 # ==========================================
 
 @app.get("/")
-async def home():
+def home():
     return {
         "message": "ICOGON AI API Running 🚀"
     }
@@ -77,7 +91,7 @@ async def home():
 # ==========================================
 
 @app.get("/health")
-async def health():
+def health():
     return {
         "status": "ok"
     }

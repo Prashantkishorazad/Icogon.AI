@@ -15,26 +15,14 @@ load_dotenv(ENV_FILE)
 
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY")
-
-
-print("ENV FILE:", ENV_FILE)
-print("SUPABASE_URL loaded:", bool(SUPABASE_URL))
-print("SUPABASE_KEY loaded:", bool(SUPABASE_KEY))
+SUPABASE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_KEY")
 
 
 if not SUPABASE_URL:
-    raise RuntimeError(
-        "SUPABASE_URL is missing from .env"
-    )
+    raise RuntimeError("SUPABASE_URL is missing from .env")
 
 if not SUPABASE_KEY:
-    raise RuntimeError(
-        "SUPABASE_PUBLISHABLE_KEY is missing from .env"
-    )
+    raise RuntimeError("SUPABASE_PUBLISHABLE_KEY or SUPABASE_KEY is missing from .env")
 
 
-supabase = create_client(
-    SUPABASE_URL,
-    SUPABASE_KEY
-)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)

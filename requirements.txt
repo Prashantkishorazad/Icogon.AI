@@ -6,3 +6,5 @@ python-dotenv
 pydantic[email]
 groq
 python-multipart
+asyncpg
+httpx

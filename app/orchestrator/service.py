@@ -4,12 +4,13 @@ import asyncio
 from contextvars import ContextVar
 from uuid import uuid4
 
+from app.agents.pipeline import AgentPipeline
 from app.orchestrator.models import (
     AgentRun,
     ChangeResponse,
     ProviderUsage,
-    RunFailure,
     RunEvent,
+    RunFailure,
     RunRequest,
     RunStatus,
     RunStep,
@@ -28,10 +29,10 @@ class OrchestratorService:
         repository: RunRepository,
         provider: AgentProvider,
         verifier: ChangeVerifier,
+        pipeline: AgentPipeline | None = None,
     ) -> None:
         self._repository = repository
-        self._provider = provider
-        self._verifier = verifier
+        self._agents = pipeline or AgentPipeline.from_provider(provider, verifier)
         self._run_locks: dict[str, asyncio.Lock] = {}
         self._lease_token: ContextVar[str | None] = ContextVar(
             "orchestrator_lease_token",
@@ -76,6 +77,16 @@ class OrchestratorService:
                     {"from": previous.value, "to": RunStatus.CANCELLED.value},
                 )
         return await self._require_run(run_id)
+
+    async def process_next(
+        self,
+        worker_id: str,
+        lease_seconds: int = 30,
+    ) -> AgentRun | None:
+        run_id = await self._repository.next_claimable_run_id()
+        if run_id is None:
+            return None
+        return await self.execute(run_id, worker_id, lease_seconds)
 
     async def execute(
         self,
@@ -143,6 +154,14 @@ class OrchestratorService:
             budget=run.budget,
         )
         try:
+            if run.brief is None:
+                await self._requirements_step(run, request)
+            if run.is_terminal:
+                return
+            if run.architecture is None:
+                await self._architecture_step(run, request)
+            if run.is_terminal:
+                return
             if run.plan is None:
                 await self._planning_step(run, request)
             if run.is_terminal:
@@ -154,8 +173,49 @@ class OrchestratorService:
             await self._verification_loop(run, request)
         except BudgetExceededError as exc:
             await self._fail(run, "budget_exceeded", str(exc), retryable=False)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             await self._fail(run, "orchestration_error", str(exc), retryable=True)
+
+    async def _requirements_step(self, run: AgentRun, request: RunRequest) -> None:
+        await self._change_status(run, RunStatus.ANALYZING)
+        step = await self._start_step(run, "requirements")
+        try:
+            run.brief = await self._agents.requirements.analyze(request)
+            await self._finish_step(
+                run,
+                step,
+                {
+                    "requirements": len(run.brief.requirements),
+                    "open_questions": len(run.brief.open_questions),
+                },
+            )
+        except Exception as exc:
+            await self._finish_step(run, step, error=str(exc))
+            raise
+
+    async def _architecture_step(self, run: AgentRun, request: RunRequest) -> None:
+        if run.brief is None:
+            raise RuntimeError("Cannot design architecture without a project brief")
+        if await self._stop_if_cancelled(run):
+            return
+        await self._change_status(run, RunStatus.DESIGNING)
+        step = await self._start_step(run, "architecture")
+        try:
+            run.architecture = await self._agents.architecture.design(
+                request,
+                run.brief,
+            )
+            await self._finish_step(
+                run,
+                step,
+                {
+                    "modules": len(run.architecture.modules),
+                    "decisions": len(run.architecture.decisions),
+                },
+            )
+        except Exception as exc:
+            await self._finish_step(run, step, error=str(exc))
+            raise
 
     async def _heartbeat_loop(
         self,
@@ -176,11 +236,19 @@ class OrchestratorService:
                     return
 
     async def _planning_step(self, run: AgentRun, request: RunRequest) -> None:
+        if run.brief is None or run.architecture is None:
+            raise RuntimeError("Cannot plan without requirements and architecture")
+        if await self._stop_if_cancelled(run):
+            return
         await self._change_status(run, RunStatus.PLANNING)
         step = await self._start_step(run, "planning")
         try:
             await self._reserve_model_call(run)
-            response = await self._provider.create_plan(request)
+            response = await self._agents.planning.plan(
+                request,
+                run.brief,
+                run.architecture,
+            )
             self._record_usage(run, response.usage)
             run.plan = response.plan
             await self._finish_step(
@@ -193,15 +261,22 @@ class OrchestratorService:
             raise
 
     async def _generation_step(self, run: AgentRun, request: RunRequest) -> None:
-        if run.plan is None:
-            raise RuntimeError("Cannot generate changes without a plan")
+        if run.brief is None or run.architecture is None or run.plan is None:
+            raise RuntimeError(
+                "Cannot implement changes without approved planning context"
+            )
         if await self._stop_if_cancelled(run):
             return
         await self._change_status(run, RunStatus.GENERATING)
-        step = await self._start_step(run, "generating")
+        step = await self._start_step(run, "implementation")
         try:
             await self._reserve_model_call(run)
-            response = await self._provider.generate_changes(request, run.plan)
+            response = await self._agents.implementation.implement(
+                request,
+                run.brief,
+                run.architecture,
+                run.plan,
+            )
             self._record_usage(run, response.usage)
             run.changes = response.changes
             await self._finish_step(
@@ -214,35 +289,79 @@ class OrchestratorService:
             raise
 
     async def _verification_loop(self, run: AgentRun, request: RunRequest) -> None:
-        if run.plan is None or run.changes is None:
+        if (
+            run.brief is None
+            or run.architecture is None
+            or run.plan is None
+            or run.changes is None
+        ):
             raise RuntimeError("Cannot verify an empty plan or change set")
 
         while True:
             if await self._stop_if_cancelled(run):
                 return
-            await self._change_status(run, RunStatus.VERIFYING)
-            step = await self._start_step(run, "verifying")
+
+            await self._change_status(run, RunStatus.REVIEWING)
+            review_step = await self._start_step(run, "review")
             try:
-                result = await self._verifier.verify(run.changes)
-                run.verification = result
+                run.review = await self._agents.review.review(run.plan, run.changes)
                 await self._finish_step(
                     run,
-                    step,
-                    {"checks": result.checks, "passed": result.passed},
+                    review_step,
+                    {
+                        "approved": run.review.approved,
+                        "findings": len(run.review.findings),
+                    },
                 )
             except Exception as exc:
-                await self._finish_step(run, step, error=str(exc))
+                await self._finish_step(run, review_step, error=str(exc))
                 raise
 
-            if result.passed:
-                await self._change_status(run, RunStatus.COMPLETED)
-                return
+            if run.review.approved:
+                security_step = await self._start_step(run, "security_policy")
+                try:
+                    assessment = await self._agents.security.assess(run.changes)
+                    run.review.findings.extend(assessment.findings)
+                    run.review.approved = assessment.approved
+                    await self._finish_step(
+                        run,
+                        security_step,
+                        {
+                            "approved": assessment.approved,
+                            "findings": len(assessment.findings),
+                        },
+                    )
+                except Exception as exc:
+                    await self._finish_step(run, security_step, error=str(exc))
+                    raise
+
+            if run.review.approved:
+                await self._change_status(run, RunStatus.VERIFYING)
+                verification_step = await self._start_step(run, "verification")
+                try:
+                    result = await self._agents.verification.verify(run.changes)
+                    run.verification = result
+                    await self._finish_step(
+                        run,
+                        verification_step,
+                        {"checks": result.checks, "passed": result.passed},
+                    )
+                except Exception as exc:
+                    await self._finish_step(run, verification_step, error=str(exc))
+                    raise
+
+                if result.passed:
+                    await self._change_status(run, RunStatus.COMPLETED)
+                    return
+                feedback = result.feedback
+            else:
+                feedback = [finding.message for finding in run.review.findings]
 
             if run.repair_attempts >= run.budget.max_repair_attempts:
                 await self._fail(
                     run,
-                    "verification_failed",
-                    "Generated changes failed verification after the allowed repair attempts.",
+                    "quality_gate_failed",
+                    "The change set did not pass review and verification within the repair budget.",
                     retryable=False,
                 )
                 return
@@ -250,21 +369,23 @@ class OrchestratorService:
             await self._change_status(run, RunStatus.REPAIRING)
             run.repair_attempts += 1
             await self._save(run)
-            repair_step = await self._start_step(run, "repairing")
+            repair_step = await self._start_step(run, "repair")
             try:
                 await self._reserve_model_call(run)
-                response: ChangeResponse = await self._provider.repair_changes(
+                response: ChangeResponse = await self._agents.implementation.repair(
                     request,
+                    run.brief,
+                    run.architecture,
                     run.plan,
                     run.changes,
-                    result.feedback,
+                    feedback,
                 )
                 self._record_usage(run, response.usage)
                 run.changes = response.changes
                 await self._finish_step(
                     run,
                     repair_step,
-                    {"attempt": run.repair_attempts, "feedback": result.feedback},
+                    {"attempt": run.repair_attempts, "feedback": feedback},
                 )
             except Exception as exc:
                 await self._finish_step(run, repair_step, error=str(exc))
@@ -304,8 +425,12 @@ class OrchestratorService:
                 step.error = "Worker lease expired before the step completed"
                 break
 
-        if run.plan is None:
+        if run.brief is None:
             checkpoint = RunStatus.QUEUED
+        elif run.architecture is None:
+            checkpoint = RunStatus.ANALYZING
+        elif run.plan is None:
+            checkpoint = RunStatus.DESIGNING
         elif run.changes is None:
             checkpoint = RunStatus.PLANNING
         else:
