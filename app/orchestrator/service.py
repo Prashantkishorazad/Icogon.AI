@@ -318,6 +318,24 @@ class OrchestratorService:
                 raise
 
             if run.review.approved:
+                security_step = await self._start_step(run, "security_policy")
+                try:
+                    assessment = await self._agents.security.assess(run.changes)
+                    run.review.findings.extend(assessment.findings)
+                    run.review.approved = assessment.approved
+                    await self._finish_step(
+                        run,
+                        security_step,
+                        {
+                            "approved": assessment.approved,
+                            "findings": len(assessment.findings),
+                        },
+                    )
+                except Exception as exc:
+                    await self._finish_step(run, security_step, error=str(exc))
+                    raise
+
+            if run.review.approved:
                 await self._change_status(run, RunStatus.VERIFYING)
                 verification_step = await self._start_step(run, "verification")
                 try:

@@ -1,6 +1,11 @@
 from typing import Protocol
 
-from app.agents.contracts import ArchitectureProposal, ChangeReview, ProjectBrief
+from app.agents.contracts import (
+    ArchitectureProposal,
+    ChangeReview,
+    ProjectBrief,
+    SecurityAssessment,
+)
 from app.orchestrator.models import (
     ChangeResponse,
     ChangeSet,
@@ -58,6 +63,10 @@ class ReviewAgent(Protocol):
         plan: GenerationPlan,
         changes: ChangeSet,
     ) -> ChangeReview: ...
+
+
+class SecurityAgent(Protocol):
+    async def assess(self, changes: ChangeSet) -> SecurityAssessment: ...
 
 
 class VerificationAgent(Protocol):

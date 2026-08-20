@@ -9,7 +9,8 @@
 | Planner | brief and architecture | ordered generation plan | Produce traceable tasks and dependencies |
 | Implementation agent | planning context | structured file changes | Create or repair a bounded change set |
 | Reviewer | plan and changes | review decision | Reject structurally unsafe or unreviewable changes |
-| Verification agent | approved changes | verification result | Execute deterministic policy checks now and sandbox checks later |
+| Security policy agent | generated changes | security assessment | Block protected paths, oversized files, and credential material |
+| Verification agent | approved changes | verification result | Execute deployment-owned checks in an isolated runtime |
 
 These are logical roles inside one durable workflow. They are not independent
 processes and do not write shared state directly. The orchestrator owns persistence,
@@ -35,8 +36,8 @@ Implementation output must pass review before verification. A blocking review
 finding enters the same bounded repair loop as a failed verification check:
 
 ```text
-implementation -> review -> verification -> complete
-                        \-> repair -> review
+implementation -> review -> security policy -> sandbox verification -> complete
+                        \-------------------------> repair -> review
 ```
 
 Review currently enforces:
@@ -45,8 +46,10 @@ Review currently enforces:
 - unique normalized file paths;
 - a maximum number of changed files per run.
 
-Path containment remains a verification rule. Build, typecheck, lint, browser
-smoke tests, and dependency policy will be implemented by the sandbox verifier.
+Path containment is enforced before materialization. When Docker verification is
+enabled, build, typecheck, lint, and test commands run without network access in
+a resource-limited container. Commands come from deployment configuration, never
+from model output.
 
 ## Provider boundary
 

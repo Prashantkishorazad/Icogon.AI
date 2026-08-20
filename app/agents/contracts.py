@@ -62,3 +62,8 @@ class ChangeReview(BaseModel):
     approved: bool
     findings: list[ReviewFinding] = Field(default_factory=list)
     required_checks: list[str] = Field(default_factory=list)
+
+
+class SecurityAssessment(BaseModel):
+    approved: bool
+    findings: list[ReviewFinding] = Field(default_factory=list)

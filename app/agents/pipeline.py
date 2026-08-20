@@ -13,8 +13,10 @@ from app.agents.roles import (
     PlanningAgent,
     RequirementsAgent,
     ReviewAgent,
+    SecurityAgent,
     VerificationAgent,
 )
+from app.agents.security import ChangeSecurityAgent
 from app.orchestrator.ports import AgentProvider, ChangeVerifier
 
 
@@ -25,6 +27,7 @@ class AgentPipeline:
     planning: PlanningAgent
     implementation: ImplementationAgent
     review: ReviewAgent
+    security: SecurityAgent
     verification: VerificationAgent
 
     @classmethod
@@ -39,5 +42,6 @@ class AgentPipeline:
             planning=ProviderPlanningAgent(provider),
             implementation=ProviderImplementationAgent(provider),
             review=ChangeReviewer(),
+            security=ChangeSecurityAgent(),
             verification=verifier,
         )
