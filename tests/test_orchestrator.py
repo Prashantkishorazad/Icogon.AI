@@ -32,7 +32,11 @@ class FailOnceVerifier:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def verify(self, changes: ChangeSet) -> VerificationResult:
+    async def verify(
+        self,
+        project_id: str,
+        changes: ChangeSet,
+    ) -> VerificationResult:
         self.calls += 1
         return VerificationResult(
             passed=self.calls > 1,
@@ -187,10 +191,11 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
         for path in unsafe_paths:
             with self.subTest(path=path):
                 result = await verifier.verify(
+                    "project-1",
                     ChangeSet(
                         summary="unsafe",
                         files=[FileChange(path=path, content="test")],
-                    )
+                    ),
                 )
                 self.assertFalse(result.passed)
 

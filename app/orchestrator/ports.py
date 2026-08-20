@@ -44,7 +44,11 @@ class AgentProvider(Protocol):
 
 
 class ChangeVerifier(Protocol):
-    async def verify(self, changes: ChangeSet) -> VerificationResult: ...
+    async def verify(
+        self,
+        project_id: str,
+        changes: ChangeSet,
+    ) -> VerificationResult: ...
 
 
 class RunRepository(Protocol):

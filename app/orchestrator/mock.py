@@ -81,7 +81,11 @@ class MockAgentProvider:
 
 
 class StaticChangeVerifier:
-    async def verify(self, changes: ChangeSet) -> VerificationResult:
+    async def verify(
+        self,
+        project_id: str,
+        changes: ChangeSet,
+    ) -> VerificationResult:
         has_files = bool(changes.files)
         paths_are_relative = all(
             self._is_safe_project_path(change.path) for change in changes.files

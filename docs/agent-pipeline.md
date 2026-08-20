@@ -30,6 +30,10 @@ All handoffs use validated Pydantic models:
 The complete planning context is passed to provider-backed agents. A provider does
 not reconstruct requirements or architecture from chat history.
 
+Verification also receives the immutable `project_id`. The workspace provider uses
+that identifier to select a trusted snapshot; model output never supplies a host
+filesystem path.
+
 ## Quality gates
 
 Implementation output must pass review before verification. A blocking review
