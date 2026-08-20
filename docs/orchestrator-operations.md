@@ -41,6 +41,10 @@ Start at least one worker:
 python -m app.orchestrator.worker
 ```
 
+The API process never executes generated code. Configure sandbox verification only
+on the worker deployment. See `docs/sandbox-execution.md` for required isolation and
+resource settings.
+
 Multiple workers may run concurrently. Database claims and lease fencing ensure a
 run has one active owner. A worker that loses its lease cannot persist late state
 or events. Transient worker failures use capped exponential backoff; the process

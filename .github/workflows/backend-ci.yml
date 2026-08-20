@@ -35,10 +35,10 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
 
       - name: Lint
-        run: ruff check app/agents app/orchestrator app/routers/orchestrator.py tests
+        run: ruff check app/agents app/orchestrator app/sandbox app/routers/orchestrator.py tests
 
       - name: Check formatting
-        run: ruff format --check app/agents app/orchestrator app/routers/orchestrator.py tests
+        run: ruff format --check app/agents app/orchestrator app/sandbox app/routers/orchestrator.py tests
 
       - name: Run tests
         env:

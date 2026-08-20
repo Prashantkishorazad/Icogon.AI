@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import os
 
-from app.orchestrator.mock import MockAgentProvider, StaticChangeVerifier
+from app.orchestrator.mock import MockAgentProvider
 from app.orchestrator.postgres_repository import PostgresRunRepository
 from app.orchestrator.repository import InMemoryRunRepository
 from app.orchestrator.service import OrchestratorService
+from app.sandbox.runtime import build_change_verifier
 
 
 class OrchestratorRuntime:
@@ -55,7 +56,7 @@ class OrchestratorRuntime:
         return OrchestratorService(
             repository=repository,
             provider=MockAgentProvider(),
-            verifier=StaticChangeVerifier(),
+            verifier=build_change_verifier(),
         )
 
 

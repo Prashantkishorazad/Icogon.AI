@@ -79,6 +79,33 @@ class ReviewRepairProvider(MockAgentProvider):
         return response
 
 
+class SecurityRepairProvider(MockAgentProvider):
+    async def generate_changes(self, request, brief, architecture, plan):
+        response = await super().generate_changes(request, brief, architecture, plan)
+        response.changes.files[0].path = ".env"
+        return response
+
+    async def repair_changes(
+        self,
+        request,
+        brief,
+        architecture,
+        plan,
+        changes,
+        feedback,
+    ):
+        response = await super().repair_changes(
+            request,
+            brief,
+            architecture,
+            plan,
+            changes,
+            feedback,
+        )
+        response.changes.files[0].path = "src/generated/README.md"
+        return response
+
+
 class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
     def make_service(self, verifier=None) -> OrchestratorService:
         return OrchestratorService(
@@ -101,6 +128,7 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
                 "planning",
                 "implementation",
                 "review",
+                "security_policy",
                 "verification",
             ],
         )
@@ -282,6 +310,23 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
             2,
         )
         self.assertEqual([step.name for step in completed.steps].count("repair"), 1)
+
+    async def test_security_rejection_is_repaired_before_verification(self):
+        service = OrchestratorService(
+            repository=InMemoryRunRepository(),
+            provider=SecurityRepairProvider(),
+            verifier=StaticChangeVerifier(),
+        )
+        submitted = await service.submit(request("request-0012"))
+
+        completed = await service.execute(submitted.id)
+
+        self.assertEqual(completed.status, RunStatus.COMPLETED)
+        self.assertEqual(completed.repair_attempts, 1)
+        self.assertEqual(
+            [step.name for step in completed.steps].count("security_policy"),
+            2,
+        )
 
 
 if __name__ == "__main__":
