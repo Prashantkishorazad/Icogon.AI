@@ -7,3 +7,4 @@ pydantic[email]
 groq
 python-multipart
 asyncpg
+httpx

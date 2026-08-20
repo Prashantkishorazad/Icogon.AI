@@ -1,63 +1,59 @@
 import { create } from "zustand";
-
-interface User {
-  id: string;
-  email: string;
-  full_name?: string;
-}
+import type { Session, User } from "@supabase/supabase-js";
+import { supabase } from "../lib/supabase";
 
 interface AuthState {
   user: User | null;
+  session: Session | null;
   accessToken: string | null;
+
   isAuthenticated: boolean;
   isLoading: boolean;
 
-  login: (token: string, user: User) => void;
-  logout: () => void;
-  setUser: (user: User) => void;
+  setSession: (session: Session | null) => void;
   setLoading: (loading: boolean) => void;
+  logout: () => Promise<void>;
 }
 
-const storedToken = localStorage.getItem("access_token");
-const storedUser = localStorage.getItem("user");
-
 export const useAuthStore = create<AuthState>((set) => ({
-  user: storedUser ? JSON.parse(storedUser) : null,
+  user: null,
+  session: null,
+  accessToken: null,
 
-  accessToken: storedToken,
+  isAuthenticated: false,
+  isLoading: true,
 
-  isAuthenticated: !!storedToken,
-
-  isLoading: false,
-
-  login: (token, user) => {
-    localStorage.setItem("access_token", token);
-    localStorage.setItem("user", JSON.stringify(user));
-
+  setSession: (session) => {
     set({
-      accessToken: token,
-      user,
-      isAuthenticated: true,
+      session,
+      user: session?.user ?? null,
+      accessToken: session?.access_token ?? null,
+      isAuthenticated: !!session,
+      isLoading: false,
     });
-  },
-
-  logout: () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
-
-    set({
-      accessToken: null,
-      user: null,
-      isAuthenticated: false,
-    });
-  },
-
-  setUser: (user) => {
-    localStorage.setItem("user", JSON.stringify(user));
-    set({ user });
   },
 
   setLoading: (loading) => {
-    set({ isLoading: loading });
+    set({
+      isLoading: loading,
+    });
+  },
+
+  logout: async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        console.error("Logout error:", error);
+      }
+    } finally {
+      set({
+        user: null,
+        session: null,
+        accessToken: null,
+        isAuthenticated: false,
+        isLoading: false,
+      });
+    }
   },
 }));

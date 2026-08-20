@@ -8,6 +8,7 @@ from app.routers.auth import router as auth_router
 from app.routers.chat import router as chat_router
 from app.routers.upload import router as upload_router
 from app.routers.orchestrator import router as orchestrator_router
+from app.routers.project import router as project_router
 from app.orchestrator.runtime import runtime as orchestrator_runtime
 
 
@@ -70,6 +71,8 @@ app.include_router(chat_router)
 app.include_router(upload_router)
 
 app.include_router(orchestrator_router)
+
+app.include_router(project_router)
 
 
 # ==========================================
