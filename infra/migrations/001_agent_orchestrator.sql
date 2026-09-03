@@ -16,6 +16,7 @@ create table if not exists public.agent_runs (
     lease_expires_at timestamptz,
     last_heartbeat_at timestamptz,
     execution_attempts integer not null default 0 check (execution_attempts >= 0),
+    next_event_sequence bigint not null default 1 check (next_event_sequence > 0),
     version integer not null default 1 check (version > 0),
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),

@@ -1,4 +1,5 @@
 import asyncio
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -6,10 +7,12 @@ from pydantic import BaseModel, Field
 
 from app.middleware.jwtauth import get_current_user
 from app.orchestrator.models import AgentRun, RunBudget, RunEvent, RunRequest
-from app.orchestrator.runtime import service
-
+from app.orchestrator.runtime import get_orchestrator_service, runtime
+from app.orchestrator.service import OrchestratorService
 
 router = APIRouter(prefix="/orchestrator", tags=["Orchestrator"])
+CurrentUser = Annotated[Any, Depends(get_current_user)]
+Orchestrator = Annotated[OrchestratorService, Depends(get_orchestrator_service)]
 
 
 class SubmitRunRequest(BaseModel):
@@ -23,9 +26,10 @@ class SubmitRunRequest(BaseModel):
 async def submit_run(
     payload: SubmitRunRequest,
     background_tasks: BackgroundTasks,
-    current_user=Depends(get_current_user),
+    current_user: CurrentUser,
+    orchestrator: Orchestrator,
 ):
-    run = await service.submit(
+    run = await orchestrator.submit(
         RunRequest(
             user_id=str(current_user.id),
             project_id=payload.project_id,
@@ -34,14 +38,18 @@ async def submit_run(
             budget=payload.budget,
         )
     )
-    if not run.is_terminal:
-        background_tasks.add_task(service.execute, run.id)
+    if not run.is_terminal and runtime.inline_execution_enabled:
+        background_tasks.add_task(orchestrator.execute, run.id)
     return run
 
 
 @router.get("/runs/{run_id}", response_model=AgentRun)
-async def get_run(run_id: str, current_user=Depends(get_current_user)):
-    run = await service.get(run_id)
+async def get_run(
+    run_id: str,
+    current_user: CurrentUser,
+    orchestrator: Orchestrator,
+):
+    run = await orchestrator.get(run_id)
     if run is None or run.user_id != str(current_user.id):
         raise HTTPException(status_code=404, detail="Run not found")
     return run
@@ -50,37 +58,43 @@ async def get_run(run_id: str, current_user=Depends(get_current_user)):
 @router.get("/runs/{run_id}/events", response_model=list[RunEvent])
 async def get_run_events(
     run_id: str,
+    current_user: CurrentUser,
+    orchestrator: Orchestrator,
     after: int = 0,
-    current_user=Depends(get_current_user),
 ):
-    run = await service.get(run_id)
+    run = await orchestrator.get(run_id)
     if run is None or run.user_id != str(current_user.id):
         raise HTTPException(status_code=404, detail="Run not found")
-    return await service.list_events(run_id, after=max(0, after))
+    return await orchestrator.list_events(run_id, after=max(0, after))
 
 
 @router.post("/runs/{run_id}/cancel", response_model=AgentRun)
-async def cancel_run(run_id: str, current_user=Depends(get_current_user)):
-    run = await service.get(run_id)
+async def cancel_run(
+    run_id: str,
+    current_user: CurrentUser,
+    orchestrator: Orchestrator,
+):
+    run = await orchestrator.get(run_id)
     if run is None or run.user_id != str(current_user.id):
         raise HTTPException(status_code=404, detail="Run not found")
-    return await service.request_cancel(run_id)
+    return await orchestrator.request_cancel(run_id)
 
 
 @router.get("/runs/{run_id}/events/stream")
 async def stream_run_events(
     run_id: str,
+    current_user: CurrentUser,
+    orchestrator: Orchestrator,
     after: int = 0,
-    current_user=Depends(get_current_user),
 ):
-    run = await service.get(run_id)
+    run = await orchestrator.get(run_id)
     if run is None or run.user_id != str(current_user.id):
         raise HTTPException(status_code=404, detail="Run not found")
 
     async def event_stream():
         cursor = max(0, after)
         while True:
-            events = await service.list_events(run_id, cursor)
+            events = await orchestrator.list_events(run_id, cursor)
             for event in events:
                 cursor = event.sequence
                 yield (
@@ -89,7 +103,7 @@ async def stream_run_events(
                     f"data: {event.model_dump_json()}\n\n"
                 )
 
-            current = await service.get(run_id)
+            current = await orchestrator.get(run_id)
             if current is None or (current.is_terminal and not events):
                 return
             await asyncio.sleep(0.25)

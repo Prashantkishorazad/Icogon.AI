@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from app.agents.contracts import ArchitectureProposal, ProjectBrief
 from app.orchestrator.models import (
     AgentRun,
     ChangeResponse,
@@ -10,23 +11,32 @@ from app.orchestrator.models import (
     PlanResponse,
     RunEvent,
     RunRequest,
-    WorkerLease,
     VerificationResult,
+    WorkerLease,
 )
 
 
 class AgentProvider(Protocol):
-    async def create_plan(self, request: RunRequest) -> PlanResponse: ...
+    async def create_plan(
+        self,
+        request: RunRequest,
+        brief: ProjectBrief,
+        architecture: ArchitectureProposal,
+    ) -> PlanResponse: ...
 
     async def generate_changes(
         self,
         request: RunRequest,
+        brief: ProjectBrief,
+        architecture: ArchitectureProposal,
         plan: GenerationPlan,
     ) -> ChangeResponse: ...
 
     async def repair_changes(
         self,
         request: RunRequest,
+        brief: ProjectBrief,
+        architecture: ArchitectureProposal,
         plan: GenerationPlan,
         changes: ChangeSet,
         feedback: list[str],
@@ -34,7 +44,11 @@ class AgentProvider(Protocol):
 
 
 class ChangeVerifier(Protocol):
-    async def verify(self, changes: ChangeSet) -> VerificationResult: ...
+    async def verify(
+        self,
+        project_id: str,
+        changes: ChangeSet,
+    ) -> VerificationResult: ...
 
 
 class RunRepository(Protocol):
@@ -74,3 +88,5 @@ class RunRepository(Protocol):
     async def release(self, token: str) -> bool: ...
 
     async def request_cancel(self, run_id: str) -> AgentRun | None: ...
+
+    async def next_claimable_run_id(self) -> str | None: ...

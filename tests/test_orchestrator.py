@@ -32,7 +32,11 @@ class FailOnceVerifier:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def verify(self, changes: ChangeSet) -> VerificationResult:
+    async def verify(
+        self,
+        project_id: str,
+        changes: ChangeSet,
+    ) -> VerificationResult:
         self.calls += 1
         return VerificationResult(
             passed=self.calls > 1,
@@ -42,9 +46,68 @@ class FailOnceVerifier:
 
 
 class SlowMockProvider(MockAgentProvider):
-    async def create_plan(self, request: RunRequest) -> PlanResponse:
+    async def create_plan(self, request, brief, architecture) -> PlanResponse:
         await asyncio.sleep(1.2)
-        return await super().create_plan(request)
+        return await super().create_plan(request, brief, architecture)
+
+
+class ReviewRepairProvider(MockAgentProvider):
+    async def generate_changes(self, request, brief, architecture, plan):
+        response = await super().generate_changes(
+            request,
+            brief,
+            architecture,
+            plan,
+        )
+        response.changes.files.append(response.changes.files[0].model_copy(deep=True))
+        return response
+
+    async def repair_changes(
+        self,
+        request,
+        brief,
+        architecture,
+        plan,
+        changes,
+        feedback,
+    ):
+        response = await super().repair_changes(
+            request,
+            brief,
+            architecture,
+            plan,
+            changes,
+            feedback,
+        )
+        response.changes.files = response.changes.files[:1]
+        return response
+
+
+class SecurityRepairProvider(MockAgentProvider):
+    async def generate_changes(self, request, brief, architecture, plan):
+        response = await super().generate_changes(request, brief, architecture, plan)
+        response.changes.files[0].path = ".env"
+        return response
+
+    async def repair_changes(
+        self,
+        request,
+        brief,
+        architecture,
+        plan,
+        changes,
+        feedback,
+    ):
+        response = await super().repair_changes(
+            request,
+            brief,
+            architecture,
+            plan,
+            changes,
+            feedback,
+        )
+        response.changes.files[0].path = "src/generated/README.md"
+        return response
 
 
 class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
@@ -61,12 +124,22 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
         completed = await service.execute(submitted.id)
 
         self.assertEqual(completed.status, RunStatus.COMPLETED)
-        self.assertEqual([step.name for step in completed.steps], [
-            "planning",
-            "generating",
-            "verifying",
-        ])
+        self.assertEqual(
+            [step.name for step in completed.steps],
+            [
+                "requirements",
+                "architecture",
+                "planning",
+                "implementation",
+                "review",
+                "security_policy",
+                "verification",
+            ],
+        )
         self.assertEqual(completed.model_calls, 2)
+        self.assertIsNotNone(completed.brief)
+        self.assertIsNotNone(completed.architecture)
+        self.assertTrue(completed.review.approved)
         self.assertIsNotNone(completed.changes)
 
     async def test_submission_is_idempotent_per_user(self):
@@ -108,15 +181,21 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_verifier_rejects_workspace_escape_paths(self):
         verifier = StaticChangeVerifier()
-        unsafe_paths = ["../secret.txt", "/etc/passwd", "C:/secrets.txt", "..\\secret.txt"]
+        unsafe_paths = [
+            "../secret.txt",
+            "/etc/passwd",
+            "C:/secrets.txt",
+            "..\\secret.txt",
+        ]
 
         for path in unsafe_paths:
             with self.subTest(path=path):
                 result = await verifier.verify(
+                    "project-1",
                     ChangeSet(
                         summary="unsafe",
                         files=[FileChange(path=path, content="test")],
-                    )
+                    ),
                 )
                 self.assertFalse(result.passed)
 
@@ -154,9 +233,7 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_active_lease_prevents_a_second_worker_claim(self):
         repository = InMemoryRunRepository()
-        run = await repository.create(
-            AgentRun(**request("request-0007").model_dump())
-        )
+        run = await repository.create(AgentRun(**request("request-0007").model_dump()))
         first = await repository.claim(run.id, "worker-a", 30)
         second = await repository.claim(run.id, "worker-b", 30)
 
@@ -192,9 +269,7 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_stale_worker_cannot_overwrite_new_lease_owner(self):
         repository = InMemoryRunRepository()
-        run = await repository.create(
-            AgentRun(**request("request-0009").model_dump())
-        )
+        run = await repository.create(AgentRun(**request("request-0009").model_dump()))
         stale_lease = await repository.claim(run.id, "worker-a", 30)
         stale_snapshot = await repository.get(run.id)
         stale_snapshot.lease_expires_at = utc_now() - timedelta(seconds=1)
@@ -222,6 +297,41 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(completed.status, RunStatus.COMPLETED)
         self.assertIsNotNone(completed.last_heartbeat_at)
+
+    async def test_review_rejection_is_repaired_before_verification(self):
+        service = OrchestratorService(
+            repository=InMemoryRunRepository(),
+            provider=ReviewRepairProvider(),
+            verifier=StaticChangeVerifier(),
+        )
+        submitted = await service.submit(request("request-0011"))
+
+        completed = await service.execute(submitted.id)
+
+        self.assertEqual(completed.status, RunStatus.COMPLETED)
+        self.assertEqual(completed.repair_attempts, 1)
+        self.assertEqual(
+            [step.name for step in completed.steps].count("review"),
+            2,
+        )
+        self.assertEqual([step.name for step in completed.steps].count("repair"), 1)
+
+    async def test_security_rejection_is_repaired_before_verification(self):
+        service = OrchestratorService(
+            repository=InMemoryRunRepository(),
+            provider=SecurityRepairProvider(),
+            verifier=StaticChangeVerifier(),
+        )
+        submitted = await service.submit(request("request-0012"))
+
+        completed = await service.execute(submitted.id)
+
+        self.assertEqual(completed.status, RunStatus.COMPLETED)
+        self.assertEqual(completed.repair_attempts, 1)
+        self.assertEqual(
+            [step.name for step in completed.steps].count("security_policy"),
+            2,
+        )
 
 
 if __name__ == "__main__":
