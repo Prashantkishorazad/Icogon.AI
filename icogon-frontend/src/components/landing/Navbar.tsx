@@ -1,145 +1,254 @@
 import { useState } from "react";
-import { Menu, X, ArrowRight } from "lucide-react";
+import { Menu, X, ArrowRight, ChevronDown } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import logo from "../../assets/logo.png";
+
+import logo from "../../assets/logo1.png";
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
 
   return (
     <motion.nav
-      initial={{ y: -80 }}
-      animate={{ y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-slate-950/70 backdrop-blur-xl"
+      initial={{ y: -30, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      className="
+        fixed
+        top-0
+        left-0
+        right-0
+        z-50
+        border-b
+        border-slate-200/60
+        bg-white/75
+        backdrop-blur-2xl
+        shadow-[0_1px_0_rgba(255,255,255,0.8)]
+      "
     >
-      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
+      <div className="mx-auto flex h-[72px] max-w-[1400px] items-center justify-between px-6 lg:px-10">
 
-        {/* Logo */}
-
+        {/* LOGO */}
         <Link
-  to="/"
-  className="flex items-center gap-3"
->
-  <img
-    src={logo}
-    alt="ICOGON AI Logo"
-    className="h-12 w-12 object-contain"
-  />
+          to="/"
+          className="
+            flex
+            items-center
+            transition
+            hover:opacity-80
+          "
+        >
+          <img
+            src={logo}
+            alt="ICOGON AI"
+            className="
+              h-[200px]
+              w-auto
+              object-contain
+            "
+          />
+        </Link>
 
-  <div>
-    <h1 className="text-xl font-bold text-white">
-      ICOGON AI
-    </h1>
+        {/* DESKTOP NAVIGATION */}
+        <div className="hidden items-center gap-8 lg:flex">
 
-    <p className="text-xs text-slate-400">
-      Build with AI
-    </p>
-  </div>
-</Link>
+          <button className="flex items-center gap-1 text-[14px] font-medium text-slate-700 transition hover:text-slate-950">
+            Solutions
+            <ChevronDown size={14} strokeWidth={1.8} />
+          </button>
 
-        {/* Desktop */}
-
-        <div className="hidden items-center gap-10 md:flex">
+          <button className="flex items-center gap-1 text-[14px] font-medium text-slate-700 transition hover:text-slate-950">
+            Resources
+            <ChevronDown size={14} strokeWidth={1.8} />
+          </button>
 
           <a
-            href="#features"
-            className="text-slate-300 transition hover:text-white"
+            href="#community"
+            className="text-[14px] font-medium text-slate-700 transition hover:text-slate-950"
           >
-            Features
+            Community
+          </a>
+
+          <a
+            href="#enterprise"
+            className="text-[14px] font-medium text-slate-700 transition hover:text-slate-950"
+          >
+            Enterprise
           </a>
 
           <a
             href="#pricing"
-            className="text-slate-300 transition hover:text-white"
+            className="text-[14px] font-medium text-slate-700 transition hover:text-slate-950"
           >
             Pricing
           </a>
 
           <a
-            href="#docs"
-            className="text-slate-300 transition hover:text-white"
+            href="#security"
+            className="text-[14px] font-medium text-slate-700 transition hover:text-slate-950"
           >
-            Docs
+            Security
           </a>
 
         </div>
 
-        {/* Right */}
-
-        <div className="hidden items-center gap-4 md:flex">
+        {/* RIGHT SIDE */}
+        <div className="hidden items-center gap-3 lg:flex">
 
           <Link
             to="/login"
-            className="text-slate-300 hover:text-white"
+            className="
+              rounded-2xl
+              border
+              border-slate-200
+              bg-white/70
+              px-5
+              py-3
+              text-[14px]
+              font-medium
+              text-slate-800
+              shadow-sm
+              transition-all
+              hover:bg-white
+              hover:shadow-md
+            "
           >
-            Login
+            Log in
           </Link>
 
           <Link
             to="/signup"
-            className="rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-5 py-3 font-medium text-white transition hover:scale-105"
+            className="
+              flex
+              items-center
+              gap-2
+              rounded-2xl
+              bg-[#20242f]
+              px-6
+              py-3
+              text-[14px]
+              font-medium
+              text-white
+              shadow-lg
+              shadow-slate-900/15
+              transition-all
+              hover:-translate-y-[1px]
+              hover:bg-[#111827]
+              hover:shadow-xl
+            "
           >
-            <span className="flex items-center gap-2">
-              Get Started
-              <ArrowRight size={18} />
-            </span>
+            Get started
+            <ArrowRight size={17} />
           </Link>
 
         </div>
 
-        {/* Mobile */}
-
+        {/* MOBILE */}
         <button
           onClick={() => setOpen(!open)}
-          className="text-white md:hidden"
+          className="
+            flex
+            h-10
+            w-10
+            items-center
+            justify-center
+            rounded-xl
+            text-slate-800
+            transition
+            hover:bg-slate-100
+            lg:hidden
+          "
         >
-          {open ? <X /> : <Menu />}
+          {open ? <X size={22} /> : <Menu size={22} />}
         </button>
 
       </div>
 
+      {/* MOBILE MENU */}
       {open && (
+        <motion.div
+          initial={{ opacity: 0, y: -15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="
+            border-t
+            border-slate-200
+            bg-white/95
+            px-6
+            py-6
+            backdrop-blur-xl
+            lg:hidden
+          "
+        >
+          <div className="flex flex-col gap-5">
 
-        <div className="space-y-5 border-t border-white/10 bg-slate-950 px-6 py-6 md:hidden">
+            <a href="#solutions" onClick={() => setOpen(false)}>
+              Solutions
+            </a>
 
-          <a href="#features" className="block text-slate-300">
-            Features
-          </a>
+            <a href="#resources" onClick={() => setOpen(false)}>
+              Resources
+            </a>
 
-          <a href="#pricing" className="block text-slate-300">
-            Pricing
-          </a>
+            <a href="#community" onClick={() => setOpen(false)}>
+              Community
+            </a>
 
-          <a href="#docs" className="block text-slate-300">
-            Docs
-          </a>
+            <a href="#enterprise" onClick={() => setOpen(false)}>
+              Enterprise
+            </a>
 
-          <Link
-  to="/"
-  className="flex items-center gap-3"
->
-  <img
-    src={logo}
-    alt="ICOGON AI Logo"
-    className="h-12 w-12 object-contain"
-  />
+            <a href="#pricing" onClick={() => setOpen(false)}>
+              Pricing
+            </a>
 
-  <div>
-    <h1 className="text-xl font-bold text-white">
-      ICOGON AI
-    </h1>
+            <a href="#security" onClick={() => setOpen(false)}>
+              Security
+            </a>
 
-    <p className="text-xs text-slate-400">
-      Build with AI
-    </p>
-  </div>
-</Link>
+            <div className="mt-2 flex gap-3">
 
-        </div>
+              <Link
+                to="/login"
+                className="
+                  flex-1
+                  rounded-xl
+                  border
+                  border-slate-200
+                  bg-white
+                  py-3
+                  text-center
+                  font-medium
+                "
+              >
+                Log in
+              </Link>
 
+              <Link
+                to="/signup"
+                className="
+                  flex
+                  flex-1
+                  items-center
+                  justify-center
+                  gap-2
+                  rounded-xl
+                  bg-[#20242f]
+                  py-3
+                  font-medium
+                  text-white
+                "
+              >
+                Get started
+                <ArrowRight size={16} />
+              </Link>
+
+            </div>
+
+          </div>
+        </motion.div>
       )}
+
     </motion.nav>
   );
 };

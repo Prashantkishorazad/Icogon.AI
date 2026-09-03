@@ -1,10 +1,16 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 
-const PrivateRoute = () => {
-  const { isAuthenticated } = useAuthStore();
+const PublicRoute = () => {
+  const isAuthenticated = useAuthStore(
+    (state) => state.isAuthenticated
+  );
 
-  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Outlet />;
 };
 
-export default PrivateRoute;
+export default PublicRoute;

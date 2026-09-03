@@ -1,32 +1,78 @@
-import api from "./axios";
+import axios from "axios";
+import { supabase } from "../lib/supabase";
 
-export interface CreateProfileData {
-  full_name: string;
-  phone?: string;
-  avatar_url?: string;
+const API_URL = import.meta.env.VITE_API_URL;
+
+export interface Profile {
+  id: string;
+  full_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  avatar_url?: string | null;
+  provider?: string | null;
 }
 
-export interface UpdateProfileData {
-  full_name?: string;
-  phone?: string;
-  avatar_url?: string;
+export interface ProfileResponse {
+  profile: Profile;
 }
 
-// GET MY PROFILE
-export const getMyProfileApi = () => {
-  return api.get("/user/me");
+const getAuthHeaders = async () => {
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!session?.access_token) {
+    throw new Error("Not authenticated. Please login again.");
+  }
+
+  return {
+    Authorization: `Bearer ${session.access_token}`,
+    "Content-Type": "application/json",
+  };
 };
 
-// CREATE PROFILE
-export const createProfileApi = (
-  data: CreateProfileData
-) => {
-  return api.post("/user/profile", data);
+
+/**
+ * GET /profile
+ */
+export const getMyProfileApi = async (): Promise<{
+  data: ProfileResponse;
+}> => {
+  const headers = await getAuthHeaders();
+
+  return axios.get<ProfileResponse>(
+    `${API_URL}/profile`,
+    {
+      headers,
+    }
+  );
 };
 
-// UPDATE PROFILE
-export const updateProfileApi = (
-  data: UpdateProfileData
-) => {
-  return api.put("/user/profile", data);
+
+/**
+ * PUT /profile
+ */
+export const updateProfileApi = async (
+  profile: {
+    full_name?: string;
+    phone?: string;
+    avatar_url?: string;
+  }
+): Promise<{
+  data: ProfileResponse;
+}> => {
+  const headers = await getAuthHeaders();
+
+  return axios.put<ProfileResponse>(
+    `${API_URL}/profile`,
+    profile,
+    {
+      headers,
+    }
+  );
 };
