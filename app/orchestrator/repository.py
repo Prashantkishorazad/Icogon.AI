@@ -65,6 +65,9 @@ class InMemoryRunRepository:
                 if not lease_is_current or not lease_is_active:
                     raise PermissionError("Worker lease is no longer active")
             saved = deepcopy(run)
+            saved.cancel_requested_at = (
+                stored.cancel_requested_at or run.cancel_requested_at
+            )
             if lease_token is not None:
                 saved.lease_owner = stored.lease_owner
                 saved.lease_token = stored.lease_token

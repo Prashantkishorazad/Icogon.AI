@@ -1,3 +1,4 @@
+import json
 from pathlib import PurePosixPath
 
 from app.agents.contracts import (
@@ -10,6 +11,7 @@ from app.agents.contracts import (
     ReviewFinding,
     ReviewSeverity,
 )
+from app.agents.design import design_context
 from app.agents.roles import ImplementationAgent, PlanningAgent
 from app.orchestrator.models import (
     ChangeResponse,
@@ -25,7 +27,9 @@ class RequirementsAnalyst:
     async def analyze(self, request: RunRequest) -> ProjectBrief:
         return ProjectBrief(
             summary=request.prompt.strip(),
-            application_type="web_application",
+            application_type=design_context(request.prompt, request.context_files)[
+                "project_signals"
+            ][0],
             target_users=["authenticated_user"],
             requirements=[
                 Requirement(id="REQ-001", statement=request.prompt.strip()),
@@ -175,6 +179,54 @@ class ChangeReviewer:
             seen_paths.add(normalized)
 
         required_checks = ["path_policy", "build", "typecheck"]
+        if plan.blueprint:
+            snapshot = {
+                f.path: f.content for f in changes.files if f.operation == "upsert"
+            }
+            required = (
+                ["index.html"]
+                if plan.blueprint.template == "html"
+                else ["src/main.tsx", "src/App.tsx", "src/styles.css", "package.json"]
+            )
+            for missing in set(required) - snapshot.keys():
+                findings.append(
+                    ReviewFinding(
+                        code="missing_entry_file",
+                        message=f"The {plan.blueprint.template} blueprint requires {missing}.",
+                        severity=ReviewSeverity.BLOCKING,
+                        path=missing,
+                    )
+                )
+            if "package.json" in snapshot:
+                try:
+                    package = json.loads(snapshot["package.json"])
+                    scripts = package.get("scripts", {})
+                    if not isinstance(scripts, dict) or any(
+                        name in scripts
+                        for name in ("preinstall", "install", "postinstall", "prepare")
+                    ):
+                        raise ValueError("Installation hooks are not allowed")
+                except (ValueError, AttributeError):
+                    findings.append(
+                        ReviewFinding(
+                            code="invalid_package_manifest",
+                            message="Provide a valid package.json without installation lifecycle hooks.",
+                            severity=ReviewSeverity.BLOCKING,
+                            path="package.json",
+                        )
+                    )
+            if plan.blueprint.template == "react-three" and not any(
+                "three" in source
+                for path, source in snapshot.items()
+                if path.endswith((".tsx", ".ts", ".jsx", ".js"))
+            ):
+                findings.append(
+                    ReviewFinding(
+                        code="missing_three_scene",
+                        message="The 3D blueprint requires an actual Three.js implementation.",
+                        severity=ReviewSeverity.BLOCKING,
+                    )
+                )
         return ChangeReview(
             approved=not any(
                 finding.severity == ReviewSeverity.BLOCKING for finding in findings

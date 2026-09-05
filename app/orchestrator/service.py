@@ -17,6 +17,7 @@ from app.orchestrator.models import (
     utc_now,
 )
 from app.orchestrator.ports import AgentProvider, ChangeVerifier, RunRepository
+from app.orchestrator.provider import ProviderError
 
 
 class BudgetExceededError(RuntimeError):
@@ -32,6 +33,7 @@ class OrchestratorService:
         pipeline: AgentPipeline | None = None,
     ) -> None:
         self._repository = repository
+        self._provider = provider
         self._agents = pipeline or AgentPipeline.from_provider(provider, verifier)
         self._run_locks: dict[str, asyncio.Lock] = {}
         self._lease_token: ContextVar[str | None] = ContextVar(
@@ -152,6 +154,9 @@ class OrchestratorService:
             prompt=run.prompt,
             idempotency_key=run.idempotency_key,
             budget=run.budget,
+            context_files=run.context_files,
+            base_run_id=run.base_run_id,
+            quality=run.quality,
         )
         try:
             if run.brief is None:
@@ -173,6 +178,8 @@ class OrchestratorService:
             await self._verification_loop(run, request)
         except BudgetExceededError as exc:
             await self._fail(run, "budget_exceeded", str(exc), retryable=False)
+        except ProviderError as exc:
+            await self._fail(run, exc.code, str(exc), retryable=exc.retryable)
         except Exception as exc:  # noqa: BLE001
             await self._fail(run, "orchestration_error", str(exc), retryable=True)
 
@@ -245,7 +252,7 @@ class OrchestratorService:
         try:
             await self._reserve_model_call(run)
             response = await self._agents.planning.plan(
-                request,
+                self._remaining_request(run, request),
                 run.brief,
                 run.architecture,
             )
@@ -272,7 +279,7 @@ class OrchestratorService:
         try:
             await self._reserve_model_call(run)
             response = await self._agents.implementation.implement(
-                request,
+                self._remaining_request(run, request),
                 run.brief,
                 run.architecture,
                 run.plan,
@@ -336,6 +343,25 @@ class OrchestratorService:
                     raise
 
             if run.review.approved:
+                semantic_review = getattr(self._provider, "review_changes", None)
+                if request.quality == "polished" and semantic_review is not None:
+                    quality_step = await self._start_step(run, "quality_review")
+                    try:
+                        await self._reserve_model_call(run)
+                        response = await semantic_review(
+                            self._remaining_request(run, request), run.plan, run.changes
+                        )
+                        self._record_usage(run, response.usage)
+                        run.review.findings.extend(response.review.findings)
+                        run.review.approved = response.review.approved
+                        await self._finish_step(
+                            run, quality_step, {"approved": run.review.approved}
+                        )
+                    except Exception as exc:
+                        await self._finish_step(run, quality_step, error=str(exc))
+                        raise
+
+            if run.review.approved:
                 await self._change_status(run, RunStatus.VERIFYING)
                 verification_step = await self._start_step(run, "verification")
                 try:
@@ -354,6 +380,8 @@ class OrchestratorService:
                     raise
 
                 if result.passed:
+                    if await self._stop_if_cancelled(run):
+                        return
                     await self._change_status(run, RunStatus.COMPLETED)
                     return
                 feedback = result.feedback
@@ -376,7 +404,7 @@ class OrchestratorService:
             try:
                 await self._reserve_model_call(run)
                 response: ChangeResponse = await self._agents.implementation.repair(
-                    request,
+                    self._remaining_request(run, request),
                     run.brief,
                     run.architecture,
                     run.plan,
@@ -460,6 +488,8 @@ class OrchestratorService:
         )
 
     async def _stop_if_cancelled(self, run: AgentRun) -> bool:
+        current = await self._require_run(run.id)
+        run.cancel_requested_at = current.cancel_requested_at
         if run.cancel_requested_at is None:
             return False
         if not run.is_terminal:
@@ -506,6 +536,8 @@ class OrchestratorService:
         return await self._repository.save(run, self._lease_token.get())
 
     async def _reserve_model_call(self, run: AgentRun) -> None:
+        if run.output_tokens >= run.budget.max_output_tokens:
+            raise BudgetExceededError("Maximum output token budget reached")
         if run.model_calls >= run.budget.max_model_calls:
             raise BudgetExceededError("Maximum model call budget reached")
         run.model_calls += 1
@@ -517,9 +549,22 @@ class OrchestratorService:
         )
 
     @staticmethod
+    def _remaining_request(run: AgentRun, request: RunRequest) -> RunRequest:
+        return request.model_copy(
+            update={
+                "budget": request.budget.model_copy(
+                    update={
+                        "max_output_tokens": run.budget.max_output_tokens
+                        - run.output_tokens,
+                    }
+                )
+            }
+        )
+
+    @staticmethod
     def _record_usage(run: AgentRun, usage: ProviderUsage) -> None:
         next_output_total = run.output_tokens + usage.output_tokens
-        if next_output_total > run.budget.max_output_tokens:
-            raise BudgetExceededError("Maximum output token budget reached")
         run.input_tokens += usage.input_tokens
         run.output_tokens = next_output_total
+        if next_output_total > run.budget.max_output_tokens:
+            raise BudgetExceededError("Maximum output token budget reached")

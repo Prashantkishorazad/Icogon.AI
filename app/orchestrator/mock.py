@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from html import escape
 from pathlib import PurePosixPath
 
 from app.agents.contracts import ArchitectureProposal, ProjectBrief
+from app.agents.design import design_context
 from app.orchestrator.models import (
     ChangeResponse,
     ChangeSet,
@@ -23,7 +25,14 @@ class MockAgentProvider:
         brief: ProjectBrief,
         architecture: ArchitectureProposal,
     ) -> PlanResponse:
+        from app.agents.templates import scene_blueprint
+
+        three_d = (
+            "three_d"
+            in design_context(request.prompt, request.context_files)["project_signals"]
+        )
         plan = GenerationPlan(
+            blueprint=scene_blueprint() if three_d else None,
             summary=f"Create a minimal implementation for: {request.prompt}",
             assumptions=[
                 "The project uses the existing repository conventions.",
@@ -34,7 +43,7 @@ class MockAgentProvider:
                     id="task-1",
                     title="Generate project change",
                     description=request.prompt,
-                    target_files=["src/generated/README.md"],
+                    target_files=["src/App.tsx"] if three_d else ["index.html"],
                 )
             ],
         )
@@ -50,13 +59,18 @@ class MockAgentProvider:
         architecture: ArchitectureProposal,
         plan: GenerationPlan,
     ) -> ChangeResponse:
-        content = (
-            f"# Project change\n\n{plan.summary}\n\nStatus: ready for implementation.\n"
-        )
+        if plan.blueprint and plan.blueprint.template == "react-three":
+            from app.agents.templates import scene_snapshot
+
+            return ChangeResponse(
+                changes=scene_snapshot(),
+                usage=ProviderUsage(input_tokens=90, output_tokens=120),
+            )
+        content = demo_html(request.prompt)
         return ChangeResponse(
             changes=ChangeSet(
-                summary="Prepare the requested project changes",
-                files=[FileChange(path="src/generated/README.md", content=content)],
+                summary="Offline task-board demo (not model-generated)",
+                files=[FileChange(path="index.html", content=content)],
             ),
             usage=ProviderUsage(input_tokens=90, output_tokens=120),
         )
@@ -115,3 +129,15 @@ class StaticChangeVerifier:
             and ".." not in candidate.parts
             and ":" not in candidate.parts[0]
         )
+
+
+def demo_html(prompt: str) -> str:
+    return (
+        """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Team task board</title><style>
+body{font-family:system-ui,sans-serif;margin:0;background:#f5f5f7;color:#222;padding:clamp(20px,5vw,64px)}main{max-width:760px;margin:auto}small{color:#645477}h1{font-size:36px;letter-spacing:-1px}p{color:#62626f;line-height:1.7}form{display:flex;gap:10px;margin:30px 0}input{flex:1;min-width:0;padding:13px;border:1px solid #bbb;border-radius:6px;font:inherit}button{padding:12px 18px;background:#544278;color:white;border:0;border-radius:6px;cursor:pointer}li{list-style:none;padding:18px;background:white;margin:10px 0;border-radius:8px;display:flex;align-items:center;gap:12px}li input{flex:0}ul{padding:0}li:has(input:checked) span{text-decoration:line-through;color:#777}button:focus-visible,input:focus-visible{outline:3px solid #8b5cf6;outline-offset:3px}
+</style></head><body><main><small>ICOGON / OFFLINE DEMO</small><h1>Make room for your best work.</h1><p>A sample task board. This fixed demo tests orchestration and preview; connect a model for custom applications.</p><p>Requested: """
+        + escape(prompt)
+        + """</p><form id="task-form"><input id="task" aria-label="New task" placeholder="What needs to get done?" required maxlength="200"><button>Add task</button></form><ul id="tasks"><li><input type="checkbox" aria-label="Complete Define the first user flow"><span>Define the first user flow</span></li><li><input type="checkbox" aria-label="Complete Review the prototype"><span>Review the prototype</span></li></ul><p id="status" role="status">Changes stay in this preview and reset when it reloads.</p></main><script>
+document.getElementById('task-form').addEventListener('submit',function(event){event.preventDefault();const input=document.getElementById('task');if(!input.value.trim())return;const row=document.createElement('li');const check=document.createElement('input');check.type='checkbox';check.setAttribute('aria-label','Complete '+input.value);const label=document.createElement('span');label.textContent=input.value;row.append(check,label);document.getElementById('tasks').append(row);input.value='';input.focus();document.getElementById('status').textContent='Task added to this preview.'});
+</script></body></html>"""
+    )

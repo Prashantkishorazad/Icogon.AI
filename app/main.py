@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,11 +8,19 @@ from app.routers.chat import router as chat_router
 from app.routers.upload import router as upload_router
 from app.routers.orchestrator import router as orchestrator_router
 from app.routers.project import router as project_router
+from app.orchestrator.runtime import runtime
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await runtime.close()
 
 
 app = FastAPI(
     title="ICOGON AI API",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 
