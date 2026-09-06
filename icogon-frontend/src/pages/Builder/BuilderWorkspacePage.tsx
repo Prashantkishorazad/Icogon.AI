@@ -284,6 +284,25 @@ export default function BuilderWorkspacePage() {
                     ))}
                   </details>
                 )}
+                {run.handoffs?.length ? (
+                  <details>
+                    <summary>
+                      Agent communication ({run.handoffs.length})
+                    </summary>
+                    <ol className="builder-handoffs">
+                      {run.handoffs.map((handoff) => (
+                        <li key={handoff.id}>
+                          <span>
+                            {handoff.sender.replaceAll("_", " ")} →{" "}
+                            {handoff.recipient.replaceAll("_", " ")}
+                          </span>
+                          <small>{handoff.kind}</small>
+                          <p>{handoff.summary}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                ) : null}
                 {run.plan && (
                   <details open>
                     <summary>Implementation plan</summary>
@@ -309,7 +328,8 @@ export default function BuilderWorkspacePage() {
                     {Object.entries(run.verification.checks).map(
                       ([name, passed]) => (
                         <p key={name}>
-                          {passed ? "Pass:" : "Failed:"} {name.replaceAll("_", " ")}
+                          {passed ? "Pass:" : "Failed:"}{" "}
+                          {name.replaceAll("_", " ")}
                         </p>
                       ),
                     )}
@@ -479,8 +499,8 @@ export default function BuilderWorkspacePage() {
             {run?.verification?.checks.preview_bundle
               ? "Preview bundle passed / runtime behavior still needs review"
               : capabilities?.verification === "docker"
-              ? "Docker verification configured"
-              : "Static policy checks only · compilation has not been tested"}
+                ? "Docker verification configured"
+                : "Static policy checks only · compilation has not been tested"}
             <span>
               {capabilities?.persistence === "memory"
                 ? "Local memory · runs reset on restart"

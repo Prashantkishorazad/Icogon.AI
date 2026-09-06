@@ -63,3 +63,14 @@ Backend tests cover pipeline/repair, budgets, schema validation, timeout classif
 - [WebContainers browser support](https://webcontainers.io/guides/browser-support) describes cross-origin isolation requirements. A fixed compiler was chosen here to avoid adding an in-browser Node runtime and those deployment requirements for the initial React/3D flow.
 
 Intelligent planning now requires audience, template, art direction, design tokens, pages, interactions, acceptance criteria and honest limitations. Task IDs/dependencies are validated. Polished mode adds source-level critique before compilation; failed findings and actual compiler errors feed bounded repairs. This does not claim autonomous visual design evaluation or universal project support. Model-driven quality and speed still need live evaluations.
+
+## Incremental context and communication
+
+Follow-up generation uses a content-addressed file manifest and typed file plan. The
+coder receives relevant source instead of the complete project and returns only
+declared deltas. The coordinator reconstructs a full snapshot and rejects unplanned
+changes, including lockfile mutation. This reduces repeated tokens while keeping
+verification and export deterministic.
+
+Agent collaboration follows a manager/blackboard pattern: immutable checkpoint
+artifacts plus small typed handoff messages. [OpenAI's practical guide](https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf) recommends growing orchestration complexity incrementally. [Anthropic's multi-agent engineering report](https://www.anthropic.com/engineering/multi-agent-research-system) describes the coordination cost and benefits of subagents for genuinely independent work. [AutoGen's team documentation](https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/tutorial/teams.html) emphasizes termination conditions and extra team scaffolding. Website implementation is dependency-ordered, so ICOGON keeps deterministic routing and reserves future parallel agents for independent research/assets instead of broadcasting every message to every role.

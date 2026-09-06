@@ -25,6 +25,15 @@ export interface RunResponse {
   output_tokens: number;
   repair_attempts: number;
   steps: { id: string; name: string; status: string; error?: string }[];
+  handoffs?: {
+    id: string;
+    sender: string;
+    recipient: string;
+    kind: "request" | "artifact" | "feedback" | "decision";
+    summary: string;
+    artifact?: string;
+    created_at: string;
+  }[];
   plan?: {
     summary: string;
     assumptions: string[];

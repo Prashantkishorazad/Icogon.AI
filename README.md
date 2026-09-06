@@ -8,6 +8,8 @@ A prompt-to-application builder with a FastAPI orchestration service and React w
 - Explicit `mock`, `groq`, and compatible chat-completion provider modes. Planning and coding models can be configured separately.
 - Authenticated project ownership checks, idempotent submission, cancellation, run events, persisted checkpoints and PostgreSQL workers.
 - Structured design blueprints, project playbooks and Fast/Balanced/Polished generation modes. Polished adds a model source-quality review and bounded repair.
+- Incremental follow-up builds: SHA-256 manifests, explicit preserve/read/modify/create/delete decisions, sparse model output and deterministic reuse of unchanged files.
+- Typed, persisted agent handoffs with ordered events; the coordinator controls routing, budgets, retries and termination.
 - Builder progress, implementation plan, source viewer, JSON source export, isolated HTML/React/Three.js previews, refresh recovery and follow-up generation from a completed run.
 - Offline demo with no model key or Supabase account required for the **CLI**.
 

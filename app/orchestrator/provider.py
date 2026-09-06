@@ -8,6 +8,7 @@ import os
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from app.agents.context import file_manifest
 from app.agents.contracts import ChangeReview
 from app.agents.design import DESIGN_SYSTEM_PROMPT, design_context
 from app.orchestrator.mock import MockAgentProvider
@@ -65,18 +66,27 @@ class ModelProvider:
             "Plan concrete tasks with acceptance criteria and explicit assumptions. "
             "Implement complete working files, not placeholders or markdown fences. "
             "For existing projects preserve the supplied files and conventions. "
-            "Return the COMPLETE resulting project snapshot, including unchanged files; omit deleted files. "
             "Never include credentials, installation hooks, deployment commands, or claim tests were run. "
             "If backend credentials are unavailable, make that limitation visible in the app. "
-            "Repair using the actual feedback and return the entire corrected snapshot. "
+            "Repair using the actual feedback. "
             + DESIGN_SYSTEM_PROMPT
             + " Schema: "
             + json.dumps(schema.model_json_schema())
         )
         if role == "planner":
-            system += " Return the plan and blueprint only; do not generate source files in this response."
+            system += (
+                " Return the plan and blueprint only. file_plan must classify every relevant existing file "
+                "as preserve/read/modify/delete and every new file as create. Preserve lockfiles, binary assets, "
+                "unrelated components and configuration unless the request truly requires a change. "
+                "Do not generate source files in this response."
+            )
         elif role == "quality reviewer":
             system += " Return only the source review object; do not rewrite files or return a plan."
+        else:
+            system += (
+                " Return a MINIMAL change set containing only files declared create/modify/delete in the plan. "
+                "Never repeat read/preserve files. Each upsert contains the complete new file; deletions use operation=delete."
+            )
         source_context = [f.model_dump() for f in request.context_files]
         if role == "planner":
             source_context = [
@@ -94,6 +104,7 @@ class ModelProvider:
             "design_context": design_context(request.prompt, request.context_files),
             "quality": request.quality,
             "existing_files": source_context,
+            "existing_file_manifest": file_manifest(request.context_files),
             **{
                 k: v.model_dump(mode="json") if isinstance(v, BaseModel) else v
                 for k, v in context.items()

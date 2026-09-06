@@ -4,8 +4,14 @@ import asyncio
 from contextvars import ContextVar
 from uuid import uuid4
 
+from app.agents.context import (
+    assemble_snapshot,
+    implementation_context,
+    validate_file_plan,
+)
 from app.agents.pipeline import AgentPipeline
 from app.orchestrator.models import (
+    AgentMessage,
     AgentRun,
     ChangeResponse,
     ProviderUsage,
@@ -188,6 +194,14 @@ class OrchestratorService:
         step = await self._start_step(run, "requirements")
         try:
             run.brief = await self._agents.requirements.analyze(request)
+            await self._handoff(
+                run,
+                "requirements",
+                "architecture",
+                "artifact",
+                f"Brief prepared with {len(run.brief.requirements)} requirements and {len(run.brief.open_questions)} open questions.",
+                "brief",
+            )
             await self._finish_step(
                 run,
                 step,
@@ -211,6 +225,14 @@ class OrchestratorService:
             run.architecture = await self._agents.architecture.design(
                 request,
                 run.brief,
+            )
+            await self._handoff(
+                run,
+                "architecture",
+                "planner",
+                "artifact",
+                f"Architecture prepared with {len(run.architecture.modules)} modules and {len(run.architecture.required_checks)} required checks.",
+                "architecture",
             )
             await self._finish_step(
                 run,
@@ -258,6 +280,18 @@ class OrchestratorService:
             )
             self._record_usage(run, response.usage)
             run.plan = response.plan
+            validate_file_plan(
+                run.plan.file_plan,
+                {file.path for file in request.context_files},
+            )
+            await self._handoff(
+                run,
+                "planner",
+                "implementation",
+                "artifact",
+                f"Plan approved with {len(response.plan.tasks)} tasks and {len(response.plan.file_plan)} file decisions.",
+                "plan",
+            )
             await self._finish_step(
                 run,
                 step,
@@ -278,18 +312,43 @@ class OrchestratorService:
         step = await self._start_step(run, "implementation")
         try:
             await self._reserve_model_call(run)
+            implementation_request = self._remaining_request(run, request).model_copy(
+                update={
+                    "context_files": implementation_context(
+                        request.context_files, run.plan
+                    )
+                }
+            )
             response = await self._agents.implementation.implement(
-                self._remaining_request(run, request),
+                implementation_request,
                 run.brief,
                 run.architecture,
                 run.plan,
             )
             self._record_usage(run, response.usage)
-            run.changes = response.changes
+            if request.context_files:
+                run.changes, reuse = assemble_snapshot(
+                    request.context_files, response.changes, run.plan
+                )
+            else:
+                run.changes = response.changes
+                reuse = {
+                    "generated": len(response.changes.files),
+                    "reused": 0,
+                    "reused_paths": [],
+                }
+            await self._handoff(
+                run,
+                "implementation",
+                "review",
+                "artifact",
+                f"Generated {reuse['generated']} files and reused {reuse['reused']} unchanged files.",
+                "changes",
+            )
             await self._finish_step(
                 run,
                 step,
-                {"file_count": len(response.changes.files)},
+                {"file_count": len(run.changes.files), **reuse},
             )
         except Exception as exc:
             await self._finish_step(run, step, error=str(exc))
@@ -312,6 +371,14 @@ class OrchestratorService:
             review_step = await self._start_step(run, "review")
             try:
                 run.review = await self._agents.review.review(run.plan, run.changes)
+                await self._handoff(
+                    run,
+                    "review",
+                    "security" if run.review.approved else "repair",
+                    "decision" if run.review.approved else "feedback",
+                    f"Structural review {'approved' if run.review.approved else 'rejected'} with {len(run.review.findings)} findings.",
+                    "review",
+                )
                 await self._finish_step(
                     run,
                     review_step,
@@ -330,6 +397,20 @@ class OrchestratorService:
                     assessment = await self._agents.security.assess(run.changes)
                     run.review.findings.extend(assessment.findings)
                     run.review.approved = assessment.approved
+                    await self._handoff(
+                        run,
+                        "security",
+                        (
+                            "quality_review"
+                            if assessment.approved and request.quality == "polished"
+                            else "verification"
+                            if assessment.approved
+                            else "repair"
+                        ),
+                        "decision" if assessment.approved else "feedback",
+                        f"Security policy {'approved' if assessment.approved else 'rejected'} with {len(assessment.findings)} findings.",
+                        "review",
+                    )
                     await self._finish_step(
                         run,
                         security_step,
@@ -354,6 +435,14 @@ class OrchestratorService:
                         self._record_usage(run, response.usage)
                         run.review.findings.extend(response.review.findings)
                         run.review.approved = response.review.approved
+                        await self._handoff(
+                            run,
+                            "quality_review",
+                            "verification" if run.review.approved else "repair",
+                            "decision",
+                            f"Source quality review {'approved' if run.review.approved else 'requested repair'}.",
+                            "review",
+                        )
                         await self._finish_step(
                             run, quality_step, {"approved": run.review.approved}
                         )
@@ -370,6 +459,14 @@ class OrchestratorService:
                         run.changes,
                     )
                     run.verification = result
+                    await self._handoff(
+                        run,
+                        "verification",
+                        "orchestrator" if result.passed else "repair",
+                        "decision" if result.passed else "feedback",
+                        f"Verification {'passed' if result.passed else 'failed'} across {len(result.checks)} checks.",
+                        "verification",
+                    )
                     await self._finish_step(
                         run,
                         verification_step,
@@ -412,11 +509,35 @@ class OrchestratorService:
                     feedback,
                 )
                 self._record_usage(run, response.usage)
-                run.changes = response.changes
+                original_paths = {file.path for file in request.context_files}
+                planned_paths = {entry.path for entry in run.plan.file_plan}
+                repair_baseline = [
+                    file
+                    for file in run.changes.files
+                    if file.path in original_paths or file.path in planned_paths
+                ]
+                run.changes, reuse = assemble_snapshot(
+                    repair_baseline,
+                    response.changes,
+                    run.plan,
+                    original_paths=original_paths,
+                )
+                await self._handoff(
+                    run,
+                    "repair",
+                    "review",
+                    "artifact",
+                    f"Repair changed {reuse['generated']} files while reusing {reuse['reused']} files.",
+                    "changes",
+                )
                 await self._finish_step(
                     run,
                     repair_step,
-                    {"attempt": run.repair_attempts, "feedback": feedback},
+                    {
+                        "attempt": run.repair_attempts,
+                        "feedback": feedback,
+                        **reuse,
+                    },
                 )
             except Exception as exc:
                 await self._finish_step(run, repair_step, error=str(exc))
@@ -530,6 +651,30 @@ class OrchestratorService:
         return await self._repository.append_event(
             RunEvent(run_id=run.id, event_type=event_type, payload=payload or {}),
             self._lease_token.get(),
+        )
+
+    async def _handoff(
+        self,
+        run: AgentRun,
+        sender: str,
+        recipient: str,
+        kind: str,
+        summary: str,
+        artifact: str | None = None,
+    ) -> None:
+        message = AgentMessage(
+            sender=sender,
+            recipient=recipient,
+            kind=kind,
+            summary=summary,
+            artifact=artifact,
+        )
+        run.handoffs.append(message)
+        await self._save(run)
+        await self._emit(
+            run,
+            "agent.handoff",
+            message.model_dump(mode="json"),
         )
 
     async def _save(self, run: AgentRun) -> AgentRun:
