@@ -7,6 +7,7 @@ on:
       - "tests/**"
       - "infra/migrations/**"
       - "requirements*.txt"
+      - "icogon-frontend/**"
       - ".github/workflows/backend-ci.yml"
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - "tests/**"
       - "infra/migrations/**"
       - "requirements*.txt"
+      - "icogon-frontend/**"
 
 jobs:
   test:
@@ -34,6 +36,16 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: icogon-frontend/package-lock.json
+
+      - name: Install preview compiler and frontend
+        working-directory: icogon-frontend
+        run: npm ci
+
       - name: Lint
         run: ruff check app/agents app/orchestrator app/sandbox app/routers/orchestrator.py tests
 
@@ -44,3 +56,11 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python -m unittest discover -s tests -v
+
+      - name: Build frontend
+        working-directory: icogon-frontend
+        run: npm run build
+
+      - name: Lint builder integration
+        working-directory: icogon-frontend
+        run: npx eslint src/pages/Builder/GeneratedPreview.tsx src/pages/Builder/BuilderWorkspacePage.tsx src/api/orchestratorApi.ts src/routes/PrivateRoute.tsx src/layouts/DashboardLayout.tsx

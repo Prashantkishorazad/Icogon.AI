@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.agents.contracts import ArchitectureProposal, ChangeReview, ProjectBrief
 
@@ -65,7 +65,7 @@ ALLOWED_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
 
 
 class RunBudget(BaseModel):
-    max_model_calls: int = Field(default=6, ge=1, le=50)
+    max_model_calls: int = Field(default=8, ge=1, le=50)
     max_repair_attempts: int = Field(default=2, ge=0, le=10)
     max_output_tokens: int = Field(default=20_000, ge=100, le=1_000_000)
 
@@ -76,6 +76,9 @@ class RunRequest(BaseModel):
     prompt: str = Field(min_length=3, max_length=20_000)
     idempotency_key: str = Field(min_length=8, max_length=200)
     budget: RunBudget = Field(default_factory=RunBudget)
+    context_files: list[FileChange] = Field(default_factory=list, max_length=100)
+    base_run_id: str | None = None
+    quality: Literal["fast", "balanced", "polished"] = "balanced"
 
 
 class PlanTask(BaseModel):
@@ -86,10 +89,52 @@ class PlanTask(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
 
 
+class DesignBlueprint(BaseModel):
+    project_type: str = Field(min_length=3)
+    template: Literal["html", "react", "react-three"]
+    audience: str = Field(min_length=3)
+    visual_direction: str = Field(min_length=10)
+    design_tokens: dict[str, str] = Field(min_length=3)
+    pages: list[str] = Field(min_length=1)
+    interactions: list[str] = Field(min_length=1)
+    acceptance_criteria: list[str] = Field(min_length=2)
+    limitations: list[str] = Field(default_factory=list)
+
+
 class GenerationPlan(BaseModel):
     summary: str
     assumptions: list[str] = Field(default_factory=list)
     tasks: list[PlanTask] = Field(min_length=1)
+    blueprint: DesignBlueprint | None = None
+
+
+class IntelligentPlan(GenerationPlan):
+    blueprint: DesignBlueprint
+    tasks: list[PlanTask] = Field(min_length=1, max_length=40)
+
+    @model_validator(mode="after")
+    def valid_task_graph(self):
+        graph = {task.id: task.depends_on for task in self.tasks}
+        if len(graph) != len(self.tasks):
+            raise ValueError("Task IDs must be unique")
+        visited, active = set(), set()
+
+        def visit(node):
+            if node not in graph:
+                raise ValueError("Task dependency does not exist")
+            if node in active:
+                raise ValueError("Task dependencies contain a cycle")
+            if node in visited:
+                return
+            active.add(node)
+            for dependency in graph[node]:
+                visit(dependency)
+            active.remove(node)
+            visited.add(node)
+
+        for node in graph:
+            visit(node)
+        return self
 
 
 class FileChange(BaseModel):
@@ -124,6 +169,11 @@ class PlanResponse(BaseModel):
 class ChangeResponse(BaseModel):
     changes: ChangeSet
     usage: ProviderUsage = Field(default_factory=ProviderUsage)
+
+
+class ReviewResponse(BaseModel):
+    review: ChangeReview
+    usage: ProviderUsage
 
 
 class RunStep(BaseModel):
@@ -167,6 +217,9 @@ class AgentRun(BaseModel):
     idempotency_key: str
     status: RunStatus = RunStatus.QUEUED
     budget: RunBudget = Field(default_factory=RunBudget)
+    context_files: list[FileChange] = Field(default_factory=list, max_length=100)
+    base_run_id: str | None = None
+    quality: Literal["fast", "balanced", "polished"] = "balanced"
     model_calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0

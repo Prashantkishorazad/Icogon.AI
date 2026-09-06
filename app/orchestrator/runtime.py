@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 
-from app.orchestrator.mock import MockAgentProvider
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
 from app.orchestrator.postgres_repository import PostgresRunRepository
+from app.orchestrator.provider import build_provider
 from app.orchestrator.repository import InMemoryRunRepository
 from app.orchestrator.service import OrchestratorService
+from app.sandbox.preview import PreviewBuildVerifier
 from app.sandbox.runtime import build_change_verifier
 
 
@@ -55,8 +61,8 @@ class OrchestratorRuntime:
 
         return OrchestratorService(
             repository=repository,
-            provider=MockAgentProvider(),
-            verifier=build_change_verifier(),
+            provider=build_provider(),
+            verifier=PreviewBuildVerifier(build_change_verifier()),
         )
 
 

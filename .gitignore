@@ -16,6 +16,8 @@ venv/
 node_modules/
 dist/
 .vite/
+.playwright-cli/
+output/
 
 # Editors and operating systems
 .idea/

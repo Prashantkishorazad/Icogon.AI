@@ -1,15 +1,17 @@
 import { Outlet } from "react-router-dom";
 
-import Sidebar from "../components/Sidebar/Sidebar";
+import { useState } from "react";
+import Sidebar from "../components/dashboard/DashboardSidebar";
 import Topbar from "../components/navbar/Topbar";
 
 const DashboardLayout = () => {
+  const [collapsed, setCollapsed] = useState(false);
   return (
     <div>
 
-      <Sidebar />
+      <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
 
-      <div className="ml-64">
+      <div className={collapsed ? "ml-20" : "ml-64"}>
 
         <Topbar />
 

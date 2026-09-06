@@ -1,1562 +1,494 @@
+import { useEffect, useRef, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, Code2, Eye, Send, Square, Download } from "lucide-react";
+import { getProjectApi, type ProjectResponse } from "../../api/projectApi";
 import {
-  ArrowLeft,
-  Code2,
-  Eye,
-  FileCode2,
-  Maximize2,
-  MoreHorizontal,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Play,
-  Rocket,
-  Send,
-  Sparkles,
-  WandSparkles,
-} from "lucide-react";
+  apiError,
+  cancelRunApi,
+  createOrchestratorRunApi,
+  getCapabilitiesApi,
+  getRunApi,
+  isTerminalRun,
+  type BuildQuality,
+  type Capabilities,
+  type CreateRunRequest,
+  type RunResponse,
+} from "../../api/orchestratorApi";
+import GeneratedPreview from "./GeneratedPreview";
+import "./workspace.css";
 
-import {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-
-import {
-  useNavigate,
-  useParams,
-} from "react-router-dom";
-
-import {
-  getProjectApi,
-  type ProjectResponse,
-} from "../../api/projectApi";
-
-
-type WorkspaceTab = "preview" | "code";
-
-
-type Message = {
-  id: string;
-  role: "ai" | "user";
-  content: string;
+const stages = [
+  "requirements",
+  "architecture",
+  "planning",
+  "implementation",
+  "review",
+  "security_policy",
+  "verification",
+];
+const labels: Record<string, string> = {
+  requirements: "Understand requirements",
+  architecture: "Design architecture",
+  planning: "Plan the work",
+  implementation: "Write the application",
+  review: "Review changes",
+  security_policy: "Check security policy",
+  verification: "Verify output",
+  repair: "Repair issues",
 };
 
-
-const BuilderWorkspacePage = () => {
-  const navigate = useNavigate();
-
-  const { projectId } = useParams<{
-    projectId: string;
-  }>();
-
-
-  // =====================================================
-  // PROJECT
-  // =====================================================
-
-  const [project, setProject] =
-    useState<ProjectResponse | null>(null);
-
-  const [projectLoading, setProjectLoading] =
-    useState<boolean>(true);
-
-  const [projectError, setProjectError] =
-    useState<string>("");
-
-
-  // =====================================================
-  // WORKSPACE
-  // =====================================================
-
-  const [prompt, setPrompt] =
-    useState<string>("");
-
-  const [sidebarOpen, setSidebarOpen] =
-    useState<boolean>(true);
-
-  const [activeTab, setActiveTab] =
-    useState<WorkspaceTab>("preview");
-
-  const [isFullscreen, setIsFullscreen] =
-    useState<boolean>(false);
-
-
-  // =====================================================
-  // CHAT
-  // =====================================================
-
-  const [messages, setMessages] =
-    useState<Message[]>([
-      {
-        id: "welcome",
-        role: "ai",
-        content:
-          "Hi! I'm ICOGON AI. Tell me what you'd like to build or change in this project.",
-      },
-    ]);
-
-  const [isSending, setIsSending] =
-    useState<boolean>(false);
-
-  const messagesEndRef =
-    useRef<HTMLDivElement | null>(null);
-
-
-  // =====================================================
-  // LOAD PROJECT
-  // =====================================================
+export default function BuilderWorkspacePage() {
+  const { projectId = "" } = useParams();
+  const [project, setProject] = useState<ProjectResponse | null>(null);
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [run, setRun] = useState<RunResponse | null>(null);
+  const [baseRunId, setBaseRunId] = useState<string>();
+  const [prompt, setPrompt] = useState("");
+  const [quality, setQuality] = useState<BuildQuality>("polished");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [tab, setTab] = useState("preview");
+  const [selectedFile, setSelectedFile] = useState("");
+  const [retryPayload, setRetryPayload] = useState<CreateRunRequest | null>(
+    null,
+  );
+  const submitLock = useRef(false);
+  const active = !!run && !isTerminalRun(run.status);
+  const runId = run?.id;
+  const files =
+    run?.changes?.files.filter((file) => file.operation === "upsert") || [];
+  const file = files.find((item) => item.path === selectedFile) || files[0];
+  const storageKey = `icogon:run:v1:${projectId}`;
 
   useEffect(() => {
-    if (!projectId) {
-      setProjectError("Project ID is missing.");
-      setProjectLoading(false);
-      return;
-    }
-
-    let mounted = true;
-
-    const loadProject = async () => {
+    let disposed = false;
+    async function load() {
       try {
-        setProjectLoading(true);
-        setProjectError("");
-
-        const data =
-          await getProjectApi(projectId);
-
-        if (mounted) {
-          setProject(data);
+        const [data, config] = await Promise.all([
+          getProjectApi(projectId),
+          getCapabilitiesApi(),
+        ]);
+        if (disposed) return;
+        setProject(data);
+        setCapabilities(config);
+        setPrompt(data.description || "");
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          try {
+            const restored = await getRunApi(saved);
+            if (!disposed && restored.project_id === projectId) {
+              setRun(restored);
+              setBaseRunId(
+                restored.status === "completed"
+                  ? restored.id
+                  : restored.base_run_id,
+              );
+            }
+          } catch {
+            if (!disposed)
+              setError(
+                "The previous run could not be restored. Memory-mode runs disappear after a server restart.",
+              );
+          }
         }
-      } catch (error: any) {
-        console.error(
-          "PROJECT LOAD ERROR:",
-          error
-        );
-
-        if (mounted) {
-          setProjectError(
-            error?.response?.data?.detail ||
-              error?.response?.data?.message ||
-              error?.message ||
-              "Unable to load project."
-          );
-        }
+      } catch (e) {
+        if (!disposed) setError(apiError(e));
       } finally {
-        if (mounted) {
-          setProjectLoading(false);
-        }
+        if (!disposed) setLoading(false);
       }
-    };
-
-    loadProject();
-
+    }
+    void load();
     return () => {
-      mounted = false;
+      disposed = true;
     };
-  }, [projectId]);
-
-
-  // =====================================================
-  // AUTO SCROLL CHAT
-  // =====================================================
+  }, [projectId, storageKey]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
-  }, [messages]);
-
-
-  // =====================================================
-  // SEND PROMPT
-  // =====================================================
-
-  const handleSendPrompt = () => {
-    const cleanPrompt = prompt.trim();
-
-    if (!cleanPrompt || isSending) {
-      return;
+    if (!runId || !active) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const id = runId;
+    async function poll() {
+      try {
+        const next = await getRunApi(id);
+        if (disposed) return;
+        setRun(next);
+        setError((previous) =>
+          previous.startsWith("Connection interrupted:") ? "" : previous,
+        );
+        if (next.status === "completed") setBaseRunId(next.id);
+        if (isTerminalRun(next.status)) return;
+      } catch (e) {
+        if (!disposed)
+          setError(`Connection interrupted: ${apiError(e)} Reconnecting…`);
+      }
+      if (!disposed) timer = setTimeout(poll, 1200);
     }
-
-    const userMessage: Message = {
-      id:
-        typeof crypto !== "undefined" &&
-        typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `${Date.now()}-user`,
-      role: "user",
-      content: cleanPrompt,
+    timer = setTimeout(poll, 300);
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
     };
+  }, [runId, active]);
 
-    setMessages((previous) => [
-      ...previous,
-      userMessage,
-    ]);
-
-    setPrompt("");
-    setIsSending(true);
-
-
-    /*
-     * ===================================================
-     * FUTURE ICOGON AI ORCHESTRATOR
-     * ===================================================
-     *
-     * Later this section will call:
-     *
-     * POST /orchestrator/runs
-     *
-     * {
-     *   project_id: projectId,
-     *   prompt: cleanPrompt
-     * }
-     *
-     * For now we only simulate the response.
-     */
-
-
-    window.setTimeout(() => {
-      const aiMessage: Message = {
-        id:
-          typeof crypto !== "undefined" &&
-          typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID()
-            : `${Date.now()}-ai`,
-        role: "ai",
-        content:
-          "Your request is saved in this workspace. AI generation will be available once the ICOGON orchestration pipeline is connected.",
-      };
-
-      setMessages((previous) => [
-        ...previous,
-        aiMessage,
-      ]);
-
-      setIsSending(false);
-    }, 700);
-  };
-
-
-  // =====================================================
-  // KEYBOARD
-  // =====================================================
-
-  const handlePromptKeyDown = (
-    event: React.KeyboardEvent<HTMLTextAreaElement>
-  ) => {
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey
-    ) {
-      event.preventDefault();
-      handleSendPrompt();
+  async function submit(retry = false) {
+    if (submitLock.current || active || (!retry && prompt.trim().length < 3))
+      return;
+    submitLock.current = true;
+    setSubmitting(true);
+    setError("");
+    const payload =
+      retry && retryPayload
+        ? retryPayload
+        : {
+            project_id: projectId,
+            prompt: prompt.trim(),
+            idempotency_key: crypto.randomUUID(),
+            base_run_id: baseRunId,
+            quality,
+          };
+    setRetryPayload(payload);
+    try {
+      const next = await createOrchestratorRunApi(payload);
+      setRun(next);
+      setPrompt("");
+      setRetryPayload(null);
+      localStorage.setItem(storageKey, next.id);
+    } catch (e) {
+      setError(apiError(e));
+    } finally {
+      submitLock.current = false;
+      setSubmitting(false);
     }
-  };
-
-
-  // =====================================================
-  // LOADING STATE
-  // =====================================================
-
-  if (projectLoading) {
-    return (
-      <div
-        className="
-          flex
-          h-screen
-          items-center
-          justify-center
-          bg-[#050505]
-          text-white
-        "
-      >
-        <div
-          className="
-            flex
-            flex-col
-            items-center
-            gap-4
-          "
-        >
-          <div
-            className="
-              flex
-              h-12
-              w-12
-              items-center
-              justify-center
-              rounded-xl
-              bg-gradient-to-br
-              from-pink-500
-              via-purple-500
-              to-cyan-400
-              shadow-lg
-              shadow-purple-500/20
-            "
-          >
-            <Sparkles size={21} />
-          </div>
-
-          <p
-            className="
-              text-sm
-              text-slate-500
-            "
-          >
-            Loading project...
-          </p>
-        </div>
-      </div>
-    );
   }
-
-
-  // =====================================================
-  // ERROR STATE
-  // =====================================================
-
-  if (projectError || !project) {
-    return (
-      <div
-        className="
-          flex
-          h-screen
-          items-center
-          justify-center
-          bg-[#050505]
-          px-6
-          text-white
-        "
-      >
-        <div
-          className="
-            w-full
-            max-w-md
-            rounded-2xl
-            border
-            border-white/[0.08]
-            bg-[#0a0a0a]
-            p-8
-            text-center
-          "
-        >
-          <div
-            className="
-              mx-auto
-              mb-5
-              flex
-              h-12
-              w-12
-              items-center
-              justify-center
-              rounded-xl
-              bg-red-500/10
-              text-red-400
-            "
-          >
-            !
-          </div>
-
-          <h2
-            className="
-              text-lg
-              font-semibold
-            "
-          >
-            Project unavailable
-          </h2>
-
-          <p
-            className="
-              mt-2
-              text-sm
-              leading-6
-              text-slate-500
-            "
-          >
-            {projectError ||
-              "This project could not be loaded."}
-          </p>
-
-          <button
-            type="button"
-            onClick={() =>
-              navigate("/dashboard")
-            }
-            className="
-              mt-6
-              inline-flex
-              items-center
-              gap-2
-              rounded-lg
-              bg-white
-              px-4
-              py-2.5
-              text-sm
-              font-medium
-              text-black
-              transition
-              hover:bg-slate-200
-            "
-          >
-            <ArrowLeft size={15} />
-            Back to Dashboard
-          </button>
-        </div>
-      </div>
-    );
+  async function cancel() {
+    if (!run) return;
+    try {
+      setRun(await cancelRunApi(run.id));
+    } catch (e) {
+      setError(apiError(e));
+    }
   }
-
-
-  // =====================================================
-  // PAGE
-  // =====================================================
+  function download() {
+    if (!run?.changes) return;
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(run.changes, null, 2)], {
+        type: "application/json",
+      }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `icogon-${run.id}.json`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   return (
-    <div
-      className={`
-        flex
-        h-screen
-        w-full
-        overflow-hidden
-        bg-[#050505]
-        text-white
-        ${
-          isFullscreen
-            ? "fixed inset-0 z-[9999]"
-            : ""
-        }
-      `}
-    >
-
-      {/* =================================================
-          LEFT AI SIDEBAR
-      ================================================= */}
-
-      <aside
-        className={`
-          flex
-          shrink-0
-          flex-col
-          border-r
-          border-white/[0.07]
-          bg-[#080808]
-          transition-all
-          duration-300
-          ease-in-out
-          ${
-            sidebarOpen
-              ? "w-[360px]"
-              : "w-0"
-          }
-          overflow-hidden
-        `}
-      >
-
-        {/* =================================================
-            SIDEBAR HEADER
-        ================================================= */}
-
-        <div
-          className="
-            flex
-            h-[68px]
-            shrink-0
-            items-center
-            justify-between
-            border-b
-            border-white/[0.06]
-            px-5
-          "
-        >
-          <div
-            className="
-              flex
-              items-center
-              gap-3
-            "
-          >
-            <div
-              className="
-                flex
-                h-9
-                w-9
-                shrink-0
-                items-center
-                justify-center
-                rounded-xl
-                bg-gradient-to-br
-                from-pink-500
-                via-purple-500
-                to-cyan-400
-                shadow-lg
-                shadow-purple-500/10
-              "
-            >
-              <Sparkles size={17} />
-            </div>
-
-            <div>
-              <p
-                className="
-                  text-sm
-                  font-semibold
-                  text-white
-                "
-              >
-                ICOGON AI
-              </p>
-
-              <p
-                className="
-                  mt-0.5
-                  text-[11px]
-                  text-slate-600
-                "
-              >
-                AI Builder
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              setSidebarOpen(false)
-            }
-            aria-label="Close AI panel"
-            className="
-              rounded-lg
-              p-2
-              text-slate-600
-              transition
-              hover:bg-white/[0.04]
-              hover:text-white
-            "
-          >
-            <PanelLeftClose size={17} />
-          </button>
+    <main className="builder-workspace">
+      <header className="builder-header">
+        <Link to="/projects" aria-label="Back to projects">
+          <ArrowLeft size={18} />
+        </Link>
+        <div>
+          <strong>{project?.name || "Project workspace"}</strong>
+          <span>ICOGON / Build</span>
         </div>
-
-
-        {/* =================================================
-            PROJECT INFO
-        ================================================= */}
-
-        <div
-          className="
-            border-b
-            border-white/[0.06]
-            px-5
-            py-4
-          "
+        <span className="builder-mode">
+          {capabilities?.provider === "mock"
+            ? "Demo provider"
+            : capabilities?.model || "Connecting"}
+        </span>
+      </header>
+      <div className="builder-panels">
+        <section
+          className="builder-conversation"
+          aria-label="Build instructions and progress"
         >
-          <p
-            className="
-              text-[10px]
-              font-semibold
-              uppercase
-              tracking-[0.16em]
-              text-slate-700
-            "
-          >
-            Project
-          </p>
-
-          <p
-            className="
-              mt-1.5
-              truncate
-              text-sm
-              font-medium
-              text-slate-300
-            "
-            title={project.name}
-          >
-            {project.name}
-          </p>
-        </div>
-
-
-        {/* =================================================
-            CHAT
-        ================================================= */}
-
-        <div
-          className="
-            flex-1
-            overflow-y-auto
-            px-4
-            py-5
-          "
-        >
-          <div
-            className="
-              space-y-5
-            "
-          >
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`
-                  flex
-                  gap-3
-                  ${
-                    message.role === "user"
-                      ? "justify-end"
-                      : ""
-                  }
-                `}
-              >
-
-                {message.role === "ai" && (
-                  <div
-                    className="
-                      flex
-                      h-7
-                      w-7
-                      shrink-0
-                      items-center
-                      justify-center
-                      rounded-lg
-                      bg-cyan-500/[0.08]
-                      text-cyan-400
-                    "
-                  >
-                    <Sparkles size={13} />
+          <div className="builder-history">
+            <p className="builder-eyebrow">YOUR BUILD PARTNER</p>
+            <h1>From an idea to a working first version.</h1>
+            <p className="builder-muted">
+              Describe the experience you want. Follow the plan, inspect the
+              files, then ask for changes.
+            </p>
+            {capabilities?.provider === "mock" && (
+              <p className="builder-notice">
+                Demo mode uses a fixed sample to test the pipeline. Connect a
+                model in the server configuration for prompt-driven generation.
+              </p>
+            )}
+            {capabilities && !capabilities.configured && (
+              <p className="builder-notice">
+                The model API key is missing. Add it to the server environment
+                and restart to enable generation.
+              </p>
+            )}
+            {loading && <p role="status">Loading workspace…</p>}
+            {run && (
+              <>
+                <div className="builder-request">
+                  <span>Your request</span>
+                  <p>{run.prompt}</p>
+                </div>
+                <div className="builder-run-heading">
+                  <h2>Agent activity</h2>
+                  <span role="status">{run.status}</span>
+                </div>
+                <ol className="builder-stages">
+                  {stages.map((stage) => {
+                    const step = run.steps
+                      .filter((item) => item.name === stage)
+                      .at(-1);
+                    return (
+                      <li key={stage} data-status={step?.status || "pending"}>
+                        <span className="builder-dot" />
+                        <span>{labels[stage]}</span>
+                        <small>{step?.status || "pending"}</small>
+                      </li>
+                    );
+                  })}
+                </ol>
+                {run.repair_attempts > 0 && (
+                  <p className="builder-muted">
+                    Repair attempts: {run.repair_attempts}
+                  </p>
+                )}
+                {run.steps
+                  .filter((step) => step.name === "quality_review")
+                  .map((step) => (
+                    <p key={step.id} className="builder-muted">
+                      Quality review: {step.status}
+                    </p>
+                  ))}
+                {run.plan?.blueprint && (
+                  <details open>
+                    <summary>
+                      Design direction / {run.plan.blueprint.template}
+                    </summary>
+                    <p>{run.plan.blueprint.visual_direction}</p>
+                    <p>For: {run.plan.blueprint.audience}</p>
+                    <ul>
+                      {run.plan.blueprint.interactions.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                    <strong>Acceptance criteria</strong>
+                    <ul>
+                      {run.plan.blueprint.acceptance_criteria.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                    {run.plan.blueprint.limitations.map((item) => (
+                      <p key={item}>{item}</p>
+                    ))}
+                  </details>
+                )}
+                {run.plan && (
+                  <details open>
+                    <summary>Implementation plan</summary>
+                    <p>{run.plan.summary}</p>
+                    <ol>
+                      {run.plan.tasks.map((task) => (
+                        <li key={task.id}>
+                          <strong>{task.title}</strong>
+                          <p>{task.description}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
+                {run.failure && (
+                  <p className="builder-error" role="alert">
+                    {run.failure.message}
+                  </p>
+                )}
+                {run.verification && (
+                  <div className="builder-checks">
+                    <h2>Verification</h2>
+                    {Object.entries(run.verification.checks).map(
+                      ([name, passed]) => (
+                        <p key={name}>
+                          {passed ? "Pass:" : "Failed:"} {name.replaceAll("_", " ")}
+                        </p>
+                      ),
+                    )}
                   </div>
                 )}
-
-                <div
-                  className={`
-                    max-w-[275px]
-                    rounded-2xl
-                    px-4
-                    py-3
-                    text-sm
-                    leading-6
-                    ${
-                      message.role === "user"
-                        ? `
-                          bg-cyan-500/10
-                          text-slate-300
-                        `
-                        : `
-                          bg-white/[0.035]
-                          text-slate-500
-                        `
-                    }
-                  `}
-                >
-                  {message.content}
-                </div>
-              </div>
-            ))}
-
-            {isSending && (
-              <div
-                className="
-                  flex
-                  items-center
-                  gap-3
-                "
+                <p className="builder-muted">
+                  {run.model_calls} model calls ·{" "}
+                  {run.output_tokens.toLocaleString()} output tokens
+                </p>
+              </>
+            )}
+          </div>
+          <form
+            className="builder-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
+          >
+            <div className="builder-quality">
+              <label htmlFor="build-quality">Build quality</label>
+              <select
+                id="build-quality"
+                value={quality}
+                disabled={active || submitting}
+                onChange={(event) =>
+                  setQuality(event.target.value as BuildQuality)
+                }
               >
-                <div
-                  className="
-                    flex
-                    h-7
-                    w-7
-                    items-center
-                    justify-center
-                    rounded-lg
-                    bg-cyan-500/[0.08]
-                    text-cyan-400
-                  "
-                >
-                  <Sparkles size={13} />
-                </div>
-
-                <div
-                  className="
-                    rounded-2xl
-                    bg-white/[0.035]
-                    px-4
-                    py-3
-                  "
-                >
-                  <div
-                    className="
-                      flex
-                      items-center
-                      gap-1
-                    "
+                <option value="fast">Fast / compact first draft</option>
+                <option value="balanced">Balanced / design + build</option>
+                <option value="polished">
+                  Polished / extra quality review
+                </option>
+              </select>
+            </div>
+            {error && (
+              <div role="alert" className="builder-error">
+                {error}
+                {retryPayload && (
+                  <button
+                    type="button"
+                    onClick={() => void submit(true)}
+                    disabled={submitting || active}
                   >
-                    <span className="h-1.5 w-1.5 rounded-full bg-slate-600" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-slate-600" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-slate-600" />
-                  </div>
-                </div>
+                    Retry submission
+                  </button>
+                )}
               </div>
             )}
-
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
-
-
-        {/* =================================================
-            PROMPT INPUT
-        ================================================= */}
-
-        <div
-          className="
-            shrink-0
-            border-t
-            border-white/[0.06]
-            p-4
-          "
-        >
-          <div
-            className="
-              overflow-hidden
-              rounded-2xl
-              border
-              border-white/[0.08]
-              bg-[#050505]
-              transition
-              focus-within:border-cyan-500/30
-              focus-within:ring-1
-              focus-within:ring-cyan-500/10
-            "
-          >
+            <label htmlFor="build-prompt">
+              {baseRunId
+                ? "What should we change?"
+                : "What would you like to build?"}
+            </label>
             <textarea
+              id="build-prompt"
               value={prompt}
-              onChange={(event) =>
-                setPrompt(event.target.value)
-              }
-              onKeyDown={handlePromptKeyDown}
-              placeholder="Ask ICOGON AI..."
-              rows={3}
-              disabled={isSending}
-              className="
-                w-full
-                resize-none
-                bg-transparent
-                px-4
-                py-3
-                text-sm
-                leading-6
-                text-white
-                outline-none
-                placeholder:text-slate-700
-                disabled:opacity-50
-              "
+              onChange={(event) => setPrompt(event.target.value)}
+              maxLength={20000}
+              rows={4}
+              placeholder="A task board for my team, with priorities and a completed view…"
+              disabled={loading || submitting || active}
             />
-
-            <div
-              className="
-                flex
-                items-center
-                justify-between
-                px-3
-                pb-3
-              "
-            >
-              <button
-                type="button"
-                disabled
-                title="AI tools will be available later"
-                className="
-                  rounded-lg
-                  p-2
-                  text-slate-700
-                  opacity-60
-                "
-              >
-                <WandSparkles size={15} />
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSendPrompt}
-                disabled={
-                  !prompt.trim() ||
-                  isSending
-                }
-                aria-label="Send prompt"
-                className="
-                  flex
-                  h-8
-                  w-8
-                  items-center
-                  justify-center
-                  rounded-lg
-                  bg-cyan-500
-                  text-black
-                  transition
-                  hover:bg-cyan-400
-                  disabled:cursor-not-allowed
-                  disabled:opacity-30
-                "
-              >
-                <Send size={14} />
-              </button>
-            </div>
-          </div>
-
-          <p
-            className="
-              mt-2
-              text-center
-              text-[10px]
-              text-slate-700
-            "
-          >
-            Enter to send · Shift + Enter for new line
-          </p>
-        </div>
-      </aside>
-
-
-      {/* =================================================
-          MAIN WORKSPACE
-      ================================================= */}
-
-      <section
-        className="
-          flex
-          min-w-0
-          flex-1
-          flex-col
-          bg-[#050505]
-        "
-      >
-
-        {/* =================================================
-            TOP BAR
-        ================================================= */}
-
-        <header
-          className="
-            flex
-            h-[68px]
-            shrink-0
-            items-center
-            justify-between
-            border-b
-            border-white/[0.07]
-            bg-[#080808]
-            px-4
-            lg:px-5
-          "
-        >
-
-          {/* LEFT SIDE */}
-
-          <div
-            className="
-              flex
-              min-w-0
-              items-center
-              gap-2
-            "
-          >
-
-            {!sidebarOpen && (
-              <button
-                type="button"
-                onClick={() =>
-                  setSidebarOpen(true)
-                }
-                aria-label="Open AI panel"
-                className="
-                  rounded-lg
-                  p-2
-                  text-slate-500
-                  transition
-                  hover:bg-white/[0.04]
-                  hover:text-white
-                "
-              >
-                <PanelLeftOpen size={18} />
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() =>
-                navigate("/dashboard")
-              }
-              className="
-                flex
-                items-center
-                gap-2
-                rounded-lg
-                px-2
-                py-1.5
-                text-sm
-                text-slate-500
-                transition
-                hover:bg-white/[0.04]
-                hover:text-white
-              "
-            >
-              <ArrowLeft size={16} />
-
-              <span className="hidden sm:block">
-                Dashboard
-              </span>
-            </button>
-
-            <div
-              className="
-                mx-1
-                h-5
-                w-px
-                bg-white/[0.08]
-              "
-            />
-
-            <div
-              className="
-                min-w-0
-              "
-            >
-              <p
-                className="
-                  max-w-[280px]
-                  truncate
-                  text-sm
-                  font-semibold
-                  text-white
-                "
-                title={project.name}
-              >
-                {project.name}
-              </p>
-
-              <p
-                className="
-                  hidden
-                  max-w-[320px]
-                  truncate
-                  text-[10px]
-                  text-slate-700
-                  sm:block
-                "
-              >
-                {project.description ||
-                  "Project workspace"}
-              </p>
-            </div>
-          </div>
-
-
-          {/* RIGHT SIDE */}
-
-          <div
-            className="
-              flex
-              items-center
-              gap-1.5
-            "
-          >
-
-            {/* PREVIEW / CODE */}
-
-            <div
-              className="
-                hidden
-                items-center
-                rounded-lg
-                border
-                border-white/[0.06]
-                bg-white/[0.02]
-                p-1
-                md:flex
-              "
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  setActiveTab("preview")
-                }
-                className={`
-                  flex
-                  items-center
-                  gap-1.5
-                  rounded-md
-                  px-3
-                  py-1.5
-                  text-xs
-                  transition
-                  ${
-                    activeTab === "preview"
-                      ? "bg-white/[0.08] text-white"
-                      : "text-slate-600 hover:text-slate-300"
+            <div className="builder-composer-actions">
+              <small>
+                {baseRunId
+                  ? "Uses your last completed build"
+                  : "Start with one clear user flow"}
+              </small>
+              {active ? (
+                <button type="button" onClick={() => void cancel()}>
+                  <Square size={14} /> Stop
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={
+                    loading ||
+                    !project ||
+                    !capabilities?.configured ||
+                    submitting ||
+                    prompt.trim().length < 3
                   }
-                `}
+                >
+                  <Send size={15} />
+                  {submitting ? "Starting…" : "Build"}
+                </button>
+              )}
+            </div>
+          </form>
+        </section>
+        <section className="builder-output" aria-label="Generated application">
+          <div className="builder-toolbar">
+            <div role="tablist" aria-label="Output view">
+              <button
+                role="tab"
+                aria-selected={tab === "preview"}
+                onClick={() => setTab("preview")}
               >
-                <Eye size={14} />
+                <Eye size={16} />
                 Preview
               </button>
-
               <button
-                type="button"
-                onClick={() =>
-                  setActiveTab("code")
-                }
-                className={`
-                  flex
-                  items-center
-                  gap-1.5
-                  rounded-md
-                  px-3
-                  py-1.5
-                  text-xs
-                  transition
-                  ${
-                    activeTab === "code"
-                      ? "bg-white/[0.08] text-white"
-                      : "text-slate-600 hover:text-slate-300"
-                  }
-                `}
+                role="tab"
+                aria-selected={tab === "code"}
+                onClick={() => setTab("code")}
               >
-                <Code2 size={14} />
-                Code
+                <Code2 size={16} />
+                Code{files.length > 0 && ` (${files.length})`}
               </button>
             </div>
-
-
-            {/* RUN */}
-
-            <button
-              type="button"
-              disabled
-              title="Run will be available when runtime is connected"
-              className="
-                hidden
-                items-center
-                gap-2
-                rounded-lg
-                border
-                border-white/[0.08]
-                px-3
-                py-2
-                text-xs
-                text-slate-600
-                opacity-60
-                sm:flex
-              "
-            >
-              <Play size={13} />
-              Run
-            </button>
-
-
-            {/* DEPLOY */}
-
-            <button
-              type="button"
-              disabled
-              title="Deploy will be available later"
-              className="
-                flex
-                cursor-not-allowed
-                items-center
-                gap-2
-                rounded-lg
-                bg-cyan-500
-                px-3.5
-                py-2
-                text-xs
-                font-semibold
-                text-black
-                opacity-40
-              "
-            >
-              <Rocket size={13} />
-
-              <span className="hidden sm:inline">
-                Deploy
-              </span>
-            </button>
-
-
-            {/* MORE */}
-
-            <button
-              type="button"
-              aria-label="More options"
-              className="
-                rounded-lg
-                p-2
-                text-slate-600
-                transition
-                hover:bg-white/[0.04]
-                hover:text-slate-300
-              "
-            >
-              <MoreHorizontal size={18} />
+            <button onClick={download} disabled={!files.length}>
+              <Download size={16} />
+              Export files
             </button>
           </div>
-        </header>
-
-
-        {/* =================================================
-            MOBILE TABS
-        ================================================= */}
-
-        <div
-          className="
-            flex
-            shrink-0
-            border-b
-            border-white/[0.06]
-            bg-[#080808]
-            px-3
-            py-2
-            md:hidden
-          "
-        >
-          <button
-            type="button"
-            onClick={() =>
-              setActiveTab("preview")
-            }
-            className={`
-              flex-1
-              rounded-lg
-              px-3
-              py-2
-              text-xs
-              ${
-                activeTab === "preview"
-                  ? "bg-white/[0.07] text-white"
-                  : "text-slate-600"
-              }
-            `}
-          >
-            Preview
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setActiveTab("code")
-            }
-            className={`
-              flex-1
-              rounded-lg
-              px-3
-              py-2
-              text-xs
-              ${
-                activeTab === "code"
-                  ? "bg-white/[0.07] text-white"
-                  : "text-slate-600"
-              }
-            `}
-          >
-            Code
-          </button>
-        </div>
-
-
-        {/* =================================================
-            WORKSPACE CONTENT
-        ================================================= */}
-
-        <div
-          className="
-            relative
-            flex-1
-            overflow-hidden
-            bg-[#050505]
-          "
-        >
-
-          {activeTab === "preview" ? (
-
-            /* =================================================
-               PREVIEW
-            ================================================= */
-
-            <div
-              className="
-                h-full
-                overflow-auto
-                p-4
-                md:p-6
-                lg:p-8
-              "
-            >
-              <div
-                className={`
-                  mx-auto
-                  overflow-hidden
-                  border
-                  border-white/[0.08]
-                  bg-white
-                  shadow-2xl
-                  shadow-black/40
-                  ${
-                    isFullscreen
-                      ? "h-full rounded-none"
-                      : "min-h-full max-w-[1400px] rounded-xl"
-                  }
-                `}
-              >
-
-                {/* PREVIEW TOOLBAR */}
-
-                <div
-                  className="
-                    flex
-                    h-11
-                    items-center
-                    justify-between
-                    border-b
-                    border-slate-200
-                    bg-white
-                    px-4
-                  "
-                >
-                  <div
-                    className="
-                      flex
-                      items-center
-                      gap-2
-                    "
-                  >
-                    <span
-                      className="
-                        h-2.5
-                        w-2.5
-                        rounded-full
-                        bg-slate-300
-                      "
-                    />
-
-                    <span
-                      className="
-                        text-[11px]
-                        font-medium
-                        text-slate-500
-                      "
-                    >
-                      Preview
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setIsFullscreen(
-                        !isFullscreen
-                      )
-                    }
-                    aria-label={
-                      isFullscreen
-                        ? "Exit fullscreen"
-                        : "Enter fullscreen"
-                    }
-                    className="
-                      rounded-md
-                      p-1.5
-                      text-slate-500
-                      transition
-                      hover:bg-slate-100
-                      hover:text-slate-900
-                    "
-                  >
-                    <Maximize2 size={14} />
-                  </button>
-                </div>
-
-
-                {/* EMPTY PREVIEW */}
-
-                <div
-                  className="
-                    flex
-                    min-h-[calc(100vh-180px)]
-                    flex-col
-                    items-center
-                    justify-center
-                    px-6
-                    text-center
-                  "
-                >
-                  <div
-                    className="
-                      mb-6
-                      flex
-                      h-16
-                      w-16
-                      items-center
-                      justify-center
-                      rounded-2xl
-                      bg-slate-100
-                      text-slate-800
-                    "
-                  >
-                    <Sparkles size={27} />
-                  </div>
-
-                  <h2
-                    className="
-                      max-w-xl
-                      text-2xl
-                      font-bold
-                      tracking-tight
-                      text-slate-900
-                      md:text-3xl
-                    "
-                  >
-                    Your generated website
-                    will appear here
+          {tab === "preview" ? (
+            <div className="builder-preview" role="tabpanel">
+              {run?.status === "completed" && files.length ? (
+                <GeneratedPreview key={run.id} run={run} />
+              ) : (
+                <div className="builder-empty">
+                  <Eye size={30} />
+                  <h2>
+                    {active
+                      ? "Your build is taking shape"
+                      : "A place for your next idea"}
                   </h2>
-
-                  <p
-                    className="
-                      mt-4
-                      max-w-lg
-                      text-sm
-                      leading-6
-                      text-slate-500
-                    "
-                  >
-                    Describe your idea in the ICOGON
-                    AI panel. The generated application
-                    preview will appear here once the
-                    AI generation and runtime pipeline
-                    are connected.
+                  <p>
+                    Build a website, dashboard, store, interactive game or 3D
+                    experience. The preview appears after checks pass.
                   </p>
-
-                  <div
-                    className="
-                      mt-7
-                      flex
-                      flex-wrap
-                      justify-center
-                      gap-2
-                    "
-                  >
-                    <span
-                      className="
-                        rounded-full
-                        border
-                        border-slate-200
-                        px-3
-                        py-1.5
-                        text-[11px]
-                        text-slate-500
-                      "
-                    >
-                      AI Generation
-                    </span>
-
-                    <span
-                      className="
-                        rounded-full
-                        border
-                        border-slate-200
-                        px-3
-                        py-1.5
-                        text-[11px]
-                        text-slate-500
-                      "
-                    >
-                      Live Preview
-                    </span>
-
-                    <span
-                      className="
-                        rounded-full
-                        border
-                        border-slate-200
-                        px-3
-                        py-1.5
-                        text-[11px]
-                        text-slate-500
-                      "
-                    >
-                      Code Runtime
-                    </span>
-                  </div>
                 </div>
-              </div>
+              )}
             </div>
-
           ) : (
-
-            /* =================================================
-               CODE
-            ================================================= */
-
-            <div
-              className="
-                h-full
-                overflow-auto
-                p-4
-                md:p-7
-              "
-            >
-              <div
-                className="
-                  mx-auto
-                  max-w-[1400px]
-                  overflow-hidden
-                  rounded-xl
-                  border
-                  border-white/[0.07]
-                  bg-[#090909]
-                "
-              >
-
-                {/* CODE HEADER */}
-
-                <div
-                  className="
-                    flex
-                    h-12
-                    items-center
-                    justify-between
-                    border-b
-                    border-white/[0.06]
-                    px-4
-                  "
-                >
-                  <div
-                    className="
-                      flex
-                      items-center
-                      gap-2
-                    "
+            <div className="builder-code" role="tabpanel">
+              {files.length ? (
+                <>
+                  <label htmlFor="generated-file">Project files</label>
+                  <select
+                    id="generated-file"
+                    value={file?.path || ""}
+                    onChange={(event) => setSelectedFile(event.target.value)}
                   >
-                    <FileCode2
-                      size={15}
-                      className="text-cyan-400"
-                    />
-
-                    <span
-                      className="
-                        text-xs
-                        text-slate-400
-                      "
-                    >
-                      App.tsx
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    aria-label="Code options"
-                    className="
-                      rounded-md
-                      p-1.5
-                      text-slate-600
-                      transition
-                      hover:bg-white/[0.04]
-                      hover:text-slate-300
-                    "
-                  >
-                    <Code2 size={14} />
-                  </button>
+                    {files.map((item) => (
+                      <option key={item.path}>{item.path}</option>
+                    ))}
+                  </select>
+                  <pre>
+                    <code>{file?.content}</code>
+                  </pre>
+                </>
+              ) : (
+                <div className="builder-empty">
+                  <Code2 size={30} />
+                  <h2>No files yet</h2>
+                  <p>
+                    Source files appear when the implementation agent finishes.
+                  </p>
                 </div>
-
-
-                {/* CODE */}
-
-                <pre
-                  className="
-                    overflow-auto
-                    p-6
-                    text-xs
-                    leading-6
-                    text-slate-500
-                  "
-                >
-{`// ICOGON generated code
-
-export default function App() {
-  return (
-    <main className="min-h-screen">
-      <h1>
-        Your generated application
-      </h1>
-
-      <p>
-        AI generated code will appear here.
-      </p>
-    </main>
-  );
-}`}
-                </pre>
-              </div>
+              )}
             </div>
           )}
-        </div>
-
-
-        {/* =================================================
-            STATUS BAR
-        ================================================= */}
-
-        <footer
-          className="
-            flex
-            h-9
-            shrink-0
-            items-center
-            justify-between
-            border-t
-            border-white/[0.06]
-            bg-[#080808]
-            px-4
-            text-[10px]
-            text-slate-700
-          "
-        >
-          <div
-            className="
-              flex
-              items-center
-              gap-2
-            "
-          >
-            <span
-              className="
-                h-1.5
-                w-1.5
-                rounded-full
-                bg-green-500
-              "
-            />
-
-            Workspace ready
-          </div>
-
-          <div
-            className="
-              hidden
-              items-center
-              gap-3
-              sm:flex
-            "
-          >
+          <footer className="builder-footer">
+            {run?.verification?.checks.preview_bundle
+              ? "Preview bundle passed / runtime behavior still needs review"
+              : capabilities?.verification === "docker"
+              ? "Docker verification configured"
+              : "Static policy checks only · compilation has not been tested"}
             <span>
-              ICOGON AI
+              {capabilities?.persistence === "memory"
+                ? "Local memory · runs reset on restart"
+                : "Persistent run history"}
             </span>
-
-            <span>
-              {project.name}
-            </span>
-          </div>
-        </footer>
-      </section>
-    </div>
+          </footer>
+        </section>
+      </div>
+    </main>
   );
-};
-
-
-export default BuilderWorkspacePage;
+}

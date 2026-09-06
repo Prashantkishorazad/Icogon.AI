@@ -109,7 +109,7 @@ class PostgresRunRepository:
             update public.agent_runs
                set status = $2,
                    state = $3::jsonb,
-                   cancel_requested_at = $4,
+                   cancel_requested_at = coalesce(cancel_requested_at, $4),
                    version = $5,
                    updated_at = $6
              where id = $1 {lease_clause}

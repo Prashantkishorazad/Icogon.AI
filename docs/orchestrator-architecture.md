@@ -109,10 +109,12 @@ Example request:
 
 - Memory mode is non-durable and must remain single-instance.
 - PostgreSQL migrations must be applied before enabling production mode.
-- Verification checks policy and artifact shape, not compilation in a sandbox.
+- Static verification checks policy and artifact shape; optional Docker verification runs configured commands.
 - Generated changes are returned as artifacts and are not written to the repository.
-- A real model gateway and provider routing are not connected yet.
-- Human approval and sandbox execution are deferred.
+- The configurable model gateway supports Groq/compatible JSON-object APIs; live-model quality needs evaluation with credentials.
+- Human plan approval and hosted preview/deployment are deferred.
+
+See `docs/builder-research.md` and the root README for the current builder integration, provider configuration and precise verification boundaries.
 
 The PostgreSQL contract for durable runs, events, RLS, and queue claiming lives in
 `infra/migrations/001_agent_orchestrator.sql`. `PostgresRunRepository` implements
