@@ -106,7 +106,7 @@ class SecurityRepairProvider(MockAgentProvider):
             changes,
             feedback,
         )
-        response.changes.files[0].path = "src/generated/README.md"
+        response.changes.files[0].path = "index.html"
         return response
 
 

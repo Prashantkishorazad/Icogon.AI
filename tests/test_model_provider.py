@@ -9,7 +9,12 @@ import httpx
 from app.agents.defaults import RequirementsAnalyst, SolutionArchitect
 from app.agents.templates import scene_blueprint
 from app.orchestrator.mock import MockAgentProvider, StaticChangeVerifier
-from app.orchestrator.models import FileChange, IntelligentPlan, RunRequest
+from app.orchestrator.models import (
+    FileChange,
+    FilePlanEntry,
+    IntelligentPlan,
+    RunRequest,
+)
 from app.orchestrator.provider import ModelProvider, ProviderError, build_provider
 from app.orchestrator.repository import InMemoryRunRepository
 from app.orchestrator.service import OrchestratorService
@@ -35,7 +40,17 @@ class ModelProviderTests(unittest.IsolatedAsyncioTestCase):
             update={"template": "html", "project_type": "dashboard"}
         )
         self.plan = IntelligentPlan.model_validate(
-            {**self.plan.model_dump(), "blueprint": blueprint}
+            {
+                **self.plan.model_dump(),
+                "blueprint": blueprint,
+                "file_plan": [
+                    FilePlanEntry(
+                        path="index.html",
+                        action="modify",
+                        reason="Update the existing page",
+                    )
+                ],
+            }
         )
 
     def provider(self, handler, key="test-only"):
@@ -52,6 +67,8 @@ class ModelProviderTests(unittest.IsolatedAsyncioTestCase):
             data = json.loads(request.content)
             self.assertEqual(data["model"], "planner")
             self.assertIn("existing project", data["messages"][1]["content"])
+            self.assertIn("existing_file_manifest", data["messages"][1]["content"])
+            self.assertIn("sha256", data["messages"][1]["content"])
             self.assertLessEqual(
                 data["max_tokens"], self.request.budget.max_output_tokens
             )

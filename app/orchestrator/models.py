@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.agents.contracts import ArchitectureProposal, ChangeReview, ProjectBrief
 
@@ -89,6 +89,26 @@ class PlanTask(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
 
 
+class FilePlanEntry(BaseModel):
+    path: str = Field(min_length=1)
+    action: Literal["preserve", "read", "modify", "create", "delete"]
+    reason: str = Field(min_length=3)
+
+    @field_validator("path")
+    @classmethod
+    def safe_relative_path(cls, value: str) -> str:
+        if (
+            not value
+            or "\\" in value
+            or "\x00" in value
+            or value.startswith("/")
+            or ".." in value.split("/")
+            or ":" in value.split("/")[0]
+        ):
+            raise ValueError("File plan paths must stay inside the project")
+        return value
+
+
 class DesignBlueprint(BaseModel):
     project_type: str = Field(min_length=3)
     template: Literal["html", "react", "react-three"]
@@ -106,6 +126,7 @@ class GenerationPlan(BaseModel):
     assumptions: list[str] = Field(default_factory=list)
     tasks: list[PlanTask] = Field(min_length=1)
     blueprint: DesignBlueprint | None = None
+    file_plan: list[FilePlanEntry] = Field(default_factory=list, max_length=100)
 
 
 class IntelligentPlan(GenerationPlan):
@@ -114,6 +135,8 @@ class IntelligentPlan(GenerationPlan):
 
     @model_validator(mode="after")
     def valid_task_graph(self):
+        if not self.file_plan:
+            raise ValueError("Intelligent plans require an explicit file plan")
         graph = {task.id: task.depends_on for task in self.tasks}
         if len(graph) != len(self.tasks):
             raise ValueError("Task IDs must be unique")
@@ -135,6 +158,16 @@ class IntelligentPlan(GenerationPlan):
         for node in graph:
             visit(node)
         return self
+
+
+class AgentMessage(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    sender: str
+    recipient: str
+    kind: Literal["request", "artifact", "feedback", "decision"]
+    summary: str = Field(min_length=1, max_length=1000)
+    artifact: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class FileChange(BaseModel):
@@ -230,6 +263,7 @@ class AgentRun(BaseModel):
     changes: ChangeSet | None = None
     review: ChangeReview | None = None
     verification: VerificationResult | None = None
+    handoffs: list[AgentMessage] = Field(default_factory=list, max_length=200)
     steps: list[RunStep] = Field(default_factory=list)
     failure: RunFailure | None = None
     cancel_requested_at: datetime | None = None

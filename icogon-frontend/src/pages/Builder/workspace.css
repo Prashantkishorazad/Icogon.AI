@@ -177,6 +177,25 @@
 .builder-workspace details li p {
   margin: 3px 0;
 }
+.builder-handoffs {
+  list-style: none;
+  padding: 0;
+}
+.builder-handoffs li {
+  border-bottom: 1px solid #292b33;
+  padding: 10px 0;
+}
+.builder-handoffs li > span {
+  color: #ded8eb;
+  text-transform: capitalize;
+}
+.builder-handoffs li > small {
+  color: #a995d9;
+  float: right;
+}
+.builder-handoffs li > p {
+  color: #9b9daa;
+}
 .builder-checks {
   font-size: 12px;
   color: #b6cdbd;

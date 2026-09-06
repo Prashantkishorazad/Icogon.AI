@@ -12,6 +12,7 @@ from app.orchestrator.models import (
     ChangeResponse,
     ChangeSet,
     FileChange,
+    FilePlanEntry,
     GenerationPlan,
     IntelligentPlan,
     PlanTask,
@@ -41,6 +42,13 @@ class IntelligenceTests(unittest.IsolatedAsyncioTestCase):
                 IntelligentPlan(
                     summary="Plan",
                     blueprint=scene_blueprint(),
+                    file_plan=[
+                        FilePlanEntry(
+                            path="src/App.tsx",
+                            action="create",
+                            reason="Create the application",
+                        )
+                    ],
                     tasks=[
                         PlanTask(
                             id="one",

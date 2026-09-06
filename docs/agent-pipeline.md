@@ -24,6 +24,8 @@ All handoffs use validated Pydantic models:
 - `ArchitectureProposal`
 - `GenerationPlan`
 - `ChangeSet`
+- `FilePlanEntry`
+- `AgentMessage`
 - `ChangeReview`
 - `VerificationResult`
 
@@ -67,3 +69,35 @@ policies with a mock planning/implementation provider. A real provider adapter m
 5. avoid writing files or executing commands directly.
 
 Tool execution belongs to the sandbox layer, not the model adapter.
+
+## Incremental file planning
+
+The planner receives a sorted content-addressed manifest containing path, byte size,
+SHA-256 and stability hints. Its `file_plan` classifies relevant files as
+`preserve`, `read`, `modify`, `create` or `delete`. Lockfiles and binary assets are
+preserved by policy. The implementation call receives only files required for
+reading/modification plus core entry and theme context, then returns a sparse delta.
+
+The orchestrator applies that delta to the previous snapshot. Files outside the
+writable plan cannot change; omitted files are reused byte-for-byte. Repair uses the
+same scope and drops unplanned artifacts before applying a correction. The final run
+still stores a complete snapshot so preview, export and crash recovery stay simple.
+
+## Agent communication
+
+Agents do not share an unbounded chat transcript or select speakers dynamically.
+The orchestrator writes typed `AgentMessage` handoffs into run state and emits a
+matching ordered `agent.handoff` event. A handoff contains sender, recipient, kind,
+a short summary and an artifact reference. The full artifact lives once in the run
+checkpoint.
+
+```text
+planner --plan--> implementation --changes--> review --decision--> security
+security --decision--> quality review (polished) --decision--> verification
+verification --feedback--> repair --changes--> review
+verification --decision--> orchestrator
+```
+
+The deterministic coordinator owns routing and termination. This avoids a paid model
+call merely to select the next agent, prevents circular conversation, keeps workers
+resumable and provides an auditable stream for the builder UI.

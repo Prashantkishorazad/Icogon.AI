@@ -9,6 +9,7 @@ from app.orchestrator.models import (
     ChangeResponse,
     ChangeSet,
     FileChange,
+    FilePlanEntry,
     GenerationPlan,
     PlanResponse,
     PlanTask,
@@ -31,6 +32,18 @@ class MockAgentProvider:
             "three_d"
             in design_context(request.prompt, request.context_files)["project_signals"]
         )
+        existing = {file.path for file in request.context_files}
+        generated_paths = (
+            [
+                "src/main.tsx",
+                "src/App.tsx",
+                "src/styles.css",
+                "index.html",
+                "package.json",
+            ]
+            if three_d
+            else ["index.html"]
+        )
         plan = GenerationPlan(
             blueprint=scene_blueprint() if three_d else None,
             summary=f"Create a minimal implementation for: {request.prompt}",
@@ -45,6 +58,22 @@ class MockAgentProvider:
                     description=request.prompt,
                     target_files=["src/App.tsx"] if three_d else ["index.html"],
                 )
+            ],
+            file_plan=[
+                FilePlanEntry(
+                    path=path,
+                    action="modify" if path in existing else "create",
+                    reason="Required by the offline demo",
+                )
+                for path in generated_paths
+            ]
+            + [
+                FilePlanEntry(
+                    path=path,
+                    action="preserve",
+                    reason="Unchanged project file",
+                )
+                for path in sorted(existing - set(generated_paths))
             ],
         )
         return PlanResponse(
@@ -86,6 +115,17 @@ class MockAgentProvider:
     ) -> ChangeResponse:
         repaired = changes.model_copy(deep=True)
         repaired.summary = "Repair generated output after verification feedback"
+        writable = {
+            entry.path
+            for entry in plan.file_plan
+            if entry.action in {"create", "modify"}
+        }
+        repaired.files = [file for file in repaired.files if file.path in writable]
+        if not repaired.files:
+            repaired = (
+                await self.generate_changes(request, brief, architecture, plan)
+            ).changes
+            repaired.summary = "Repair generated output after verification feedback"
         if repaired.files:
             repaired.files[0].content += "\nVerification feedback addressed.\n"
         return ChangeResponse(
