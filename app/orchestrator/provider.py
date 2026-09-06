@@ -73,6 +73,10 @@ class ModelProvider:
             + " Schema: "
             + json.dumps(schema.model_json_schema())
         )
+        if role == "planner":
+            system += " Return the plan and blueprint only; do not generate source files in this response."
+        elif role == "quality reviewer":
+            system += " Return only the source review object; do not rewrite files or return a plan."
         source_context = [f.model_dump() for f in request.context_files]
         if role == "planner":
             source_context = [

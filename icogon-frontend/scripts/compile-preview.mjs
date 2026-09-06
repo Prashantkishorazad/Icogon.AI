@@ -134,10 +134,10 @@ try {
   const runtimeErrors = `addEventListener('error',function(e){var p=document.createElement('pre');p.setAttribute('role','alert');p.style.cssText='position:fixed;bottom:0;left:0;right:0;margin:0;background:#391b24;color:#ffd5df;padding:16px;white-space:pre-wrap;z-index:1000';p.textContent='Preview runtime error: '+e.message;document.body.append(p)});`;
   const html =
     '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ICOGON preview</title><style>' +
-    css.replaceAll("</style", "<\\/style") +
+    css.replace(/<\/style/gi, "<\\/style") +
     '</style></head><body><div id="root"></div><script>' +
     runtimeErrors +
-    script.replaceAll("</script", "<\\/script") +
+    script.replace(/<\/script/gi, "<\\/script") +
     "</script></body></html>";
   process.stdout.write(JSON.stringify({ html, warnings: diagnostics }));
 } catch (error) {

@@ -26,7 +26,10 @@ def design_context(prompt: str, files=()) -> dict:
     matches = [name for name, pattern in rules if re.search(pattern, text)] or [
         "website"
     ]
-    if any(re.search(r"from\s+['\"]three(?:/|['\"])", f.content) for f in files) and "three_d" not in matches:
+    if (
+        any(re.search(r"from\s+['\"]three(?:/|['\"])", f.content) for f in files)
+        and "three_d" not in matches
+    ):
         matches.append("three_d")
     paths = {f.path for f in files}
     if any(p.endswith((".tsx", ".jsx")) for p in paths):
@@ -52,7 +55,9 @@ semantic HTML and readable contrast. No fake metrics, lorem ipsum, dead buttons 
 unlabelled placeholder integrations. Provide meaningful content and honest limitations.
 
 Runtime contract: select html, react or react-three. For new React projects emit
-src/main.tsx (createRoot on #root), src/App.tsx, src/styles.css and package.json.
+src/main.tsx (createRoot on #root), src/App.tsx, src/styles.css, index.html with
+a root div and module script pointing at /src/main.tsx, and package.json with
+Vite dev/build scripts plus declared dependencies so the export runs locally.
 Use relative file imports, plain CSS and React JSX. Available packages are react,
 react-dom, three and lucide-react. No CDN imports, remote assets, Tailwind compiler,
 dynamic package installs, Node builtins, runtime require(), eval or external services.

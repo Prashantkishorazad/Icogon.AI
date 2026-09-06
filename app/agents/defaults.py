@@ -186,7 +186,13 @@ class ChangeReviewer:
             required = (
                 ["index.html"]
                 if plan.blueprint.template == "html"
-                else ["src/main.tsx", "src/App.tsx", "src/styles.css", "package.json"]
+                else [
+                    "src/main.tsx",
+                    "src/App.tsx",
+                    "src/styles.css",
+                    "index.html",
+                    "package.json",
+                ]
             )
             for missing in set(required) - snapshot.keys():
                 findings.append(
