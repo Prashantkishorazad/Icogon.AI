@@ -1,17 +1,15 @@
 import { Outlet } from "react-router-dom";
 
-import { useState } from "react";
-import Sidebar from "../components/dashboard/DashboardSidebar";
 import Topbar from "../components/navbar/Topbar";
+import {Sidebar} from "lucide-react";
 
 const DashboardLayout = () => {
-  const [collapsed, setCollapsed] = useState(false);
   return (
     <div>
 
-      <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+      <Sidebar />
 
-      <div className={collapsed ? "ml-20" : "ml-64"}>
+      <div className="ml-64">
 
         <Topbar />
 

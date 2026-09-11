@@ -3,6 +3,8 @@ import React, {
   useState,
 } from "react";
 
+import PromptInput from "../../components/landing/PromptInput";
+
 import {
   ArrowRight,
   ChevronRight,
@@ -10,7 +12,6 @@ import {
   Code2,
   Globe,
   LayoutDashboard,
-  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -23,14 +24,16 @@ import {
 
 import { useNavigate } from "react-router-dom";
 
-
-
 import DashboardSidebar from "../../components/dashboard/DashboardSidebar";
 
 import {
   getProjectsApi,
   type ProjectResponse,
 } from "../../api/projectApi";
+
+import {
+  useTheme,
+} from "../../context/ThemeContext";
 
 
 // =====================================================
@@ -50,37 +53,52 @@ interface Template {
 // =====================================================
 
 const DashboardPage: React.FC = () => {
+
   const navigate = useNavigate();
+
+
+  // ===================================================
+  // THEME
+  // ===================================================
+
+  const {
+    resolvedTheme,
+  } = useTheme();
+
+  const isDark =
+    resolvedTheme === "dark";
 
 
   // ===================================================
   // SIDEBAR
   // ===================================================
 
-  const [collapsed, setCollapsed] =
-    useState<boolean>(false);
-
-
-  // ===================================================
-  // PROMPT
-  // ===================================================
-
-  const [prompt, setPrompt] =
-    useState<string>("");
+  const [
+    collapsed,
+    setCollapsed,
+  ] = useState<boolean>(false);
 
 
   // ===================================================
   // PROJECTS
   // ===================================================
 
-  const [projects, setProjects] =
-    useState<ProjectResponse[]>([]);
+  const [
+    projects,
+    setProjects,
+  ] = useState<ProjectResponse[]>([]);
 
-  const [projectsLoading, setProjectsLoading] =
-    useState<boolean>(true);
 
-  const [projectsError, setProjectsError] =
-    useState<string>("");
+  const [
+    projectsLoading,
+    setProjectsLoading,
+  ] = useState<boolean>(true);
+
+
+  const [
+    projectsError,
+    setProjectsError,
+  ] = useState<string>("");
 
 
   // ===================================================
@@ -148,70 +166,68 @@ const DashboardPage: React.FC = () => {
   // ===================================================
 
   const loadProjects = async (): Promise<void> => {
+
     try {
+
       setProjectsLoading(true);
+
       setProjectsError("");
 
-      const data = await getProjectsApi();
+
+      const data =
+        await getProjectsApi();
+
 
       if (Array.isArray(data)) {
+
         setProjects(data);
+
       } else {
+
         setProjects([]);
+
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+
       console.error(
         "Failed to load projects:",
         error
       );
 
-      setProjectsError(
-        error?.response?.data?.detail ||
-        error?.message ||
-        "Failed to load projects"
-      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to load projects";
+
+
+      setProjectsError(message);
 
       setProjects([]);
 
     } finally {
+
       setProjectsLoading(false);
+
     }
+
   };
 
 
   // ===================================================
-  // LOAD PROJECTS WHEN DASHBOARD OPENS
+  // INITIAL LOAD
   // ===================================================
 
   useEffect(() => {
+
     loadProjects();
+
   }, []);
 
 
   // ===================================================
-  // CREATE / BUILD
-  // ===================================================
-
-  const handleCreateProject = (): void => {
-    const cleanPrompt =
-      prompt.trim();
-
-    if (!cleanPrompt) {
-      navigate("/builder");
-      return;
-    }
-
-    navigate(
-      `/builder?prompt=${encodeURIComponent(
-        cleanPrompt
-      )}`
-    );
-  };
-
-
-  // ===================================================
-  // TEMPLATE
+  // TEMPLATE CLICK
   // ===================================================
 
   const handleTemplateClick = (
@@ -221,22 +237,35 @@ const DashboardPage: React.FC = () => {
     const cleanPrompt =
       templatePrompt.trim();
 
+
+    // CUSTOM WEBSITE
+    //
+    // Focus the PromptInput from
+    // the Landing Page.
+    //
     if (!cleanPrompt) {
-      setPrompt("");
+
       setTimeout(() => {
+
         document
-          .getElementById("project-prompt")
+          .getElementById(
+            "project-prompt"
+          )
           ?.focus();
+
       }, 50);
 
       return;
     }
 
+
+    // PREDEFINED TEMPLATE
     navigate(
       `/builder?prompt=${encodeURIComponent(
         cleanPrompt
       )}`
     );
+
   };
 
 
@@ -251,6 +280,7 @@ const DashboardPage: React.FC = () => {
     navigate(
       `/builder/${projectId}`
     );
+
   };
 
 
@@ -266,16 +296,28 @@ const DashboardPage: React.FC = () => {
       project.updated_at ||
       project.created_at;
 
+
     if (!dateValue) {
+
       return "Recently";
+
     }
+
 
     const date =
       new Date(dateValue);
 
-    if (Number.isNaN(date.getTime())) {
+
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+
       return "Recently";
+
     }
+
 
     return date.toLocaleDateString(
       undefined,
@@ -285,6 +327,7 @@ const DashboardPage: React.FC = () => {
         year: "numeric",
       }
     );
+
   };
 
 
@@ -303,7 +346,124 @@ const DashboardPage: React.FC = () => {
         ?.toUpperCase() ||
       "P"
     );
+
   };
+
+
+  // ===================================================
+  // THEME COLORS
+  // ===================================================
+
+  const colors = isDark
+    ? {
+
+        page:
+          "bg-[#050505] text-white",
+
+        header:
+          "border-[#1a1a1a] bg-[#050505]/95",
+
+        button:
+          "border-[#222] bg-[#0b0b0b] text-[#bbb]",
+
+        heading:
+          "text-[#f5f5f5]",
+
+        paragraph:
+          "text-[#777]",
+
+        card:
+          "border-[#1b1b1b] bg-[#0a0a0a] text-white",
+
+        promptCard:
+          "border-[#242424] bg-[#0a0a0a] shadow-black/30",
+
+        textarea:
+          "text-white placeholder:text-[#666]",
+
+        divider:
+          "border-[#181818]",
+
+        muted:
+          "text-[#666]",
+
+        subtle:
+          "text-[#555]",
+
+        loading:
+          "border-[#1b1b1b] bg-[#070707] text-[#555]",
+
+        empty:
+          "border-[#202020] bg-[#070707]",
+
+        iconBox:
+          "border-[#202020] bg-[#0d0d0d] text-[#555]",
+
+        projectCard:
+          "border-[#1b1b1b] bg-[#0a0a0a]",
+
+        projectDivider:
+          "border-[#181818] text-[#555]",
+
+        disabled:
+          "bg-[#1a1a1a] text-[#555]",
+
+      }
+
+    : {
+
+        page:
+          "bg-[#f8fafc] text-slate-900",
+
+        header:
+          "border-slate-200 bg-white/90",
+
+        button:
+          "border-slate-200 bg-white text-slate-600",
+
+        heading:
+          "text-slate-900",
+
+        paragraph:
+          "text-slate-500",
+
+        card:
+          "border-slate-200 bg-white text-slate-900",
+
+        promptCard:
+          "border-slate-200 bg-white shadow-slate-200/50",
+
+        textarea:
+          "text-slate-900 placeholder:text-slate-400",
+
+        divider:
+          "border-slate-100",
+
+        muted:
+          "text-slate-500",
+
+        subtle:
+          "text-slate-400",
+
+        loading:
+          "border-slate-200 bg-white text-slate-400",
+
+        empty:
+          "border-slate-300 bg-white",
+
+        iconBox:
+          "border-slate-200 bg-slate-50 text-slate-400",
+
+        projectCard:
+          "border-slate-200 bg-white",
+
+        projectDivider:
+          "border-slate-100 text-slate-400",
+
+        disabled:
+          "bg-slate-100 text-slate-400",
+
+      };
 
 
   // ===================================================
@@ -311,17 +471,19 @@ const DashboardPage: React.FC = () => {
   // ===================================================
 
   return (
+
     <div
-      style={{
-        minHeight: "100vh",
-        width: "100%",
-        background: "#050505",
-        color: "#ffffff",
-        overflowX: "hidden",
-      }}
+      className={`
+        min-h-screen
+        w-full
+        overflow-x-hidden
+        transition-colors
+        duration-300
+        ${colors.page}
+      `}
     >
 
-      {/* =================================================
+      {/* ================================================
           SIDEBAR
       ================================================= */}
 
@@ -331,123 +493,122 @@ const DashboardPage: React.FC = () => {
       />
 
 
-      {/* =================================================
+      {/* ================================================
           MAIN APPLICATION
       ================================================= */}
 
       <div
-        style={{
-          minHeight: "100vh",
-          width: "100%",
-          paddingLeft: collapsed
-            ? "84px"
-            : "280px",
-          boxSizing: "border-box",
-          background: "#050505",
-          transition:
-            "padding-left 0.3s ease",
-        }}
+        className={`
+          min-h-screen
+          w-full
+          transition-all
+          duration-300
+          ${
+            collapsed
+              ? "pl-[72px]"
+              : "pl-[260px]"
+          }
+        `}
       >
 
-        {/* =================================================
+        {/* ================================================
             TOP BAR
         ================================================= */}
 
         <header
-          style={{
-            height: "68px",
-            width: "100%",
-            borderBottom:
-              "1px solid #1a1a1a",
-            background:
-              "rgba(5,5,5,0.94)",
-            backdropFilter:
-              "blur(14px)",
-            position: "sticky",
-            top: 0,
-            zIndex: 30,
-            boxSizing: "border-box",
-          }}
+          className={`
+            sticky
+            top-0
+            z-30
+            h-[68px]
+            w-full
+            border-b
+            backdrop-blur-xl
+            transition-colors
+            duration-300
+            ${colors.header}
+          `}
         >
 
           <div
-            style={{
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent:
-                "space-between",
-              padding:
-                "0 28px",
-              boxSizing:
-                "border-box",
-            }}
+            className="
+              flex
+              h-full
+              items-center
+              justify-between
+              px-5
+              sm:px-7
+            "
           >
 
             {/* LEFT */}
 
             <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-              }}
+              className="
+                flex
+                items-center
+                gap-3
+              "
             >
 
               <button
                 type="button"
+
                 onClick={() =>
                   setCollapsed(
-                    (value) => !value
+                    value => !value
                   )
                 }
+
                 aria-label="Toggle sidebar"
-                style={{
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "9px",
-                  border:
-                    "1px solid #222",
-                  background:
-                    "#0b0b0b",
-                  color: "#999",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent:
-                    "center",
-                  cursor: "pointer",
-                }}
+
+                className={`
+                  flex
+                  h-9
+                  w-9
+                  items-center
+                  justify-center
+                  rounded-lg
+                  border
+                  transition-all
+                  hover:border-cyan-400
+                  hover:text-cyan-500
+                  ${colors.button}
+                `}
               >
+
                 {collapsed ? (
-                  <PanelLeftOpen
-                    size={18}
-                  />
+
+                  <PanelLeftOpen size={18} />
+
                 ) : (
-                  <PanelLeftClose
-                    size={18}
-                  />
+
+                  <PanelLeftClose size={18} />
+
                 )}
+
               </button>
 
 
               <div>
 
                 <div
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    color: "#f5f5f5",
-                  }}
+                  className={`
+                    text-sm
+                    font-semibold
+                    ${colors.heading}
+                  `}
                 >
                   Dashboard
                 </div>
 
+
                 <div
-                  style={{
-                    fontSize: "12px",
-                    color: "#666",
-                    marginTop: "2px",
-                  }}
+                  className={`
+                    mt-0.5
+                    text-xs
+                    ${colors.paragraph}
+                  `}
                 >
                   Build with ICOGON AI
                 </div>
@@ -461,30 +622,33 @@ const DashboardPage: React.FC = () => {
 
             <button
               type="button"
+
               onClick={() =>
                 navigate("/projects")
               }
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                border:
-                  "1px solid #222",
-                background:
-                  "#0b0b0b",
-                color: "#bbb",
-                padding:
-                  "9px 14px",
-                borderRadius: "9px",
-                cursor: "pointer",
-                fontSize: "13px",
-              }}
-            >
-              <LayoutDashboard
-                size={16}
-              />
 
-              My Projects
+              className={`
+                flex
+                items-center
+                gap-2
+                rounded-lg
+                border
+                px-3.5
+                py-2.5
+                text-[13px]
+                font-medium
+                transition-all
+                hover:border-cyan-400
+                hover:text-cyan-500
+                ${colors.button}
+              `}
+            >
+
+              <LayoutDashboard size={16} />
+
+              <span className="hidden sm:inline">
+                My Projects
+              </span>
 
             </button>
 
@@ -493,293 +657,159 @@ const DashboardPage: React.FC = () => {
         </header>
 
 
-        {/* =================================================
+        {/* ================================================
             CONTENT
         ================================================= */}
 
         <main
-          style={{
-            width: "100%",
-            maxWidth: "1440px",
-            margin: "0 auto",
-            padding:
-              "48px 40px 80px",
-            boxSizing: "border-box",
-          }}
+          className="
+            mx-auto
+            w-full
+            max-w-[1440px]
+            px-5
+            pb-20
+            pt-10
+            sm:px-8
+            sm:pt-12
+            lg:px-10
+          "
         >
 
-          {/* =================================================
-              HERO
-          ================================================= */}
+          {/* =====================================================
+              DASHBOARD HERO
+          ===================================================== */}
 
-          <section
-            style={{
-              textAlign: "center",
-              maxWidth: "980px",
-              margin:
-                "0 auto",
-            }}
+          <div
+            className="
+              flex
+              w-full
+              flex-col
+              items-center
+              px-6
+              pt-14
+            "
           >
 
-            {/* BADGE */}
-
-
-
-            {/* TITLE */}
-
-            <h1
-              style={{
-                margin: 0,
-                fontSize:
-                  "clamp(42px, 5vw, 68px)",
-                lineHeight: 1.04,
-                fontWeight: 700,
-                letterSpacing:
-                  "-2.8px",
-                color: "#f5f5f5",
-              }}
-            >
-              What do you want
-              to build?
-            </h1>
-
-
-            {/* DESCRIPTION */}
-
-            <p
-              style={{
-                maxWidth: "680px",
-                margin:
-                  "20px auto 0",
-                color: "#777",
-                fontSize: "16px",
-                lineHeight: 1.7,
-              }}
-            >
-              Describe your idea and
-              let ICOGON AI turn it
-              into a production-ready
-              website.
-            </p>
-
-          </section>
-
-
-          {/* =================================================
-              PROMPT BOX
-          ================================================= */}
-
-          <section
-            style={{
-              maxWidth: "920px",
-              margin:
-                "42px auto 0",
-            }}
-          >
+            {/* ===================================================
+                HERO HEADING
+            =================================================== */}
 
             <div
-              style={{
-                border:
-                  "1px solid #242424",
-                background:
-                  "#0a0a0a",
-                borderRadius:
-                  "18px",
-                padding: "18px",
-                boxShadow:
-                  "0 20px 60px rgba(0,0,0,0.35)",
-              }}
+              className="
+                flex
+                w-full
+                max-w-5xl
+                flex-col
+                items-center
+                text-center
+              "
             >
 
-              <textarea
-                id="project-prompt"
-                value={prompt}
-                onChange={(
-                  event
-                ) =>
-                  setPrompt(
-                    event.target.value
-                  )
-                }
-                onKeyDown={(
-                  event
-                ) => {
-
-                  if (
-                    event.key ===
-                      "Enter" &&
-                    (event.metaKey ||
-                      event.ctrlKey)
-                  ) {
-
-                    event.preventDefault();
-
-                    handleCreateProject();
-                  }
-
-                }}
-                placeholder="Describe the website or application you want to build..."
-                rows={6}
-                style={{
-                  width: "100%",
-                  minHeight:
-                    "150px",
-                  resize:
-                    "vertical",
-                  border: "none",
-                  outline: "none",
-                  background:
-                    "transparent",
-                  color:
-                    "#ffffff",
-                  fontSize:
-                    "16px",
-                  lineHeight: 1.6,
-                  fontFamily:
-                    "inherit",
-                  boxSizing:
-                    "border-box",
-                }}
-              />
+              <h1
+                className={`
+                  max-w-3xl
+                  text-5xl
+                  font-semibold
+                  leading-[1.05]
+                  tracking-tight
+                  md:text-6xl
+                  ${colors.heading}
+                `}
+              >
+               What’s the plan, Prashant?
+              </h1>
 
 
-              {/* PROMPT FOOTER */}
+              <p
+                className={`
+                  mt-6
+                  text-base
+                  leading-relaxed
+                  md:text-lg
+                  ${colors.paragraph}
+                `}
+              >
+                Describe your idea and let ICOGON AI turn it into a
+                production-ready website.
+              </p>
+
+            </div>
+
+
+            {/* ===================================================
+                PROMPT INPUT
+            =================================================== */}
+
+            <div
+              className="
+                mt-14
+                flex
+                w-full
+                max-w-[830px]
+                flex-col
+                items-center
+              "
+            >
+
+              {/* SAME PROMPT INPUT FROM LANDING PAGE */}
+
+              <PromptInput />
+
+
+              {/* =================================================
+                  SUGGESTIONS
+              ================================================= */}
 
               <div
-                style={{
-                  display:
-                    "flex",
-                  alignItems:
-                    "center",
-                  justifyContent:
-                    "space-between",
-                  marginTop:
-                    "12px",
-                  paddingTop:
-                    "14px",
-                  borderTop:
-                    "1px solid #181818",
-                  gap: "16px",
-                }}
+                className="
+                  mt-5
+                  flex
+                  w-full
+                  flex-wrap
+                  items-center
+                  justify-center
+                  gap-3
+                "
               >
 
-                <div
-                  style={{
-                    display:
-                      "flex",
-                    alignItems:
-                      "center",
-                    gap: "7px",
-                    color: "#555",
-                    fontSize:
-                      "12px",
-                  }}
-                >
-                  <MessageSquare
-                    size={14}
-                  />
-
-                  Press Cmd/Ctrl +
-                  Enter to build
-
-                </div>
+                {/* =================================================
+                    SUGGESTION 1
+                ================================================= */}
 
 
-                <button
-                  type="button"
-                  onClick={
-                    handleCreateProject
-                  }
-                  disabled={
-                    !prompt.trim()
-                  }
-                  style={{
-                    display:
-                      "flex",
-                    alignItems:
-                      "center",
-                    gap: "8px",
-                    border: "none",
-                    borderRadius:
-                      "10px",
-                    padding:
-                      "11px 18px",
-                    background:
-                      prompt.trim()
-                        ? "#00d9ff"
-                        : "#1a1a1a",
-                    color:
-                      prompt.trim()
-                        ? "#001014"
-                        : "#555",
-                    fontWeight: 700,
-                    fontSize:
-                      "13px",
-                    cursor:
-                      prompt.trim()
-                        ? "pointer"
-                        : "not-allowed",
-                  }}
-                >
-
-                  <Sparkles
-                    size={16}
-                  />
-
-                  Build with AI
-
-                  <ArrowRight
-                    size={16}
-                  />
-
-                </button>
 
               </div>
 
             </div>
 
-          </section>
+          </div>
 
 
-          {/* =================================================
+          {/* ==============================================
               QUICK START
-          ================================================= */}
+          =============================================== */}
 
-          <section
-            style={{
-              marginTop:
-                "64px",
-            }}
-          >
+          <section className="mt-16">
 
-            <div
-              style={{
-                marginBottom:
-                  "20px",
-              }}
-            >
+            <div className="mb-5">
 
               <h2
-                style={{
-                  margin: 0,
-                  fontSize:
-                    "20px",
-                  fontWeight: 650,
-                  color:
-                    "#f2f2f2",
-                }}
+                className={`
+                  text-xl
+                  font-semibold
+                  ${colors.heading}
+                `} 
               >
                 Quick Start
               </h2>
 
+
               <p
-                style={{
-                  margin:
-                    "7px 0 0",
-                  fontSize:
-                    "13px",
-                  color: "#666",
-                }}
+                className={`
+                  mt-2
+                  text-[13px]
+                  ${colors.paragraph}
+                `}
               >
                 Start with a template
                 or your own idea.
@@ -789,12 +819,14 @@ const DashboardPage: React.FC = () => {
 
 
             <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(210px, 1fr))",
-                gap: "14px",
-              }}
+              className="
+                grid
+                grid-cols-1
+                gap-4
+                sm:grid-cols-2
+                lg:grid-cols-3
+                xl:grid-cols-5
+              "
             >
 
               {templates.map(
@@ -803,137 +835,108 @@ const DashboardPage: React.FC = () => {
                   const Icon =
                     template.icon;
 
+
                   return (
+
                     <button
-                      key={
-                        template.title
-                      }
+                      key={template.title}
+
                       type="button"
+
                       onClick={() =>
                         handleTemplateClick(
                           template.prompt
                         )
                       }
-                      style={{
-                        textAlign:
-                          "left",
-                        border:
-                          "1px solid #1b1b1b",
-                        background:
-                          "#0a0a0a",
-                        borderRadius:
-                          "14px",
-                        padding:
-                          "20px",
-                        color:
-                          "#ffffff",
-                        cursor:
-                          "pointer",
-                        transition:
-                          "all 0.2s ease",
-                      }}
-                      onMouseEnter={(
-                        event
-                      ) => {
 
-                        event.currentTarget.style.borderColor =
-                          "#00d9ff";
-
-                        event.currentTarget.style.transform =
-                          "translateY(-2px)";
-                      }}
-                      onMouseLeave={(
-                        event
-                      ) => {
-
-                        event.currentTarget.style.borderColor =
-                          "#1b1b1b";
-
-                        event.currentTarget.style.transform =
-                          "translateY(0)";
-                      }}
+                      className={`
+                        group
+                        min-h-[170px]
+                        rounded-2xl
+                        border
+                        p-5
+                        text-left
+                        transition-all
+                        duration-200
+                        hover:-translate-y-1
+                        hover:border-cyan-400
+                        hover:shadow-xl
+                        hover:shadow-cyan-400/5
+                        ${colors.card}
+                      `}
                     >
 
                       <div
-                        style={{
-                          width: "40px",
-                          height: "40px",
-                          borderRadius:
-                            "10px",
-                          background:
-                            "rgba(0,217,255,0.07)",
-                          border:
-                            "1px solid rgba(0,217,255,0.12)",
-                          display:
-                            "flex",
-                          alignItems:
-                            "center",
-                          justifyContent:
-                            "center",
-                          color:
-                            "#00d9ff",
-                          marginBottom:
-                            "16px",
-                        }}
+                        className="
+                          mb-4
+                          flex
+                          h-10
+                          w-10
+                          items-center
+                          justify-center
+                          rounded-xl
+                          border
+                          border-cyan-400/20
+                          bg-cyan-400/5
+                          text-cyan-500
+                          transition-transform
+                          group-hover:scale-110
+                        "
                       >
-                        <Icon
-                          size={19}
-                        />
+
+                        <Icon size={19} />
+
                       </div>
 
 
                       <div
-                        style={{
-                          display:
-                            "flex",
-                          alignItems:
-                            "center",
-                          justifyContent:
-                            "space-between",
-                          gap: "10px",
-                        }}
+                        className="
+                          flex
+                          items-center
+                          justify-between
+                          gap-3
+                        "
                       >
 
                         <span
-                          style={{
-                            fontSize:
-                              "14px",
-                            fontWeight:
-                              600,
-                          }}
+                          className="
+                            text-sm
+                            font-semibold
+                          "
                         >
-                          {
-                            template.title
-                          }
+                          {template.title}
                         </span>
+
 
                         <ChevronRight
                           size={16}
-                          color="#555"
+
+                          className={`
+                            transition-transform
+                            group-hover:translate-x-1
+                            group-hover:text-cyan-500
+                            ${colors.subtle}
+                          `}
                         />
 
                       </div>
 
 
                       <p
-                        style={{
-                          margin:
-                            "8px 0 0",
-                          fontSize:
-                            "12px",
-                          lineHeight:
-                            1.5,
-                          color:
-                            "#666",
-                        }}
+                        className={`
+                          mt-2
+                          text-xs
+                          leading-5
+                          ${colors.paragraph}
+                        `}
                       >
-                        {
-                          template.description
-                        }
+                        {template.description}
                       </p>
 
                     </button>
+
                   );
+
                 }
               )}
 
@@ -942,57 +945,42 @@ const DashboardPage: React.FC = () => {
           </section>
 
 
-          {/* =================================================
+          {/* ==============================================
               RECENT PROJECTS
-          ================================================= */}
+          =============================================== */}
 
-          <section
-            style={{
-              marginTop:
-                "64px",
-            }}
-          >
+          <section className="mt-16">
 
             {/* HEADER */}
 
             <div
-              style={{
-                display:
-                  "flex",
-                alignItems:
-                  "center",
-                justifyContent:
-                  "space-between",
-                marginBottom:
-                  "20px",
-              }}
+              className="
+                mb-5
+                flex
+                items-center
+                justify-between
+              "
             >
 
               <div>
 
                 <h2
-                  style={{
-                    margin: 0,
-                    fontSize:
-                      "20px",
-                    fontWeight:
-                      650,
-                    color:
-                      "#f2f2f2",
-                  }}
+                  className={`
+                    text-xl
+                    font-semibold
+                    ${colors.heading}
+                  `}
                 >
                   Recent Projects
                 </h2>
 
+
                 <p
-                  style={{
-                    margin:
-                      "7px 0 0",
-                    color:
-                      "#666",
-                    fontSize:
-                      "13px",
-                  }}
+                  className={`
+                    mt-2
+                    text-[13px]
+                    ${colors.paragraph}
+                  `}
                 >
                   Continue working
                   on your projects
@@ -1003,560 +991,421 @@ const DashboardPage: React.FC = () => {
 
               <button
                 type="button"
+
                 onClick={() =>
-                  navigate(
-                    "/projects"
-                  )
+                  navigate("/projects")
                 }
-                style={{
-                  border: "none",
-                  background:
-                    "transparent",
-                  color:
-                    "#00d9ff",
-                  cursor:
-                    "pointer",
-                  fontSize:
-                    "13px",
-                  fontWeight:
-                    600,
-                }}
+
+                className="
+                  flex
+                  items-center
+                  gap-1
+                  text-[13px]
+                  font-semibold
+                  text-cyan-500
+                  transition-colors
+                  hover:text-cyan-400
+                "
               >
-                View all →
+
+                View all
+
+                <ArrowRight size={14} />
+
               </button>
 
             </div>
 
 
-            {/* =================================================
-                LOADING
-            ================================================= */}
+            {/* LOADING */}
 
             {projectsLoading && (
+
               <div
-                style={{
-                  minHeight:
-                    "220px",
-                  border:
-                    "1px solid #1b1b1b",
-                  borderRadius:
-                    "16px",
-                  background:
-                    "#070707",
-                  display:
-                    "flex",
-                  alignItems:
-                    "center",
-                  justifyContent:
-                    "center",
-                  color:
-                    "#555",
-                  fontSize:
-                    "14px",
-                }}
+                className={`
+                  flex
+                  min-h-[220px]
+                  items-center
+                  justify-center
+                  rounded-2xl
+                  border
+                  text-sm
+                  ${colors.loading}
+                `}
               >
                 Loading projects...
               </div>
+
             )}
 
 
-            {/* =================================================
-                ERROR
-            ================================================= */}
+            {/* ERROR */}
 
             {!projectsLoading &&
               projectsError && (
+
                 <div
-                  style={{
-                    minHeight:
-                      "180px",
-                    border:
-                      "1px solid rgba(255,80,80,0.18)",
-                    borderRadius:
-                      "16px",
-                    background:
-                      "#090707",
-                    display:
-                      "flex",
-                    flexDirection:
-                      "column",
-                    alignItems:
-                      "center",
-                    justifyContent:
-                      "center",
-                    textAlign:
-                      "center",
-                    padding:
-                      "30px",
-                  }}
+                  className={`
+                    flex
+                    min-h-[180px]
+                    flex-col
+                    items-center
+                    justify-center
+                    rounded-2xl
+                    border
+                    border-red-300
+                    bg-red-50/40
+                    p-8
+                    text-center
+
+                    ${
+                      isDark
+                        ? "border-red-500/20 bg-[#090707]"
+                        : ""
+                    }
+                  `}
                 >
 
                   <h3
-                    style={{
-                      margin: 0,
-                      color:
-                        "#ddd",
-                      fontSize:
-                        "15px",
-                    }}
+                    className={`
+                      text-[15px]
+                      font-semibold
+                      ${colors.heading}
+                    `}
                   >
                     Unable to load projects
                   </h3>
 
+
                   <p
-                    style={{
-                      margin:
-                        "8px 0 18px",
-                      color:
-                        "#666",
-                      fontSize:
-                        "13px",
-                    }}
+                    className={`
+                      mt-2
+                      max-w-md
+                      text-[13px]
+                      ${colors.paragraph}
+                    `}
                   >
                     {projectsError}
                   </p>
 
+
                   <button
                     type="button"
-                    onClick={
-                      loadProjects
-                    }
-                    style={{
-                      border:
-                        "1px solid #333",
-                      background:
-                        "#111",
-                      color:
-                        "#bbb",
-                      padding:
-                        "9px 14px",
-                      borderRadius:
-                        "9px",
-                      cursor:
-                        "pointer",
-                    }}
+
+                    onClick={loadProjects}
+
+                    className={`
+                      mt-5
+                      rounded-lg
+                      border
+                      px-4
+                      py-2.5
+                      text-sm
+                      transition-all
+                      hover:border-cyan-400
+                      hover:text-cyan-500
+                      ${colors.button}
+                    `}
                   >
                     Try again
                   </button>
 
                 </div>
+
               )}
 
 
-            {/* =================================================
-                EMPTY STATE
-            ================================================= */}
+            {/* EMPTY STATE */}
 
             {!projectsLoading &&
               !projectsError &&
-              projects.length ===
-                0 && (
+              projects.length === 0 && (
 
                 <div
-                  style={{
-                    minHeight:
-                      "260px",
-                    border:
-                      "1px dashed #202020",
-                    borderRadius:
-                      "16px",
-                    background:
-                      "#070707",
-                    display:
-                      "flex",
-                    flexDirection:
-                      "column",
-                    alignItems:
-                      "center",
-                    justifyContent:
-                      "center",
-                    textAlign:
-                      "center",
-                    padding:
-                      "40px",
-                  }}
+                  className={`
+                    flex
+                    min-h-[260px]
+                    flex-col
+                    items-center
+                    justify-center
+                    rounded-2xl
+                    border
+                    border-dashed
+                    p-10
+                    text-center
+                    ${colors.empty}
+                  `}
                 >
 
                   <div
-                    style={{
-                      width: "54px",
-                      height: "54px",
-                      borderRadius:
-                        "14px",
-                      background:
-                        "#0d0d0d",
-                      border:
-                        "1px solid #202020",
-                      display:
-                        "flex",
-                      alignItems:
-                        "center",
-                      justifyContent:
-                        "center",
-                      marginBottom:
-                        "18px",
-                      color:
-                        "#555",
-                    }}
+                    className={`
+                      mb-5
+                      flex
+                      h-[54px]
+                      w-[54px]
+                      items-center
+                      justify-center
+                      rounded-2xl
+                      border
+                      ${colors.iconBox}
+                    `}
                   >
-                    <Code2
-                      size={24}
-                    />
+
+                    <Code2 size={24} />
+
                   </div>
 
 
                   <h3
-                    style={{
-                      margin: 0,
-                      fontSize:
-                        "16px",
-                      fontWeight:
-                        600,
-                      color:
-                        "#ddd",
-                    }}
+                    className={`
+                      text-base
+                      font-semibold
+                      ${colors.heading}
+                    `}
                   >
                     No projects yet
                   </h3>
 
 
                   <p
-                    style={{
-                      maxWidth:
-                        "420px",
-                      margin:
-                        "10px 0 22px",
-                      color:
-                        "#555",
-                      fontSize:
-                        "13px",
-                      lineHeight:
-                        1.6,
-                    }}
+                    className={`
+                      mt-2
+                      max-w-[420px]
+                      text-[13px]
+                      leading-6
+                      ${colors.paragraph}
+                    `}
                   >
-                    Start your first
-                    project by describing
-                    what you want ICOGON AI
-                    to build.
+                    Start your first project by
+                    describing what you want
+                    ICOGON AI to build.
                   </p>
 
 
                   <button
                     type="button"
+
                     onClick={() => {
+
                       document
                         .getElementById(
                           "project-prompt"
                         )
                         ?.focus();
-                    }}
-                    style={{
-                      display:
-                        "flex",
-                      alignItems:
-                        "center",
-                      gap: "8px",
-                      border:
-                        "1px solid rgba(0,217,255,0.25)",
-                      background:
-                        "rgba(0,217,255,0.06)",
-                      color:
-                        "#00d9ff",
-                      padding:
-                        "10px 16px",
-                      borderRadius:
-                        "9px",
-                      cursor:
-                        "pointer",
-                      fontSize:
-                        "13px",
-                      fontWeight:
-                        600,
-                    }}
-                  >
-                    <Plus
-                      size={16}
-                    />
 
-                    Create your first
-                    project
+                    }}
+
+                    className="
+                      mt-5
+                      flex
+                      items-center
+                      gap-2
+                      rounded-lg
+                      border
+                      border-cyan-400/30
+                      bg-cyan-400/5
+                      px-4
+                      py-2.5
+                      text-[13px]
+                      font-semibold
+                      text-cyan-500
+                      transition-all
+                      hover:bg-cyan-400/10
+                    "
+                  >
+
+                    <Plus size={16} />
+
+                    Create your first project
 
                   </button>
 
                 </div>
+
               )}
 
 
-            {/* =================================================
-                PROJECT LIST
-            ================================================= */}
+            {/* PROJECT LIST */}
 
             {!projectsLoading &&
               !projectsError &&
               projects.length > 0 && (
 
                 <div
-                  style={{
-                    display:
-                      "grid",
-                    gridTemplateColumns:
-                      "repeat(auto-fill, minmax(260px, 1fr))",
-                    gap: "14px",
-                  }}
+                  className="
+                    grid
+                    grid-cols-1
+                    gap-4
+                    sm:grid-cols-2
+                    lg:grid-cols-3
+                  "
                 >
 
                   {projects
                     .slice(0, 6)
-                    .map(
-                      (
-                        project
-                      ) => (
+                    .map((project) => (
+
+                      <button
+                        key={project.id}
+
+                        type="button"
+
+                        onClick={() =>
+                          handleOpenProject(
+                            project.id
+                          )
+                        }
+
+                        className={`
+                          group
+                          rounded-2xl
+                          border
+                          p-5
+                          text-left
+                          transition-all
+                          duration-200
+                          hover:-translate-y-1
+                          hover:border-cyan-400/60
+                          hover:shadow-xl
+                          hover:shadow-cyan-400/5
+                          ${colors.projectCard}
+                        `}
+                      >
+
+                        {/* PROJECT TOP */}
 
                         <div
-                          key={
-                            project.id
-                          }
-                          role="button"
-                          tabIndex={0}
-                          onClick={() =>
-                            handleOpenProject(
-                              project.id
-                            )
-                          }
-                          onKeyDown={(
-                            event
-                          ) => {
-
-                            if (
-                              event.key ===
-                                "Enter" ||
-                              event.key ===
-                                " "
-                            ) {
-
-                              event.preventDefault();
-
-                              handleOpenProject(
-                                project.id
-                              );
-                            }
-                          }}
-                          style={{
-                            border:
-                              "1px solid #1b1b1b",
-                            background:
-                              "#0a0a0a",
-                            borderRadius:
-                              "14px",
-                            padding:
-                              "20px",
-                            cursor:
-                              "pointer",
-                            transition:
-                              "all 0.2s ease",
-                            outline:
-                              "none",
-                          }}
-                          onMouseEnter={(
-                            event
-                          ) => {
-
-                            event.currentTarget.style.borderColor =
-                              "rgba(0,217,255,0.35)";
-
-                            event.currentTarget.style.transform =
-                              "translateY(-2px)";
-                          }}
-                          onMouseLeave={(
-                            event
-                          ) => {
-
-                            event.currentTarget.style.borderColor =
-                              "#1b1b1b";
-
-                            event.currentTarget.style.transform =
-                              "translateY(0)";
-                          }}
+                          className="
+                            flex
+                            items-center
+                            justify-between
+                          "
                         >
 
-                          {/* PROJECT TOP */}
+                          <div
+                            className="
+                              flex
+                              h-[42px]
+                              w-[42px]
+                              items-center
+                              justify-center
+                              rounded-xl
+                              border
+                              border-cyan-400/20
+                              bg-cyan-400/5
+                              text-[15px]
+                              font-bold
+                              text-cyan-500
+                            "
+                          >
+                            {getProjectInitial(
+                              project.name
+                            )}
+                          </div>
+
+
+                          <ChevronRight
+                            size={17}
+
+                            className={`
+                              transition-all
+                              group-hover:translate-x-1
+                              group-hover:text-cyan-500
+                              ${colors.subtle}
+                            `}
+                          />
+
+                        </div>
+
+
+                        {/* NAME */}
+
+                        <h3
+                          className={`
+                            mt-5
+                            truncate
+                            text-[15px]
+                            font-semibold
+                            ${colors.heading}
+                          `}
+                        >
+                          {project.name}
+                        </h3>
+
+
+                        {/* DESCRIPTION */}
+
+                        <p
+                          className={`
+                            mt-2
+                            min-h-[40px]
+                            overflow-hidden
+                            text-xs
+                            leading-5
+                            ${colors.paragraph}
+                          `}
+                        >
+                          {project.description ||
+                            "No project description"}
+                        </p>
+
+
+                        {/* FOOTER */}
+
+                        <div
+                          className={`
+                            mt-5
+                            flex
+                            items-center
+                            justify-between
+                            border-t
+                            pt-3
+                            text-[11px]
+                            ${colors.projectDivider}
+                          `}
+                        >
 
                           <div
-                            style={{
-                              display:
-                                "flex",
-                              alignItems:
-                                "center",
-                              justifyContent:
-                                "space-between",
-                            }}
+                            className="
+                              flex
+                              items-center
+                              gap-1.5
+                            "
                           >
 
-                            <div
-                              style={{
-                                width:
-                                  "42px",
-                                height:
-                                  "42px",
-                                borderRadius:
-                                  "11px",
-                                display:
-                                  "flex",
-                                alignItems:
-                                  "center",
-                                justifyContent:
-                                  "center",
-                                background:
-                                  "rgba(0,217,255,0.07)",
-                                border:
-                                  "1px solid rgba(0,217,255,0.12)",
-                                color:
-                                  "#00d9ff",
-                                fontWeight:
-                                  700,
-                                fontSize:
-                                  "15px",
-                              }}
-                            >
-                              {getProjectInitial(
-                                project.name
-                              )}
-                            </div>
+                            <Clock3 size={12} />
 
-
-                            <ChevronRight
-                              size={17}
-                              color="#555"
-                            />
+                            {formatProjectDate(
+                              project
+                            )}
 
                           </div>
 
 
-                          {/* NAME */}
-
-                          <h3
-                            style={{
-                              margin:
-                                "18px 0 0",
-                              fontSize:
-                                "15px",
-                              fontWeight:
-                                600,
-                              color:
-                                "#f1f1f1",
-                              overflow:
-                                "hidden",
-                              textOverflow:
-                                "ellipsis",
-                              whiteSpace:
-                                "nowrap",
-                            }}
-                          >
-                            {
-                              project.name
-                            }
-                          </h3>
-
-
-                          {/* DESCRIPTION */}
-
-                          <p
-                            style={{
-                              margin:
-                                "8px 0 0",
-                              minHeight:
-                                "40px",
-                              color:
-                                "#666",
-                              fontSize:
-                                "12px",
-                              lineHeight:
-                                1.6,
-                              display:
-                                "-webkit-box",
-                              WebkitLineClamp:
-                                2,
-                              WebkitBoxOrient:
-                                "vertical",
-                              overflow:
-                                "hidden",
-                            }}
-                          >
-                            {
-                              project.description ||
-                              "No project description"
-                            }
-                          </p>
-
-
-                          {/* FOOTER */}
-
                           <div
-                            style={{
-                              marginTop:
-                                "18px",
-                              paddingTop:
-                                "13px",
-                              borderTop:
-                                "1px solid #181818",
-                              display:
-                                "flex",
-                              alignItems:
-                                "center",
-                              justifyContent:
-                                "space-between",
-                              color:
-                                "#555",
-                              fontSize:
-                                "11px",
-                            }}
+                            className="
+                              flex
+                              items-center
+                              gap-1
+                              transition-colors
+                              group-hover:text-cyan-500
+                            "
                           >
 
-                            <div
-                              style={{
-                                display:
-                                  "flex",
-                                alignItems:
-                                  "center",
-                                gap: "6px",
-                              }}
-                            >
-                              <Clock3
-                                size={12}
-                              />
+                            Open
 
-                              {formatProjectDate(
-                                project
-                              )}
-                            </div>
-
-
-                            <div
-                              style={{
-                                display:
-                                  "flex",
-                                alignItems:
-                                  "center",
-                                gap: "5px",
-                                color:
-                                  "#666",
-                              }}
-                            >
-                              Open
-
-                              <ArrowRight
-                                size={13}
-                              />
-                            </div>
+                            <ArrowRight size={13} />
 
                           </div>
 
                         </div>
 
-                      )
-                    )}
+                      </button>
+
+                    ))}
 
                 </div>
+
               )}
 
           </section>
@@ -1564,18 +1413,16 @@ const DashboardPage: React.FC = () => {
 
           {/* BOTTOM SPACE */}
 
-          <div
-            style={{
-              height: "40px",
-            }}
-          />
+          <div className="h-10" />
 
         </main>
 
       </div>
 
     </div>
+
   );
+
 };
 
 

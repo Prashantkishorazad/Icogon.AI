@@ -1,10 +1,12 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Paperclip,
   Sparkles,
   Mic,
   ArrowUp,
   Image as ImageIcon,
+  Plus,
+  ChevronDown,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
@@ -15,14 +17,92 @@ const suggestions = [
   "Build a social media app",
 ];
 
+/* ================= ANIMATED TEXT ================= */
+
+const animatedPrompts = [
+  "What do you want to build?",
+  "Build an AI SaaS dashboard...",
+  "Create an e-commerce website...",
+  "Build a social media application...",
+];
+
 const PromptInput = () => {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+
+  /* Typing Animation States */
+
+  const [animatedText, setAnimatedText] = useState("");
+  const [promptIndex, setPromptIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isWaiting, setIsWaiting] = useState(false);
 
   const navigate = useNavigate();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  /* ================= TYPING ANIMATION ================= */
+
+  useEffect(() => {
+    if (prompt.length > 0) {
+      return;
+    }
+
+    const currentText = animatedPrompts[promptIndex];
+
+    if (isWaiting) {
+      const waitTimeout = setTimeout(() => {
+        setIsWaiting(false);
+        setIsDeleting(true);
+      }, 1500);
+
+      return () => clearTimeout(waitTimeout);
+    }
+
+    const speed = isDeleting ? 25 : 45;
+
+    const timeout = setTimeout(() => {
+      /* Typing */
+
+      if (!isDeleting) {
+        if (animatedText.length < currentText.length) {
+          setAnimatedText(
+            currentText.slice(0, animatedText.length + 1)
+          );
+        } else {
+          setIsWaiting(true);
+        }
+      }
+
+      /* Deleting */
+
+      else {
+        if (animatedText.length > 0) {
+          setAnimatedText(
+            currentText.slice(0, animatedText.length - 1)
+          );
+        } else {
+          setIsDeleting(false);
+
+          setPromptIndex(
+            (previousIndex) =>
+              (previousIndex + 1) % animatedPrompts.length
+          );
+        }
+      }
+    }, speed);
+
+    return () => clearTimeout(timeout);
+  }, [
+    animatedText,
+    promptIndex,
+    isDeleting,
+    isWaiting,
+    prompt,
+  ]);
+
+  /* ================= GENERATE ================= */
 
   const handleGenerate = () => {
     const trimmedPrompt = prompt.trim();
@@ -31,32 +111,14 @@ const PromptInput = () => {
 
     setIsGenerating(true);
 
-    /*
-      CURRENT FLOW:
-      Landing Page
-          ↓
-      User enters prompt
-          ↓
-      Save prompt temporarily
-          ↓
-      Navigate to Builder
-
-      FUTURE FLOW:
-      Create Project API
-          ↓
-      Save prompt in database
-          ↓
-      Create project ID
-          ↓
-      Navigate to /builder/:projectId
-    */
-
     navigate("/builder", {
       state: {
         prompt: trimmedPrompt,
       },
     });
   };
+
+  /* ================= ENHANCE PROMPT ================= */
 
   const handleEnhancePrompt = () => {
     if (!prompt.trim()) {
@@ -73,14 +135,21 @@ Make the design modern, responsive, professional and production-ready. Include a
     );
   };
 
+  /* ================= KEYBOARD ================= */
+
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>
   ) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    if (
+      event.key === "Enter" &&
+      (event.metaKey || event.ctrlKey)
+    ) {
       event.preventDefault();
       handleGenerate();
     }
   };
+
+  /* ================= FILE ================= */
 
   const handleFileChange = (
     event: React.ChangeEvent<HTMLInputElement>
@@ -90,11 +159,9 @@ Make the design modern, responsive, professional and production-ready. Include a
     if (!file) return;
 
     console.log("Selected file:", file);
-
-    // Future:
-    // Upload file to backend
-    // Attach file to generation request
   };
+
+  /* ================= IMAGE ================= */
 
   const handleImageChange = (
     event: React.ChangeEvent<HTMLInputElement>
@@ -104,169 +171,334 @@ Make the design modern, responsive, professional and production-ready. Include a
     if (!image) return;
 
     console.log("Selected image:", image);
-
-    // Future:
-    // Upload image to backend
-    // Use image as design reference
   };
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 50 }}
+      initial={{ opacity: 0, y: 35 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
         duration: 0.7,
         delay: 0.3,
       }}
-      className="mt-14 w-full max-w-4xl"
+      className="mt-14 w-full max-w-[800px]"
     >
-      {/* Main Prompt Container */}
+      {/* ================= PROMPT BOX ================= */}
 
-      <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#111827]/80 p-2 shadow-[0_0_80px_rgba(37,99,235,0.12)] backdrop-blur-2xl transition duration-300 hover:border-cyan-500/30">
+      <div
+        className="
+          relative
+          overflow-hidden
+          rounded-[38px]
+          border
+          border-slate-300
+          bg-white/95
+          shadow-[0_20px_60px_rgba(15,23,42,0.12)]
+          backdrop-blur-xl
+        "
+      >
+        {/* ================= INPUT AREA ================= */}
 
-        {/* Background Glow */}
-
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-blue-600/5 via-transparent to-cyan-500/5" />
-
-        <div className="relative">
-
-          {/* Textarea */}
-
+        <div className="relative h-[125px] px-8 pt-7">
           <textarea
-            rows={4}
             value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
+            onChange={(event) =>
+              setPrompt(event.target.value)
+            }
             onKeyDown={handleKeyDown}
-            placeholder="What do you want to build?
-
-Example: Build a modern AI SaaS dashboard with authentication and analytics."
-            className="w-full resize-none bg-transparent px-6 py-5 text-base leading-7 text-white outline-none placeholder:text-slate-500 md:text-lg"
+            placeholder=""
+            className="
+              absolute
+              inset-0
+              h-full
+              w-full
+              resize-none
+              bg-transparent
+              px-8
+              pt-7
+              text-[22px]
+              leading-relaxed
+              text-slate-800
+              outline-none
+              md:text-[24px]
+            "
           />
 
-          {/* Hint */}
+          {/* ================= ANIMATED TEXT ================= */}
 
-          <div className="px-6 pb-4 text-left text-xs text-slate-600">
-            Press ⌘ + Enter to generate
-          </div>
+          {!prompt && (
+            <div
+              className="
+                pointer-events-none
+                absolute
+                left-8
+                top-7
+                flex
+                items-center
+                whitespace-nowrap
+                text-[22px]
+                font-normal
+                tracking-tight
+                text-slate-500
+                md:text-[24px]
+              "
+            >
+              {animatedText}
 
-          {/* Bottom Toolbar */}
+              {/* Blinking Cursor */}
 
-          <div className="flex flex-col gap-4 border-t border-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-
-            {/* Left Tools */}
-
-            <div className="flex flex-wrap items-center gap-2">
-
-              {/* Hidden File Input */}
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                onChange={handleFileChange}
+              <motion.span
+                animate={{
+                  opacity: [1, 0, 1],
+                }}
+                transition={{
+                  duration: 0.8,
+                  repeat: Infinity,
+                }}
+                className="
+                  ml-[3px]
+                  inline-block
+                  h-[25px]
+                  w-[2px]
+                  bg-slate-400
+                "
               />
-
-              {/* Hidden Image Input */}
-
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleImageChange}
-              />
-
-              {/* Attach File */}
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                title="Attach file"
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/5 hover:text-white"
-              >
-                <Paperclip size={18} />
-              </button>
-
-              {/* Attach Image */}
-
-              <button
-                type="button"
-                onClick={() => imageInputRef.current?.click()}
-                title="Upload image"
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/5 hover:text-white"
-              >
-                <ImageIcon size={18} />
-              </button>
-
-              {/* Voice - Future */}
-
-              <button
-                type="button"
-                title="Voice input coming soon"
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/5 hover:text-white"
-              >
-                <Mic size={18} />
-              </button>
-
-              {/* Enhance Prompt */}
-
-              <button
-                type="button"
-                onClick={handleEnhancePrompt}
-                className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-400 transition hover:bg-white/5 hover:text-cyan-400 sm:flex"
-              >
-                <Sparkles size={16} />
-
-                Enhance prompt
-              </button>
-
             </div>
+          )}
+        </div>
 
-            {/* Generate Button */}
+        {/* ================= BOTTOM TOOLBAR ================= */}
+
+        <div
+          className="
+            relative
+            flex
+            items-center
+            justify-between
+            px-6
+            pb-5
+          "
+        >
+          {/* LEFT SIDE */}
+
+          <div className="flex items-center gap-3">
+
+            {/* Hidden File */}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+
+            {/* Hidden Image */}
+
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageChange}
+            />
+
+            {/* PLUS */}
 
             <button
               type="button"
-              onClick={handleGenerate}
-              disabled={!prompt.trim() || isGenerating}
-              className="flex min-w-[130px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-5 py-3 font-medium text-white shadow-lg shadow-blue-600/20 transition hover:scale-[1.03] hover:shadow-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() =>
+                fileInputRef.current?.click()
+              }
+              className="
+                flex
+                h-[48px]
+                w-[48px]
+                items-center
+                justify-center
+                rounded-full
+                border
+                border-slate-200
+                text-slate-500
+                transition
+                hover:bg-slate-100
+                hover:text-slate-900
+              "
             >
-              {isGenerating ? (
-                <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              <Plus size={24} strokeWidth={1.5} />
+            </button>
 
-                  Opening...
-                </>
-              ) : (
-                <>
-                  Generate
+            {/* IMAGE */}
 
-                  <ArrowUp size={18} />
-                </>
-              )}
+            <button
+              type="button"
+              onClick={() =>
+                imageInputRef.current?.click()
+              }
+              className="
+                flex
+                h-10
+                w-10
+                items-center
+                justify-center
+                text-slate-400
+                transition
+                hover:text-slate-800
+              "
+            >
+              <ImageIcon size={19} />
+            </button>
+
+            {/* FILE */}
+
+            <button
+              type="button"
+              onClick={() =>
+                fileInputRef.current?.click()
+              }
+              className="
+                flex
+                h-10
+                w-10
+                items-center
+                justify-center
+                text-slate-400
+                transition
+                hover:text-slate-800
+              "
+            >
+              <Paperclip size={19} />
+            </button>
+
+            {/* ENHANCE */}
+
+            <button
+              type="button"
+              onClick={handleEnhancePrompt}
+              className="
+                hidden
+                items-center
+                gap-2
+                text-sm
+                font-medium
+                text-slate-500
+                transition
+                hover:text-blue-600
+                sm:flex
+              "
+            >
+              <Sparkles size={17} />
+
+              Enhance
             </button>
 
           </div>
 
+          {/* ================= RIGHT SIDE ================= */}
+
+          <div className="flex items-center gap-4">
+
+            {/* BUILD */}
+
+            <button
+              type="button"
+              className="
+                flex
+                items-center
+                gap-2
+                text-[17px]
+                font-medium
+                text-slate-600
+                transition
+                hover:text-slate-900
+              "
+            >
+              Build
+
+              <ChevronDown
+                size={18}
+                strokeWidth={1.7}
+              />
+            </button>
+
+            {/* MIC */}
+
+            <button
+              type="button"
+              title="Voice input"
+              className="
+                text-slate-500
+                transition
+                hover:text-slate-900
+              "
+            >
+              <Mic
+                size={22}
+                strokeWidth={1.7}
+              />
+            </button>
+
+            {/* GENERATE */}
+
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={
+                !prompt.trim() || isGenerating
+              }
+              className="
+                flex
+                h-[48px]
+                w-[48px]
+                items-center
+                justify-center
+                rounded-full
+                bg-slate-800
+                text-white
+                shadow-lg
+                transition
+                hover:bg-slate-950
+                disabled:cursor-not-allowed
+                disabled:opacity-40
+              "
+            >
+              {isGenerating ? (
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <ArrowUp size={21} />
+              )}
+            </button>
+
+          </div>
         </div>
       </div>
 
-      {/* Suggestions */}
+      {/* ================= SUGGESTIONS ================= */}
 
       <div className="mt-5 flex flex-wrap justify-center gap-3">
-
         {suggestions.map((item) => (
           <button
             key={item}
             type="button"
             onClick={() => setPrompt(item)}
-            className="rounded-full border border-white/10 bg-white/[0.02] px-4 py-2 text-sm text-slate-400 transition duration-200 hover:border-cyan-500/40 hover:bg-cyan-500/5 hover:text-white"
+            className="
+              rounded-full
+              border
+              border-slate-200
+              bg-white/60
+              px-5
+              py-2.5
+              text-sm
+              text-slate-600
+              transition
+              hover:border-blue-400
+              hover:bg-white
+              hover:text-slate-900
+            "
           >
             {item}
           </button>
         ))}
-
       </div>
-
     </motion.div>
   );
 };

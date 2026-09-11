@@ -6,8 +6,8 @@ import {
 
 // Public Pages
 import LandingPage from "../pages/Landing/LandingPage";
-import Login from "../pages/Auth/Login";
-import Signup from "../pages/Auth/Signup";
+import Login from "../pages/Auth/LoginPage";
+import Signup from "../pages/Auth/SignupPage";
 
 // Private Pages
 import Dashboard from "../pages/Dashboard/DashboardPage";
