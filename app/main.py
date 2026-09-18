@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.routers.gmail import router as gmail_router
 
 from app.routers.user import router as user_router
 from app.routers.auth import router as auth_router
@@ -68,6 +69,8 @@ app.include_router(upload_router)
 app.include_router(orchestrator_router)
 
 app.include_router(project_router)
+
+app.include_router(gmail_router)
 
 
 # ==========================================
