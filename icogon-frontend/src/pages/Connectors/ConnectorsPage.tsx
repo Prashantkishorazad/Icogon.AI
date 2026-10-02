@@ -3,13 +3,11 @@ import {
   useEffect,
   useState,
 } from "react";
-
 import {
   CheckCircle2,
   Loader2,
   Unplug,
 } from "lucide-react";
-
 import {
   useSearchParams,
 } from "react-router-dom";
@@ -17,10 +15,7 @@ import {
 import ConnectorCard from "../../components/connectors/ConnectorCard";
 import GmailConnectionModal from "../../components/connectors/GmailConnectionModal";
 import GmailConnectorPanel from "../../components/connectors/GmailConnectorPanel";
-
-// ==========================================================
-// TYPES
-// ==========================================================
+import { useTheme } from "../../context/ThemeContext";
 
 interface GmailStatus {
   connected: boolean;
@@ -31,17 +26,6 @@ interface GmailStatusResponse {
   connected?: boolean;
   email?: string | null;
 }
-
-// ==========================================================
-// GMAIL STATUS API
-// ==========================================================
-//
-// This replaces the missing:
-// ../../api/connectorsApi
-//
-// If your backend endpoint is different, change ONLY
-// GMAIL_STATUS_ENDPOINT below.
-// ==========================================================
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "";
@@ -71,26 +55,14 @@ const getGmailStatus =
     return response.json();
   };
 
-
-// ==========================================================
-// COMPONENT
-// ==========================================================
-
 const ConnectorsPage = () => {
-
-  // ========================================================
-  // URL SEARCH PARAMS
-  // ========================================================
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
 
   const [
     searchParams,
     setSearchParams,
   ] = useSearchParams();
-
-
-  // ========================================================
-  // GMAIL STATUS
-  // ========================================================
 
   const [
     gmailStatus,
@@ -100,34 +72,14 @@ const ConnectorsPage = () => {
     email: null,
   });
 
+  const [loading, setLoading] =
+    useState(true);
 
-  // ========================================================
-  // LOADING
-  // ========================================================
-
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
-
-
-  // ========================================================
-  // MODAL
-  // ========================================================
-
-  const [
-    modalOpen,
-    setModalOpen,
-  ] = useState(false);
-
-
-  // ========================================================
-  // LOAD GMAIL STATUS
-  // ========================================================
+  const [modalOpen, setModalOpen] =
+    useState(false);
 
   const loadGmailStatus =
     useCallback(async () => {
-
       try {
         setLoading(true);
 
@@ -135,18 +87,12 @@ const ConnectorsPage = () => {
           await getGmailStatus();
 
         setGmailStatus({
-          connected:
-            Boolean(
-              status.connected
-            ),
-
-          email:
-            status.email ||
-            null,
+          connected: Boolean(
+            status.connected
+          ),
+          email: status.email || null,
         });
-
       } catch (error) {
-
         console.error(
           "GMAIL STATUS ERROR:",
           error
@@ -156,371 +102,298 @@ const ConnectorsPage = () => {
           connected: false,
           email: null,
         });
-
       } finally {
-
         setLoading(false);
       }
-
     }, []);
-
-
-  // ========================================================
-  // INITIAL LOAD
-  // ========================================================
 
   useEffect(() => {
     void loadGmailStatus();
   }, [loadGmailStatus]);
 
-
-  // ========================================================
-  // GOOGLE / GMAIL CALLBACK
-  // ========================================================
-
   useEffect(() => {
-
     const result =
       searchParams.get("gmail");
 
-    // No OAuth result in URL
     if (!result) {
       return;
     }
 
-
-    // Gmail connected successfully
     if (result === "connected") {
       void loadGmailStatus();
     }
 
-
-    // ======================================================
-    // REMOVE OAUTH PARAMETERS FROM URL
-    // ======================================================
-
     const nextParams =
-      new URLSearchParams(
-        searchParams
-      );
+      new URLSearchParams(searchParams);
 
     nextParams.delete("gmail");
     nextParams.delete("email");
     nextParams.delete("message");
 
-
-    setSearchParams(
-      nextParams,
-      {
-        replace: true,
-      }
-    );
-
+    setSearchParams(nextParams, {
+      replace: true,
+    });
   }, [
     searchParams,
     setSearchParams,
     loadGmailStatus,
   ]);
 
-
-  // ========================================================
-  // DISCONNECTED
-  // ========================================================
-
   const handleDisconnected =
     useCallback(() => {
-
       setGmailStatus({
         connected: false,
         email: null,
       });
-
     }, []);
 
-
-  // ========================================================
-  // LOADING SCREEN
-  // ========================================================
+  /* =========================================================
+     LOADING
+  ========================================================= */
 
   if (loading) {
-
     return (
       <div
-        className="
-          min-h-screen
-          bg-[#faf9f6]
-          flex
-          items-center
-          justify-center
-        "
+        className={`flex min-h-screen items-center justify-center font-sans ${
+          isDark
+            ? "bg-[#0b0d10] text-white"
+            : "bg-[#fafafa] text-slate-900"
+        }`}
       >
-
         <div
-          className="
-            flex
-            items-center
-            gap-3
-            text-sm
-            text-slate-500
-          "
+          className={`flex items-center gap-2.5 text-[12px] ${
+            isDark
+              ? "text-zinc-500"
+              : "text-slate-500"
+          }`}
         >
-
           <Loader2
-            size={18}
+            size={16}
             className="animate-spin"
           />
 
           Loading connectors...
-
         </div>
-
       </div>
     );
   }
 
-
-  // ========================================================
-  // MAIN UI
-  // ========================================================
-
   return (
     <div
-      className="
-        min-h-screen
-        bg-[#faf9f6]
-        text-slate-900
-      "
+      className={`min-h-screen font-sans ${
+        isDark
+          ? "bg-[#0b0d10] text-white"
+          : "bg-[#fafafa] text-slate-900"
+      }`}
     >
-
-      {/* ====================================================
+      {/* =====================================================
           HEADER
-      ==================================================== */}
+      ===================================================== */}
 
       <header
-        className="
-          border-b
-          border-slate-200
-          bg-white
-        "
+        className={`sticky top-0 z-30 border-b backdrop-blur-xl ${
+          isDark
+            ? "border-white/[0.07] bg-[#0b0d10]/90"
+            : "border-slate-200/80 bg-[#fafafa]/90"
+        }`}
       >
-
-        <div
-          className="
-            mx-auto
-            max-w-[1180px]
-            px-5
-            py-8
-            md:px-8
-          "
-        >
-
-          <div
-            className="
-              flex
-              items-center
-              gap-3
-            "
-          >
-
-            {/* CONNECTOR ICON */}
+        <div className="mx-auto max-w-[1080px] px-4 sm:px-6">
+          <div className="flex h-[56px] items-center gap-3">
+            {/* ICON */}
 
             <div
-              className="
-                flex
-                h-11
-                w-11
-                items-center
-                justify-center
-                rounded-xl
-                bg-slate-900
-              "
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                isDark
+                  ? "bg-white text-black"
+                  : "bg-slate-900 text-white"
+              }`}
             >
-
               <Unplug
-                size={20}
-                className="text-white"
+                size={15}
+                strokeWidth={1.8}
               />
-
             </div>
-
 
             {/* TITLE */}
 
-            <div>
-
+            <div className="min-w-0">
               <h1
-                className="
-                  text-2xl
-                  font-semibold
-                  tracking-tight
-                "
+                className={`text-[14px] font-semibold tracking-[-0.02em] ${
+                  isDark
+                    ? "text-white"
+                    : "text-slate-900"
+                }`}
               >
                 Connectors
               </h1>
 
               <p
-                className="
-                  mt-1
-                  text-sm
-                  text-slate-500
-                "
+                className={`hidden text-[10px] sm:block ${
+                  isDark
+                    ? "text-zinc-500"
+                    : "text-slate-500"
+                }`}
               >
                 Connect your tools with
-                ICOGON AI.
+                ICOGON AI
               </p>
-
             </div>
-
           </div>
-
         </div>
-
       </header>
 
-
-      {/* ====================================================
+      {/* =====================================================
           CONTENT
-      ==================================================== */}
+      ===================================================== */}
 
-      <main
-        className="
-          mx-auto
-          max-w-[1180px]
-          px-5
-          py-8
-          md:px-8
-          md:py-10
-        "
-      >
-
-        {/* ==================================================
-            CONNECTED SUCCESS MESSAGE
-        ================================================== */}
+      <main className="mx-auto max-w-[1080px] px-4 pb-14 pt-6 sm:px-6">
+        {/* SUCCESS */}
 
         {gmailStatus.connected && (
-
           <div
-            className="
-              mb-6
-              flex
-              items-start
-              gap-3
-              rounded-xl
-              border
-              border-emerald-200
-              bg-emerald-50
-              px-4
-              py-3
-            "
+            className={`mb-5 flex items-start gap-3 rounded-xl border px-3.5 py-3 ${
+              isDark
+                ? "border-emerald-500/20 bg-emerald-500/[0.07]"
+                : "border-emerald-200 bg-emerald-50"
+            }`}
           >
-
             <CheckCircle2
-              size={18}
-              className="
-                mt-0.5
-                shrink-0
-                text-emerald-600
-              "
+              size={16}
+              className={`mt-0.5 shrink-0 ${
+                isDark
+                  ? "text-emerald-400"
+                  : "text-emerald-600"
+              }`}
             />
 
-            <div>
-
+            <div className="min-w-0">
               <p
-                className="
-                  text-sm
-                  font-medium
-                  text-emerald-800
-                "
+                className={`text-[11px] font-medium ${
+                  isDark
+                    ? "text-emerald-300"
+                    : "text-emerald-800"
+                }`}
               >
                 Gmail connected successfully
               </p>
 
-
               {gmailStatus.email && (
-
                 <p
-                  className="
-                    mt-0.5
-                    text-xs
-                    text-emerald-600
-                  "
+                  className={`mt-0.5 truncate text-[10px] ${
+                    isDark
+                      ? "text-emerald-400/70"
+                      : "text-emerald-600"
+                  }`}
                 >
                   {gmailStatus.email}
                 </p>
-
               )}
-
             </div>
-
           </div>
-
         )}
 
+        {/* PAGE INTRO */}
 
-        {/* ==================================================
-            TITLE
-        ================================================== */}
-
-        <div className="mb-6">
-
+        <div className="mb-5">
           <h2
-            className="
-              text-lg
-              font-semibold
-              text-slate-900
-            "
+            className={`text-[18px] font-semibold tracking-[-0.025em] ${
+              isDark
+                ? "text-white"
+                : "text-slate-900"
+            }`}
           >
             Available connectors
           </h2>
 
           <p
-            className="
-              mt-1
-              text-sm
-              text-slate-500
-            "
+            className={`mt-1 text-[11px] ${
+              isDark
+                ? "text-zinc-500"
+                : "text-slate-500"
+            }`}
           >
-            Connect external services to
-            power your ICOGON workflows.
+            Connect external services to power
+            your ICOGON workflows.
           </p>
-
         </div>
 
+        {/* CONNECTOR GRID */}
 
-        {/* ==================================================
-            GMAIL CONNECTOR
-        ================================================== */}
+        <div
+          className={`rounded-2xl border p-3 sm:p-4 ${
+            isDark
+              ? "border-white/[0.08] bg-[#111418]"
+              : "border-slate-200 bg-white"
+          }`}
+        >
+          {!gmailStatus.connected ? (
+            <ConnectorCard
+              connected={false}
+              email={null}
+              onConnect={() =>
+                setModalOpen(true)
+              }
+            />
+          ) : (
+            <GmailConnectorPanel
+              email={
+                gmailStatus.email ||
+                "Gmail account"
+              }
+              onDisconnected={
+                handleDisconnected
+              }
+            />
+          )}
+        </div>
 
-        {!gmailStatus.connected ? (
+        {/* EMPTY / FUTURE CONNECTORS */}
 
-          <ConnectorCard
-            connected={false}
-            email={null}
-            onConnect={() =>
-              setModalOpen(true)
-            }
-          />
+        <div
+          className={`mt-4 flex items-center justify-between rounded-xl border px-4 py-3 ${
+            isDark
+              ? "border-white/[0.06] bg-white/[0.015]"
+              : "border-slate-200/80 bg-white/60"
+          }`}
+        >
+          <div>
+            <p
+              className={`text-[11px] font-medium ${
+                isDark
+                  ? "text-zinc-300"
+                  : "text-slate-700"
+              }`}
+            >
+              More connectors coming soon
+            </p>
 
-        ) : (
+            <p
+              className={`mt-0.5 text-[9px] ${
+                isDark
+                  ? "text-zinc-600"
+                  : "text-slate-400"
+              }`}
+            >
+              More services will be available
+              for your AI workflows.
+            </p>
+          </div>
 
-          <GmailConnectorPanel
-            email={
-              gmailStatus.email ||
-              "Gmail account"
-            }
-            onDisconnected={
-              handleDisconnected
-            }
-          />
-
-        )}
-
+          <div
+            className={`rounded-full border px-2.5 py-1 text-[8px] font-medium ${
+              isDark
+                ? "border-white/[0.08] text-zinc-500"
+                : "border-slate-200 text-slate-400"
+            }`}
+          >
+            Coming soon
+          </div>
+        </div>
       </main>
 
-
-      {/* ====================================================
-          GMAIL CONNECTION MODAL
-      ==================================================== */}
+      {/* =====================================================
+          GMAIL MODAL
+      ===================================================== */}
 
       <GmailConnectionModal
         open={modalOpen}
@@ -528,14 +401,8 @@ const ConnectorsPage = () => {
           setModalOpen(false)
         }
       />
-
     </div>
   );
 };
-
-
-// ==========================================================
-// EXPORT
-// ==========================================================
 
 export default ConnectorsPage;

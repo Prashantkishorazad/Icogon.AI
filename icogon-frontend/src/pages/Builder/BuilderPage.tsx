@@ -1,3 +1,8 @@
+import React, {
+  useEffect,
+  useState,
+} from "react";
+
 import {
   ArrowLeft,
   ArrowRight,
@@ -6,35 +11,38 @@ import {
   Lightbulb,
   Sparkles,
   XCircle,
+  WandSparkles,
 } from "lucide-react";
-
-import {
-  useEffect,
-  useState,
-} from "react";
 
 import {
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
 
-import {
-  createProjectApi,
-} from "../../api/projectApi";
+import { createProjectApi } from "../../api/projectApi";
 
+import { useTheme } from "../../context/ThemeContext";
 
-const BuilderPage = () => {
+// ============================================================
+// PAGE
+// ============================================================
 
+const BuilderPage: React.FC = () => {
   const navigate = useNavigate();
 
-  const [
-    searchParams,
-  ] = useSearchParams();
+  const [searchParams] =
+    useSearchParams();
 
+  const {
+    resolvedTheme,
+  } = useTheme();
 
-  // =====================================================
+  const isDark =
+    resolvedTheme === "dark";
+
+  // ==========================================================
   // FORM STATE
-  // =====================================================
+  // ==========================================================
 
   const [
     name,
@@ -46,10 +54,9 @@ const BuilderPage = () => {
     setDescription,
   ] = useState("");
 
-
-  // =====================================================
+  // ==========================================================
   // UI STATE
-  // =====================================================
+  // ==========================================================
 
   const [
     loading,
@@ -61,42 +68,29 @@ const BuilderPage = () => {
     setError,
   ] = useState("");
 
-
-  // =====================================================
+  // ==========================================================
   // GET PROMPT FROM DASHBOARD
-  // =====================================================
+  // ==========================================================
 
   useEffect(() => {
-
     const dashboardPrompt =
       searchParams.get("prompt");
 
-
     if (dashboardPrompt) {
-
       setDescription(
         dashboardPrompt
       );
-
     }
-
   }, [searchParams]);
 
-
-  // =====================================================
+  // ==========================================================
   // CREATE PROJECT
-  // =====================================================
+  // ==========================================================
 
   const handleCreateProject = async (
     e: React.FormEvent
   ) => {
-
     e.preventDefault();
-
-
-    // -----------------------------------------------
-    // VALIDATION
-    // -----------------------------------------------
 
     const cleanName =
       name.trim();
@@ -104,531 +98,425 @@ const BuilderPage = () => {
     const cleanDescription =
       description.trim();
 
+    // --------------------------------------------------------
+    // VALIDATION
+    // --------------------------------------------------------
 
     if (!cleanName) {
-
       setError(
         "Project name is required."
       );
-
       return;
     }
 
-
     if (!cleanDescription) {
-
       setError(
         "Please describe what you want to build."
       );
-
       return;
     }
 
-
-    // -----------------------------------------------
+    // --------------------------------------------------------
     // CREATE
-    // -----------------------------------------------
+    // --------------------------------------------------------
 
     try {
-
       setLoading(true);
-
       setError("");
-
 
       const project =
         await createProjectApi({
-
           name: cleanName,
-
           description:
             cleanDescription,
-
         });
-
 
       console.log(
         "Project created:",
         project
       );
 
-
-      /*
-       * IMPORTANT
-       *
-       * Phase 2:
-       *
-       * Project is created only.
-       *
-       * AI generation will be connected later:
-       *
-       * POST /orchestrator/runs
-       *
-       */
-
-
       navigate(
         `/builder/${project.id}`
       );
-
-
     } catch (err: any) {
-
       console.error(
         "Create project error:",
         err
       );
 
-
       setError(
-
         err?.response?.data?.detail ||
-
-        err?.response?.data?.message ||
-
-        err?.message ||
-
-        "Failed to create project. Please try again."
-
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to create project. Please try again."
       );
-
-
     } finally {
-
       setLoading(false);
-
     }
-
   };
 
-
-  // =====================================================
+  // ==========================================================
   // CHARACTER COUNT
-  // =====================================================
+  // ==========================================================
 
   const descriptionLength =
     description.length;
 
-
-  // =====================================================
-  // PAGE
-  // =====================================================
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
-
     <div
-      className="
+      className={`
         min-h-screen
-        bg-[#050505]
-        text-white
-      "
-    >
+        overflow-x-hidden
+        transition-colors
+        duration-200
 
-      {/* =================================================
-          TOP NAVIGATION
-      ================================================= */}
+        ${
+          isDark
+            ? "bg-[#080808] text-white"
+            : "bg-[#fafafa] text-slate-900"
+        }
+      `}
+    >
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
 
       <header
-        className="
+        className={`
           sticky
           top-0
           z-50
-
-          h-[72px]
-
+          h-[54px]
           border-b
-          border-white/[0.07]
-
-          bg-[#050505]/90
-
           backdrop-blur-xl
-        "
-      >
 
+          ${
+            isDark
+              ? "border-[#242424] bg-[#080808]/90"
+              : "border-slate-200 bg-white/90"
+          }
+        `}
+      >
         <div
           className="
             mx-auto
-
             flex
             h-full
-
-            max-w-[1400px]
-
+            max-w-[1200px]
             items-center
             justify-between
-
-            px-5
-
-            lg:px-8
+            px-4
+            sm:px-5
+            lg:px-7
           "
         >
-
           {/* LEFT */}
 
-          <div
-            className="
-              flex
-              items-center
-              gap-4
-            "
-          >
-
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={() =>
                 navigate("/dashboard")
               }
-              className="
+              className={`
                 flex
-                h-9
-                w-9
-
+                h-7
+                w-7
                 items-center
                 justify-center
-
                 rounded-lg
-
-                border
-                border-white/[0.07]
-
-                bg-white/[0.02]
-
-                text-slate-500
-
                 transition
 
-                hover:bg-white/[0.06]
-                hover:text-white
-              "
+                ${
+                  isDark
+                    ? "text-[#777] hover:bg-[#1d1d1d] hover:text-white"
+                    : "text-slate-400 hover:bg-slate-100 hover:text-slate-800"
+                }
+              `}
               title="Back to dashboard"
             >
-
-              <ArrowLeft
-                size={17}
-              />
-
+              <ArrowLeft size={15} />
             </button>
 
-
-            {/* LOGO */}
-
             <div
-              className="
-                flex
-                items-center
-                gap-2.5
-              "
-            >
+              className={`
+                h-5
+                w-px
 
+                ${
+                  isDark
+                    ? "bg-[#292929]"
+                    : "bg-slate-200"
+                }
+              `}
+            />
+
+            <div className="flex items-center gap-2">
               <div
-                className="
+                className={`
                   flex
-                  h-8
-                  w-8
-
+                  h-7
+                  w-7
                   items-center
                   justify-center
-
                   rounded-lg
 
-                  bg-gradient-to-br
-                  from-pink-500
-                  via-purple-500
-                  to-cyan-400
-
-                  shadow-lg
-                  shadow-purple-500/10
-                "
+                  ${
+                    isDark
+                      ? "bg-white text-black"
+                      : "bg-slate-900 text-white"
+                  }
+                `}
               >
-
-                <div
-                  className="
-                    h-3
-                    w-3
-
-                    rounded-full
-
-                    bg-white
-                  "
-                />
-
+                <Sparkles size={13} />
               </div>
 
-
               <span
-                className="
-                  text-sm
-                  font-bold
+                className={`
+                  text-xs
+                  font-semibold
                   tracking-wide
 
-                  text-white
-                "
+                  ${
+                    isDark
+                      ? "text-white"
+                      : "text-slate-900"
+                  }
+                `}
               >
-                ICOGON
+                ICOGON AI
               </span>
-
             </div>
-
           </div>
-
 
           {/* RIGHT */}
 
-          <div
-            className="
-              flex
-              items-center
-              gap-3
-            "
-          >
+          <div className="flex items-center gap-2">
+            <span
+              className={`
+                hidden
+                text-[10px]
+                sm:block
 
-
-
+                ${
+                  isDark
+                    ? "text-[#555]"
+                    : "text-slate-400"
+                }
+              `}
+            >
+              New project
+            </span>
           </div>
-
         </div>
-
       </header>
 
-
-      {/* =================================================
+      {/* =====================================================
           MAIN
-      ================================================= */}
+      ===================================================== */}
 
-      <main
-        className="
-          relative
-
-          min-h-[calc(100vh-72px)]
-
-          overflow-hidden
-        "
-      >
-
-        {/* BACKGROUND GLOW */}
+      <main className="relative min-h-[calc(100vh-54px)] overflow-hidden">
+        {/* BACKGROUND */}
 
         <div
-          className="
+          className={`
             pointer-events-none
-
             absolute
             left-1/2
             top-[-180px]
-
-            h-[500px]
-            w-[700px]
-
+            h-[420px]
+            w-[650px]
             -translate-x-1/2
-
             rounded-full
-
-            bg-cyan-500/[0.035]
-
             blur-[120px]
-          "
-        />
 
+            ${
+              isDark
+                ? "bg-cyan-500/[0.035]"
+                : "bg-cyan-400/[0.055]"
+            }
+          `}
+        />
 
         <div
-          className="
+          className={`
             pointer-events-none
-
             absolute
-            right-[-200px]
-            top-[35%]
-
-            h-[400px]
-            w-[400px]
-
+            right-[-180px]
+            top-[40%]
+            h-[350px]
+            w-[350px]
             rounded-full
-
-            bg-purple-500/[0.025]
-
             blur-[120px]
-          "
+
+            ${
+              isDark
+                ? "bg-purple-500/[0.025]"
+                : "bg-purple-400/[0.035]"
+            }
+          `}
         />
 
+        {/* CONTENT */}
 
         <div
           className="
             relative
             z-10
-
             mx-auto
-
-            max-w-[1050px]
-
-            px-5
-            py-12
-
-            md:py-16
-
+            max-w-[900px]
+            px-4
+            py-10
+            sm:px-6
+            sm:py-12
             lg:px-8
-            lg:py-20
+            lg:py-16
           "
         >
-
           {/* =================================================
-              PAGE INTRO
+              INTRO
           ================================================= */}
 
-          <div
-            className="
-              mx-auto
+          <section className="mx-auto max-w-2xl text-center">
+            <div
+              className={`
+                mx-auto
+                flex
+                h-10
+                w-10
+                items-center
+                justify-center
+                rounded-xl
 
-              max-w-3xl
-
-              text-center
-            "
-          >
-
-            {/* BADGE */}
-
-
-
-            {/* TITLE */}
+                ${
+                  isDark
+                    ? "bg-[#171717] text-[#aaa]"
+                    : "bg-white text-slate-500 shadow-sm"
+                }
+              `}
+            >
+              <WandSparkles size={18} />
+            </div>
 
             <h1
-              className="
-                mt-6
-
-                text-3xl
+              className={`
+                mt-5
+                text-2xl
                 font-semibold
                 tracking-tight
+                sm:text-3xl
 
-                text-white
-
-                sm:text-4xl
-                md:text-5xl
-              "
+                ${
+                  isDark
+                    ? "text-white"
+                    : "text-slate-900"
+                }
+              `}
             >
-              Create a new project
+              What do you want to build?
             </h1>
 
-
-            {/* DESCRIPTION */}
-
             <p
-              className="
+              className={`
                 mx-auto
-                mt-4
+                mt-2
+                max-w-lg
+                text-xs
+                leading-5
+                sm:text-sm
 
-                max-w-2xl
-
-                text-sm
-                leading-6
-
-                text-slate-500
-
-                md:text-base
-              "
+                ${
+                  isDark
+                    ? "text-[#777]"
+                    : "text-slate-500"
+                }
+              `}
             >
-              Tell ICOGON AI what you want to
-              build. We'll use your idea as the
+              Describe your idea and
+              ICOGON AI will use it as the
               foundation for your project.
             </p>
-
-          </div>
-
+          </section>
 
           {/* =================================================
-              FORM CARD
+              FORM
           ================================================= */}
 
           <form
             onSubmit={
               handleCreateProject
             }
-
-            className="
-              mx-auto
-
-              mt-10
-
-              max-w-4xl
-            "
+            className="mx-auto mt-8 max-w-[760px]"
           >
-
             <div
-              className="
+              className={`
                 overflow-hidden
-
-                rounded-[24px]
-
+                rounded-2xl
                 border
-                border-white/[0.08]
+                transition-colors
 
-                bg-[#0a0a0a]
-
-                shadow-2xl
-                shadow-black/40
-              "
+                ${
+                  isDark
+                    ? "border-[#292929] bg-[#101010]"
+                    : "border-slate-200 bg-white shadow-sm"
+                }
+              `}
             >
-
               {/* =================================================
                   PROJECT NAME
               ================================================= */}
 
               <div
-                className="
+                className={`
                   border-b
-                  border-white/[0.06]
+                  p-4
+                  sm:p-5
 
-                  p-6
-
-                  md:p-8
-                "
+                  ${
+                    isDark
+                      ? "border-[#242424]"
+                      : "border-slate-100"
+                  }
+                `}
               >
-
                 <label
                   htmlFor="project-name"
-
-                  className="
+                  className={`
                     flex
                     items-center
                     gap-2
-
-                    text-sm
+                    text-xs
                     font-medium
 
-                    text-slate-300
-                  "
+                    ${
+                      isDark
+                        ? "text-[#ccc]"
+                        : "text-slate-700"
+                    }
+                  `}
                 >
-
                   <FileText
-                    size={16}
-                    className="
-                      text-slate-500
-                    "
+                    size={14}
+                    className={
+                      isDark
+                        ? "text-[#777]"
+                        : "text-slate-400"
+                    }
                   />
 
                   Project name
-
                 </label>
-
-
-                <p
-                  className="
-                    mt-1.5
-
-                    text-xs
-
-                    text-slate-600
-                  "
-                >
-                  Give your project a clear name.
-                </p>
-
 
                 <input
                   id="project-name"
-
                   type="text"
-
                   value={name}
-
                   onChange={(e) => {
-
                     setName(
                       e.target.value
                     );
@@ -636,148 +524,105 @@ const BuilderPage = () => {
                     if (error) {
                       setError("");
                     }
-
                   }}
-
                   placeholder="My Restaurant CRM"
-
                   autoComplete="off"
-
-                  className="
-                    mt-4
-
-                    h-12
+                  className={`
+                    mt-2.5
+                    h-10
                     w-full
-
-                    rounded-xl
-
+                    rounded-lg
                     border
-                    border-white/[0.08]
-
-                    bg-[#070707]
-
-                    px-4
-
-                    text-sm
-
-                    text-white
-
+                    px-3
+                    text-xs
                     outline-none
-
-                    placeholder:text-slate-700
-
                     transition
 
-                    focus:border-cyan-500/30
-                    focus:bg-[#090909]
-
-                    focus:ring-4
-                    focus:ring-cyan-500/[0.04]
-                  "
+                    ${
+                      isDark
+                        ? "border-[#292929] bg-[#0b0b0b] text-white placeholder:text-[#555] focus:border-[#444] focus:bg-[#0d0d0d]"
+                        : "border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:bg-white"
+                    }
+                  `}
                 />
-
               </div>
-
 
               {/* =================================================
                   DESCRIPTION
               ================================================= */}
 
-              <div
-                className="
-                  p-6
-
-                  md:p-8
-                "
-              >
-
-                <div
-                  className="
-                    flex
-                    items-start
-                    justify-between
-                    gap-4
-                  "
-                >
-
+              <div className="p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-4">
                   <div>
-
                     <label
                       htmlFor="project-description"
-
-                      className="
+                      className={`
                         flex
                         items-center
                         gap-2
-
-                        text-sm
+                        text-xs
                         font-medium
 
-                        text-slate-300
-                      "
+                        ${
+                          isDark
+                            ? "text-[#ccc]"
+                            : "text-slate-700"
+                        }
+                      `}
                     >
-
                       <Sparkles
-                        size={16}
-                        className="
-                          text-cyan-400
-                        "
+                        size={14}
+                        className={
+                          isDark
+                            ? "text-[#aaa]"
+                            : "text-slate-500"
+                        }
                       />
 
                       What do you want to build?
-
                     </label>
 
-
                     <p
-                      className="
-                        mt-1.5
+                      className={`
+                        mt-1
+                        text-[10px]
 
-                        text-xs
-
-                        text-slate-600
-                      "
+                        ${
+                          isDark
+                            ? "text-[#555]"
+                            : "text-slate-400"
+                        }
+                      `}
                     >
-                      Describe your product, website,
+                      Describe your product,
                       features and requirements.
                     </p>
-
                   </div>
 
-
                   <span
-                    className="
+                    className={`
                       hidden
-
-                      text-[11px]
-
-                      text-slate-700
-
+                      text-[10px]
                       sm:block
-                    "
+
+                      ${
+                        isDark
+                          ? "text-[#555]"
+                          : "text-slate-400"
+                      }
+                    `}
                   >
-                    {descriptionLength} characters
+                    {descriptionLength}
                   </span>
-
                 </div>
-
 
                 {/* TEXTAREA */}
 
-                <div
-                  className="
-                    relative
-                    mt-4
-                  "
-                >
-
+                <div className="relative mt-3">
                   <textarea
                     id="project-description"
-
                     value={description}
-
                     onChange={(e) => {
-
                       setDescription(
                         e.target.value
                       );
@@ -785,331 +630,248 @@ const BuilderPage = () => {
                       if (error) {
                         setError("");
                       }
-
                     }}
-
                     placeholder={`Example:
 
 Build a modern restaurant management website with CRM, employee attendance, item listing, orders, analytics dashboard, customer management and an admin panel.`}
-
-                    rows={10}
-
-                    className="
-                      min-h-[240px]
-
+                    rows={9}
+                    className={`
+                      min-h-[210px]
                       w-full
-
                       resize-y
-
-                      rounded-2xl
-
+                      rounded-xl
                       border
-                      border-white/[0.08]
-
-                      bg-[#070707]
-
-                      px-5
-                      py-5
-
-                      text-sm
-                      leading-7
-
-                      text-white
-
+                      px-4
+                      py-4
+                      pb-10
+                      text-xs
+                      leading-6
                       outline-none
-
-                      placeholder:text-slate-700
-
                       transition
+                      sm:text-sm
 
-                      focus:border-cyan-500/30
-
-                      focus:ring-4
-                      focus:ring-cyan-500/[0.04]
-                    "
+                      ${
+                        isDark
+                          ? "border-[#292929] bg-[#0b0b0b] text-white placeholder:text-[#555] focus:border-[#444]"
+                          : "border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:bg-white"
+                      }
+                    `}
                   />
 
-
-                  {/* TEXTAREA BOTTOM */}
+                  {/* TEXTAREA FOOTER */}
 
                   <div
-                    className="
+                    className={`
                       pointer-events-none
-
                       absolute
-                      bottom-4
-                      left-5
-                      right-5
-
+                      bottom-3
+                      left-4
+                      right-4
                       flex
                       items-center
                       justify-between
-                    "
+                    `}
                   >
-
                     <span
-                      className="
+                      className={`
                         flex
                         items-center
                         gap-1.5
+                        text-[10px]
 
-                        text-[11px]
-
-                        text-slate-700
-                      "
+                        ${
+                          isDark
+                            ? "text-[#555]"
+                            : "text-slate-400"
+                        }
+                      `}
                     >
-
-                      <Lightbulb
-                        size={12}
-                      />
+                      <Lightbulb size={11} />
 
                       More detail helps AI
-                      understand your idea
-
                     </span>
 
-
                     <span
-                      className="
-                        text-[11px]
+                      className={`
+                        text-[10px]
 
-                        text-slate-700
-
-                        sm:hidden
-                      "
+                        ${
+                          isDark
+                            ? "text-[#555]"
+                            : "text-slate-400"
+                        }
+                      `}
                     >
                       {descriptionLength}
                     </span>
-
                   </div>
-
                 </div>
 
-
-                {/* =================================================
-                    ERROR
-                ================================================= */}
+                {/* ERROR */}
 
                 {error && (
-
                   <div
-                    className="
-                      mt-4
-
+                    className={`
+                      mt-3
                       flex
                       items-start
-                      gap-3
-
-                      rounded-xl
-
+                      gap-2.5
+                      rounded-lg
                       border
-                      border-red-500/10
+                      px-3
+                      py-2.5
+                      text-xs
 
-                      bg-red-500/[0.04]
-
-                      px-4
-                      py-3.5
-
-                      text-sm
-
-                      text-red-400
-                    "
+                      ${
+                        isDark
+                          ? "border-red-500/15 bg-red-500/[0.05] text-red-400"
+                          : "border-red-200 bg-red-50 text-red-600"
+                      }
+                    `}
                   >
-
                     <XCircle
-                      size={17}
-                      className="
-                        mt-0.5
-                        shrink-0
-                      "
+                      size={15}
+                      className="mt-0.5 shrink-0"
                     />
 
-                    <span>
-                      {error}
-                    </span>
-
+                    <span>{error}</span>
                   </div>
-
                 )}
 
-
                 {/* =================================================
-                    WHAT HAPPENS NEXT
+                    NEXT STEPS
                 ================================================= */}
 
                 <div
-                  className="
-                    mt-6
-
+                  className={`
+                    mt-4
                     rounded-xl
-
                     border
-                    border-white/[0.05]
+                    p-3
 
-                    bg-white/[0.015]
-
-                    p-4
-                  "
+                    ${
+                      isDark
+                        ? "border-[#222] bg-[#0c0c0c]"
+                        : "border-slate-100 bg-slate-50"
+                    }
+                  `}
                 >
-
-                  <p
-                    className="
-                      text-xs
-                      font-medium
-
-                      text-slate-400
-                    "
-                  >
-                    What happens next?
-                  </p>
-
-
-                  <div
-                    className="
-                      mt-3
-
-                      grid
-                      gap-3
-
-                      sm:grid-cols-3
-                    "
-                  >
-
-                    <div
-                      className="
-                        flex
-                        items-center
-                        gap-2.5
-                      "
-                    >
-
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="flex items-center gap-2">
                       <div
-                        className="
+                        className={`
                           flex
-                          h-7
-                          w-7
-
+                          h-6
+                          w-6
                           shrink-0
-
                           items-center
                           justify-center
+                          rounded-md
+                          text-[10px]
+                          font-medium
 
-                          rounded-lg
-
-                          bg-cyan-500/[0.08]
-
-                          text-xs
-
-                          text-cyan-400
-                        "
+                          ${
+                            isDark
+                              ? "bg-[#1b1b1b] text-[#aaa]"
+                              : "bg-white text-slate-500"
+                          }
+                        `}
                       >
                         1
                       </div>
 
                       <span
-                        className="
-                          text-xs
+                        className={`
+                          text-[10px]
 
-                          text-slate-600
-                        "
+                          ${
+                            isDark
+                              ? "text-[#666]"
+                              : "text-slate-500"
+                          }
+                        `}
                       >
                         Create project
                       </span>
-
                     </div>
 
-
-                    <div
-                      className="
-                        flex
-                        items-center
-                        gap-2.5
-                      "
-                    >
-
+                    <div className="flex items-center gap-2">
                       <div
-                        className="
+                        className={`
                           flex
-                          h-7
-                          w-7
-
+                          h-6
+                          w-6
                           shrink-0
-
                           items-center
                           justify-center
+                          rounded-md
+                          text-[10px]
+                          font-medium
 
-                          rounded-lg
-
-                          bg-purple-500/[0.08]
-
-                          text-xs
-
-                          text-purple-400
-                        "
+                          ${
+                            isDark
+                              ? "bg-[#1b1b1b] text-[#aaa]"
+                              : "bg-white text-slate-500"
+                          }
+                        `}
                       >
                         2
                       </div>
 
                       <span
-                        className="
-                          text-xs
+                        className={`
+                          text-[10px]
 
-                          text-slate-600
-                        "
+                          ${
+                            isDark
+                              ? "text-[#666]"
+                              : "text-slate-500"
+                          }
+                        `}
                       >
                         AI plans your idea
                       </span>
-
                     </div>
 
-
-                    <div
-                      className="
-                        flex
-                        items-center
-                        gap-2.5
-                      "
-                    >
-
+                    <div className="flex items-center gap-2">
                       <div
-                        className="
+                        className={`
                           flex
-                          h-7
-                          w-7
-
+                          h-6
+                          w-6
                           shrink-0
-
                           items-center
                           justify-center
+                          rounded-md
+                          text-[10px]
+                          font-medium
 
-                          rounded-lg
-
-                          bg-blue-500/[0.08]
-
-                          text-xs
-
-                          text-blue-400
-                        "
+                          ${
+                            isDark
+                              ? "bg-[#1b1b1b] text-[#aaa]"
+                              : "bg-white text-slate-500"
+                          }
+                        `}
                       >
                         3
                       </div>
 
                       <span
-                        className="
-                          text-xs
+                        className={`
+                          text-[10px]
 
-                          text-slate-600
-                        "
+                          ${
+                            isDark
+                              ? "text-[#666]"
+                              : "text-slate-500"
+                          }
+                        `}
                       >
                         Start building
                       </span>
-
                     </div>
-
                   </div>
-
                 </div>
-
 
                 {/* =================================================
                     ACTIONS
@@ -1117,196 +879,135 @@ Build a modern restaurant management website with CRM, employee attendance, item
 
                 <div
                   className="
-                    mt-7
-
+                    mt-5
                     flex
                     flex-col-reverse
-
-                    gap-3
-
+                    gap-2.5
                     sm:flex-row
                     sm:items-center
                     sm:justify-between
                   "
                 >
-
-                  {/* CANCEL */}
-
                   <button
                     type="button"
-
                     onClick={() =>
                       navigate("/dashboard")
                     }
-
                     disabled={loading}
-
-                    className="
-                      rounded-xl
-
-                      px-5
-                      py-3
-
-                      text-sm
+                    className={`
+                      rounded-lg
+                      px-4
+                      py-2
+                      text-xs
                       font-medium
-
-                      text-slate-500
-
                       transition
-
-                      hover:bg-white/[0.04]
-                      hover:text-slate-300
-
                       disabled:cursor-not-allowed
                       disabled:opacity-50
-                    "
+
+                      ${
+                        isDark
+                          ? "text-[#777] hover:bg-[#181818] hover:text-white"
+                          : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      }
+                    `}
                   >
                     Cancel
                   </button>
 
-
-                  {/* CREATE */}
-
                   <button
                     type="submit"
-
                     disabled={loading}
-
-                    className="
+                    className={`
                       group
-
-                      flex
+                      inline-flex
                       items-center
                       justify-center
-                      gap-2.5
-
-                      rounded-xl
-
-                      bg-gradient-to-r
-                      from-blue-600
-                      to-cyan-500
-
-                      px-6
-                      py-3.5
-
-                      text-sm
-                      font-semibold
-
-                      text-white
-
-                      shadow-lg
-                      shadow-blue-600/20
-
-                      transition-all
-
-                      hover:from-blue-500
-                      hover:to-cyan-400
-
-                      hover:shadow-blue-500/25
-
+                      gap-2
+                      rounded-lg
+                      px-5
+                      py-2.5
+                      text-xs
+                      font-medium
+                      transition
                       active:scale-[0.98]
-
                       disabled:cursor-not-allowed
                       disabled:opacity-60
-                    "
+
+                      ${
+                        isDark
+                          ? "bg-white text-black hover:bg-[#ddd]"
+                          : "bg-slate-900 text-white hover:bg-slate-800"
+                      }
+                    `}
                   >
-
                     {loading ? (
-
                       <>
                         <span
-                          className="
-                            h-4
-                            w-4
-
+                          className={`
+                            h-3.5
+                            w-3.5
                             animate-spin
-
                             rounded-full
-
                             border-2
-                            border-white/30
-                            border-t-white
-                          "
+
+                            ${
+                              isDark
+                                ? "border-black/20 border-t-black"
+                                : "border-white/30 border-t-white"
+                            }
+                          `}
                         />
 
-                        Creating project...
-
+                        Creating...
                       </>
-
                     ) : (
-
                       <>
-
-                        <Sparkles
-                          size={17}
-                        />
+                        <Sparkles size={14} />
 
                         Create Project
 
                         <ArrowRight
-                          size={17}
-
-                          className="
-                            transition
-
-                            group-hover:translate-x-0.5
-                          "
+                          size={14}
+                          className="transition-transform group-hover:translate-x-0.5"
                         />
-
                       </>
-
                     )}
-
                   </button>
-
                 </div>
-
               </div>
-
             </div>
 
-
             {/* =================================================
-                SECURITY / INFO
+                FOOTNOTE
             ================================================= */}
 
             <div
-              className="
-                mt-5
-
+              className={`
+                mt-4
                 flex
                 items-center
                 justify-center
-                gap-2
-
+                gap-1.5
                 text-center
+                text-[10px]
 
-                text-[11px]
-
-                text-slate-700
-              "
+                ${
+                  isDark
+                    ? "text-[#555]"
+                    : "text-slate-400"
+                }
+              `}
             >
-
-              <CheckCircle2
-                size={13}
-              />
+              <CheckCircle2 size={11} />
 
               Your project will be saved to
               your ICOGON workspace.
-
             </div>
-
           </form>
-
         </div>
-
       </main>
-
     </div>
-
   );
-
 };
-
 
 export default BuilderPage;

@@ -25,8 +25,45 @@ class OrchestratorRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
             completed = await service.process_next("runtime-worker")
 
+            print(
+                "DEBUG STATUS:",
+                completed.status,
+            )
+            print(
+                "DEBUG FAILURE:",
+                completed.failure.model_dump()
+                if completed.failure
+                else None,
+            )
+            print(
+                "DEBUG STEPS:",
+                [
+                    {
+                        "name": step.name,
+                        "status": step.status,
+                        "error": step.error,
+                    }
+                    for step in completed.steps
+                ],
+            )
+
             self.assertEqual(completed.id, submitted.id)
             self.assertEqual(completed.status, RunStatus.COMPLETED)
+
+            print(
+                "DEBUG FAILURE:",
+                completed.failure.model_dump()
+                if completed.failure
+                else None,
+            )
+            print(
+                "DEBUG STEPS:",
+                [
+                    (step.name, step.error)
+                    for step in completed.steps
+                ],
+            )
+
             self.assertIsNone(await service.process_next("runtime-worker"))
             await runtime.close()
 

@@ -1,5 +1,9 @@
 import React from "react";
-import { ArrowUpRight, Check } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+} from "lucide-react";
+
 import type { SearchNavigationItem } from "../../data/searchNavigation";
 
 interface SearchResultItemProps {
@@ -19,7 +23,13 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
 }) => {
   const Icon = item.icon;
 
-  const isDark = activeTheme === "dark";
+  const isDark =
+    activeTheme === "dark";
+
+  const isThemeSelected =
+    item.type === "theme" &&
+    activeTheme ===
+      item.title.toLowerCase();
 
   return (
     <button
@@ -31,25 +41,30 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
         flex
         w-full
         items-center
-        gap-3
+        gap-2.5
         rounded-lg
-        px-3
-        py-2.5
+        px-2.5
+        py-2
         text-left
-        transition-all
+        transition-colors
         duration-100
+        outline-none
 
         ${
           selected
             ? isDark
-              ? "bg-[#d9b45a] text-black"
-              : "bg-[#eef4ff] text-slate-900"
+              ? "bg-[#242424] text-white"
+              : "bg-slate-100 text-slate-900"
             : isDark
-              ? "text-[#d4d4d4] hover:bg-[#1d1d1d]"
-              : "text-slate-700 hover:bg-slate-100"
+              ? "text-[#d0d0d0] hover:bg-[#191919]"
+              : "text-slate-700 hover:bg-slate-50"
         }
       `}
     >
+      {/* =================================================
+          ICON
+      ================================================= */}
+
       <div
         className={`
           flex
@@ -59,50 +74,79 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
           items-center
           justify-center
           rounded-lg
+          transition-colors
+
           ${
             selected
               ? isDark
-                ? "bg-black/10"
-                : "bg-white"
+                ? "bg-[#303030]"
+                : "bg-white shadow-sm"
               : isDark
-                ? "bg-[#242424]"
-                : "bg-slate-100"
+                ? "bg-[#1d1d1d] group-hover:bg-[#242424]"
+                : "bg-slate-100 group-hover:bg-white"
           }
         `}
       >
         <Icon
-          size={16}
+          size={15}
           strokeWidth={1.8}
           className={
             selected
               ? isDark
-                ? "text-black"
-                : "text-slate-800"
+                ? "text-white"
+                : "text-slate-700"
               : isDark
-                ? "text-[#a3a3a3]"
+                ? "text-[#929292]"
                 : "text-slate-500"
           }
         />
       </div>
 
+      {/* =================================================
+          CONTENT
+      ================================================= */}
+
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-medium">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span
+            className={`
+              min-w-0
+              truncate
+              text-[12px]
+              font-medium
+              leading-5
+
+              ${
+                selected
+                  ? isDark
+                    ? "text-white"
+                    : "text-slate-900"
+                  : isDark
+                    ? "text-[#d0d0d0]"
+                    : "text-slate-700"
+              }
+            `}
+          >
             {item.title}
           </span>
+
+          {/* CONNECTOR CATEGORY */}
 
           {item.type === "connector" && (
             <span
               className={`
                 shrink-0
-                text-[10px]
+                truncate
+                text-[9px]
+                leading-4
+
                 ${
                   selected
                     ? isDark
-                      ? "text-black/60"
+                      ? "text-[#777]"
                       : "text-slate-400"
                     : isDark
-                      ? "text-[#737373]"
+                      ? "text-[#666]"
                       : "text-slate-400"
                 }
               `}
@@ -112,19 +156,23 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
           )}
         </div>
 
+        {/* DESCRIPTION */}
+
         {item.description && (
           <p
             className={`
               mt-0.5
               truncate
               text-[10px]
+              leading-4
+
               ${
                 selected
                   ? isDark
-                    ? "text-black/60"
-                    : "text-slate-500"
+                    ? "text-[#777]"
+                    : "text-slate-400"
                   : isDark
-                    ? "text-[#737373]"
+                    ? "text-[#666]"
                     : "text-slate-400"
               }
             `}
@@ -134,19 +182,66 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
         )}
       </div>
 
-      {item.type === "theme" && activeTheme === item.title.toLowerCase() && (
-        <Check
-          size={16}
-          className="shrink-0"
-        />
+      {/* =================================================
+          THEME CHECK
+      ================================================= */}
+
+      {isThemeSelected && (
+        <div
+          className={`
+            flex
+            h-5
+            w-5
+            shrink-0
+            items-center
+            justify-center
+            rounded-md
+
+            ${
+              selected
+                ? isDark
+                  ? "bg-[#303030]"
+                  : "bg-white"
+                : "bg-transparent"
+            }
+          `}
+        >
+          <Check
+            size={13}
+            strokeWidth={2}
+            className={
+              isDark
+                ? "text-[#aaa]"
+                : "text-slate-500"
+            }
+          />
+        </div>
       )}
 
-      {selected && item.path && item.type !== "theme" && (
-        <ArrowUpRight
-          size={15}
-          className="shrink-0 opacity-60"
-        />
-      )}
+      {/* =================================================
+          NAVIGATION ARROW
+      ================================================= */}
+
+      {selected &&
+        item.path &&
+        item.type !== "theme" && (
+          <ArrowUpRight
+            size={14}
+            strokeWidth={1.7}
+            className={`
+              shrink-0
+              opacity-50
+              transition-opacity
+              group-hover:opacity-80
+
+              ${
+                isDark
+                  ? "text-[#aaa]"
+                  : "text-slate-500"
+              }
+            `}
+          />
+        )}
     </button>
   );
 };

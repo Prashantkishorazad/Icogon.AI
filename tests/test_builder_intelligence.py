@@ -81,52 +81,324 @@ class IntelligenceTests(unittest.IsolatedAsyncioTestCase):
         class ReviewingProvider(MockAgentProvider):
             def __init__(self):
                 self.reviews = 0
+                self.repairs = 0
                 self.feedback = []
+                self.snapshots = []
 
-            async def review_changes(inner, request, plan, changes):
-                inner.reviews += 1
-                approved = inner.reviews > 1
-                return ReviewResponse(
-                    review=ChangeReview(
-                        approved=approved,
-                        findings=[]
-                        if approved
-                        else [
-                            ReviewFinding(
-                                code="missing_interaction",
-                                message="The primary action has no handler",
-                                severity=ReviewSeverity.BLOCKING,
+            async def create_plan(
+                    self,
+                    request,
+                    brief,
+                    architecture,
+            ):
+                response = await super().create_plan(
+                    request,
+                    brief,
+                    architecture,
+                )
+
+                response.plan.tasks[0].target_files = [
+                    "src/App.jsx"
+                ]
+
+                response.plan.file_plan = [
+                    FilePlanEntry(
+                        path="src/App.jsx",
+                        action="create",
+                        reason=(
+                            "Required for the working submit-button "
+                            "interaction test."
+                        ),
+                    )
+                ]
+
+                return response
+
+            async def generate_changes(
+                    self,
+                    request,
+                    brief,
+                    architecture,
+                    plan,
+            ):
+                return ChangeResponse(
+                    changes=ChangeSet(
+                        summary=(
+                            "Initial implementation with an incomplete "
+                            "submit action."
+                        ),
+                        files=[
+                            FileChange(
+                                path="src/App.jsx",
+                                content="""
+    export default function App() {
+        return (
+            <main>
+                <button type="button">
+                    Submit
+                </button>
+            </main>
+        );
+    }
+    """.strip(),
+                                operation="upsert",
                             )
                         ],
                     ),
                     usage=ProviderUsage(output_tokens=10),
                 )
 
-            async def repair_changes(
-                inner, request, brief, architecture, plan, changes, feedback
+            async def review_changes(
+                    self,
+                    request,
+                    plan,
+                    changes,
             ):
-                inner.feedback = feedback
+                self.reviews += 1
+
+                # Store the exact snapshot received by the quality reviewer.
+                self.snapshots.append(
+                    changes.model_copy(deep=True)
+                )
+
+                # First quality review intentionally rejects the implementation.
+                if self.reviews == 1:
+                    return ReviewResponse(
+                        review=ChangeReview(
+                            approved=False,
+                            findings=[
+                                ReviewFinding(
+                                    code="missing_interaction",
+                                    message=(
+                                        "The primary action has no handler"
+                                    ),
+                                    severity=ReviewSeverity.BLOCKING,
+                                    path="src/App.jsx",
+                                )
+                            ],
+                        ),
+                        usage=ProviderUsage(output_tokens=10),
+                    )
+
+                # Second quality review verifies that the repair actually
+                # implemented the missing interaction.
+                app_file = next(
+                    (
+                        file
+                        for file in changes.files
+                        if file.path == "src/App.jsx"
+                    ),
+                    None,
+                )
+
+                assert app_file is not None
+                assert "onClick" in app_file.content
+                assert "handleSubmit" in app_file.content
+
+                return ReviewResponse(
+                    review=ChangeReview(
+                        approved=True,
+                        findings=[],
+                    ),
+                    usage=ProviderUsage(output_tokens=10),
+                )
+
+            async def repair_changes(
+                    self,
+                    request,
+                    brief,
+                    architecture,
+                    plan,
+                    changes,
+                    feedback,
+            ):
+                self.repairs += 1
+                self.feedback = list(feedback)
+
+                # The exact blocking quality-review feedback must reach
+                # the repair agent.
+                assert any(
+                    "The primary action has no handler" in item
+                    for item in feedback
+                )
+
+                # Repair must receive the current authoritative snapshot.
+                current_app = next(
+                    (
+                        file
+                        for file in changes.files
+                        if file.path == "src/App.jsx"
+                    ),
+                    None,
+                )
+
+                assert current_app is not None
+
+                repaired_content = """
+    export default function App() {
+        const handleSubmit = () => {
+            console.log("submitted");
+        };
+
+        return (
+            <main>
+                <button type="button" onClick={handleSubmit}>
+                    Submit
+                </button>
+            </main>
+        );
+    }
+    """.strip()
+
+                # Preserve the complete current snapshot and replace ONLY
+                # the file that needs repair.
+                repaired_files = []
+
+                for file in changes.files:
+                    if file.path == "src/App.jsx":
+                        repaired_files.append(
+                            FileChange(
+                                path="src/App.jsx",
+                                content=repaired_content,
+                                operation="upsert",
+                            )
+                        )
+                    else:
+                        repaired_files.append(
+                            file.model_copy(deep=True)
+                        )
+
                 return ChangeResponse(
-                    changes=changes, usage=ProviderUsage(output_tokens=10)
+                    changes=ChangeSet(
+                        summary=(
+                            "Repair the missing primary action handler."
+                        ),
+                        files=repaired_files,
+                    ),
+                    usage=ProviderUsage(output_tokens=10),
                 )
 
         provider = ReviewingProvider()
+
         service = OrchestratorService(
-            InMemoryRunRepository(), provider, StaticChangeVerifier()
+            InMemoryRunRepository(),
+            provider,
+            StaticChangeVerifier(),
         )
+
         request = RunRequest(
             user_id="u",
             project_id="p",
-            prompt="Create a website",
-            idempotency_key="polished-request",
+            prompt="Create a website with a working submit button",
+            idempotency_key="polished-quality-repair",
             quality="polished",
         )
+
         run = await service.submit(request)
         result = await service.execute(run.id)
-        self.assertEqual(result.status.value, "completed")
-        self.assertEqual(result.model_calls, 5)
-        self.assertEqual(result.repair_attempts, 1)
-        self.assertIn("The primary action has no handler", provider.feedback)
+
+        print("\nDEBUG STATUS:", result.status)
+        print(
+            "DEBUG FAILURE:",
+            result.failure.model_dump() if result.failure else None,
+        )
+        print(
+            "DEBUG REPAIR ATTEMPTS:",
+            result.repair_attempts,
+        )
+        print(
+            "DEBUG MODEL CALLS:",
+            result.model_calls,
+        )
+
+        # ---------------------------------------------------------
+        # FINAL PIPELINE RESULT
+        # ---------------------------------------------------------
+
+        self.assertEqual(
+            result.status.value,
+            "completed",
+        )
+
+        # ---------------------------------------------------------
+        # QUALITY REVIEW CALLS
+        # ---------------------------------------------------------
+
+        # Review #1 -> rejected
+        # Repair -> executed
+        # Review #2 -> approved
+        self.assertEqual(
+            provider.reviews,
+            2,
+        )
+
+        # Exactly one quality-review repair.
+        self.assertEqual(
+            provider.repairs,
+            1,
+        )
+
+        # ---------------------------------------------------------
+        # QUALITY REVIEW FEEDBACK
+        # ---------------------------------------------------------
+
+        self.assertIn(
+            "The primary action has no handler",
+            provider.feedback,
+        )
+
+        # ---------------------------------------------------------
+        # QUALITY REVIEW SNAPSHOTS
+        # ---------------------------------------------------------
+
+        self.assertEqual(
+            len(provider.snapshots),
+            2,
+        )
+
+        first_app = next(
+            file
+            for file in provider.snapshots[0].files
+            if file.path == "src/App.jsx"
+        )
+
+        second_app = next(
+            file
+            for file in provider.snapshots[1].files
+            if file.path == "src/App.jsx"
+        )
+
+        # First review saw the intentionally incomplete implementation.
+        self.assertNotIn(
+            "handleSubmit",
+            first_app.content,
+        )
+
+        self.assertNotIn(
+            "onClick",
+            first_app.content,
+        )
+
+        # Second review must see the repaired implementation.
+        self.assertIn(
+            "handleSubmit",
+            second_app.content,
+        )
+
+        self.assertIn(
+            "onClick",
+            second_app.content,
+        )
+
+        # ---------------------------------------------------------
+        # REPAIR BUDGET
+        # ---------------------------------------------------------
+
+        # Exactly one repair attempt was consumed.
+        self.assertEqual(
+            result.repair_attempts,
+            1,
+        )
 
 
 @unittest.skipUnless(

@@ -1,4 +1,9 @@
-# Secrets and local configuration
+*.pyc
+*.bak
+*.backup
+.DS_Store
+.env
+.venv/# Secrets and local configuration
 .env
 .env.*
 !.env.example

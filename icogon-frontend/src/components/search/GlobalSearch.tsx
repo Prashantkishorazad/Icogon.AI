@@ -76,9 +76,9 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
   const isDark =
     resolvedTheme === "dark";
 
-  // =====================================================
-  // LOAD REAL PROJECTS
-  // =====================================================
+  /* =====================================================
+     LOAD PROJECTS
+  ===================================================== */
 
   useEffect(() => {
     if (!open) return;
@@ -121,9 +121,9 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
     };
   }, [open]);
 
-  // =====================================================
-  // RESET + FOCUS
-  // =====================================================
+  /* =====================================================
+     RESET + FOCUS
+  ===================================================== */
 
   useEffect(() => {
     if (!open) return;
@@ -131,22 +131,20 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
     setQuery("");
     setSelectedIndex(0);
 
-    const timer =
-      window.setTimeout(() => {
-        inputRef.current?.focus();
-      }, 50);
+    const timer = window.setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
 
-    return () =>
+    return () => {
       window.clearTimeout(timer);
+    };
   }, [open]);
 
-  // =====================================================
-  // REAL PROJECT SEARCH ITEMS
-  // =====================================================
+  /* =====================================================
+     PROJECT SEARCH ITEMS
+  ===================================================== */
 
-  const projectItems = useMemo<
-    SearchItem[]
-  >(() => {
+  const projectItems = useMemo<SearchItem[]>(() => {
     return projects
       .slice(0, 8)
       .map((project) => ({
@@ -171,26 +169,24 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
       }));
   }, [projects]);
 
-  // =====================================================
-  // ALL SEARCH ITEMS
-  // =====================================================
+  /* =====================================================
+     ALL ITEMS
+  ===================================================== */
 
-const allItems = useMemo<SearchItem[]>(() => {
-  return [
-    ...projectItems,
-    ...searchNavigation,
-    ...settingsNavigation,
-    ...connectorData,
-  ];
-}, [projectItems]);
+  const allItems = useMemo<SearchItem[]>(() => {
+    return [
+      ...projectItems,
+      ...searchNavigation,
+      ...settingsNavigation,
+      ...connectorData,
+    ];
+  }, [projectItems]);
 
-  // =====================================================
-  // FILTER
-  // =====================================================
+  /* =====================================================
+     FILTER
+  ===================================================== */
 
-  const filteredItems = useMemo<
-    SearchItem[]
-  >(() => {
+  const filteredItems = useMemo<SearchItem[]>(() => {
     const normalizedQuery =
       query.trim().toLowerCase();
 
@@ -214,9 +210,9 @@ const allItems = useMemo<SearchItem[]>(() => {
     });
   }, [query, allItems]);
 
-  // =====================================================
-  // KEEP SELECTED INDEX VALID
-  // =====================================================
+  /* =====================================================
+     KEEP INDEX VALID
+  ===================================================== */
 
   useEffect(() => {
     if (
@@ -235,9 +231,9 @@ const allItems = useMemo<SearchItem[]>(() => {
     selectedIndex,
   ]);
 
-  // =====================================================
-  // GROUP RESULTS
-  // =====================================================
+  /* =====================================================
+     GROUP
+  ===================================================== */
 
   const groupedItems = useMemo(() => {
     const groups: Record<
@@ -256,17 +252,13 @@ const allItems = useMemo<SearchItem[]>(() => {
     return groups;
   }, [filteredItems]);
 
-  // =====================================================
-  // SELECT RESULT
-  // =====================================================
+  /* =====================================================
+     SELECT
+  ===================================================== */
 
   const handleSelect = (
     item: SearchItem
   ) => {
-    // -------------------------------------------------
-    // THEME
-    // -------------------------------------------------
-
     if (item.type === "theme") {
       if (item.id === "theme-light") {
         setTheme("light");
@@ -283,33 +275,23 @@ const allItems = useMemo<SearchItem[]>(() => {
       return;
     }
 
-    // -------------------------------------------------
-    // PROJECT / NAVIGATION
-    // -------------------------------------------------
-
     if (item.path) {
       onClose();
-
       navigate(item.path);
     }
   };
 
-  // =====================================================
-  // KEYBOARD NAVIGATION
-  // =====================================================
+  /* =====================================================
+     KEYBOARD
+  ===================================================== */
 
   useEffect(() => {
     const handleKeyboard = (
       event: KeyboardEvent
     ) => {
       const isCommand =
-        (event.metaKey ||
-          event.ctrlKey) &&
+        (event.metaKey || event.ctrlKey) &&
         event.key.toLowerCase() === "k";
-
-      // -------------------------------------------------
-      // CMD K / CTRL K
-      // -------------------------------------------------
 
       if (isCommand) {
         event.preventDefault();
@@ -323,57 +305,37 @@ const allItems = useMemo<SearchItem[]>(() => {
 
       if (!open) return;
 
-      // -------------------------------------------------
-      // ESC
-      // -------------------------------------------------
-
       if (event.key === "Escape") {
         event.preventDefault();
-
         onClose();
-
         return;
       }
-
-      // -------------------------------------------------
-      // ARROW DOWN
-      // -------------------------------------------------
 
       if (event.key === "ArrowDown") {
         event.preventDefault();
 
-        setSelectedIndex(
-          (current) =>
-            Math.min(
-              current + 1,
-              Math.max(
-                filteredItems.length - 1,
-                0
-              )
+        setSelectedIndex((current) =>
+          Math.min(
+            current + 1,
+            Math.max(
+              filteredItems.length - 1,
+              0
             )
+          )
         );
 
         return;
       }
-
-      // -------------------------------------------------
-      // ARROW UP
-      // -------------------------------------------------
 
       if (event.key === "ArrowUp") {
         event.preventDefault();
 
-        setSelectedIndex(
-          (current) =>
-            Math.max(current - 1, 0)
+        setSelectedIndex((current) =>
+          Math.max(current - 1, 0)
         );
 
         return;
       }
-
-      // -------------------------------------------------
-      // ENTER
-      // -------------------------------------------------
 
       if (event.key === "Enter") {
         event.preventDefault();
@@ -404,32 +366,20 @@ const allItems = useMemo<SearchItem[]>(() => {
     selectedIndex,
   ]);
 
-  // =====================================================
-  // SELECTED ITEM
-  // =====================================================
+  /* =====================================================
+     SELECTED
+  ===================================================== */
 
   const selectedItem =
     filteredItems[selectedIndex] ||
     filteredItems[0];
 
-  // =====================================================
-  // RECENT PROJECTS
-  // =====================================================
-
   const recentProjectItems =
     projectItems;
-
-  // =====================================================
-  // CLOSE
-  // =====================================================
 
   if (!open) {
     return null;
   }
-
-  // =====================================================
-  // RENDER
-  // =====================================================
 
   return (
     <div
@@ -438,88 +388,78 @@ const allItems = useMemo<SearchItem[]>(() => {
         inset-0
         z-[999]
         flex
+        items-start
+        justify-center
+        px-4
+        pt-[72px]
+        sm:pt-[90px]
 
         ${
           isDark
-            ? "bg-black/80"
-            : "bg-slate-900/20"
+            ? "bg-black/55"
+            : "bg-slate-900/15"
         }
 
-        backdrop-blur-[2px]
+        backdrop-blur-[3px]
       `}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
     >
       {/* =================================================
-          MAIN PANEL
+          SEARCH PANEL
       ================================================= */}
 
       <div
         className={`
-          absolute
-          left-1/2
-          top-1/2
           flex
-          h-[min(780px,calc(100vh-48px))]
-          w-[min(1180px,calc(100vw-48px))]
-          -translate-x-1/2
-          -translate-y-1/2
+          w-full
+          max-w-[760px]
           overflow-hidden
           rounded-2xl
           border
-          shadow-[0_30px_100px_rgba(0,0,0,0.25)]
+          shadow-[0_24px_80px_rgba(0,0,0,0.20)]
+          transition
 
           ${
             isDark
-              ? "border-[#292929] bg-[#101010] text-white"
+              ? "border-[#292929] bg-[#111111] text-white"
               : "border-slate-200 bg-white text-slate-900"
           }
         `}
       >
         {/* =================================================
-            LEFT
+            MAIN SEARCH
         ================================================= */}
 
-        <div
-          className={`
-            flex
-            w-[560px]
-            shrink-0
-            flex-col
-            border-r
-
-            ${
-              isDark
-                ? "border-[#252525]"
-                : "border-slate-200"
-            }
-          `}
-        >
-          {/* =================================================
-              SEARCH INPUT
-          ================================================= */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* SEARCH HEADER */}
 
           <div
             className={`
               flex
-              h-[64px]
+              h-[58px]
               shrink-0
               items-center
               gap-3
               border-b
-              px-5
+              px-4
 
               ${
                 isDark
-                  ? "border-[#252525]"
+                  ? "border-[#242424]"
                   : "border-slate-200"
               }
             `}
           >
             <Search
-              size={20}
+              size={18}
               strokeWidth={1.8}
               className={
                 isDark
-                  ? "text-[#737373]"
+                  ? "text-[#777]"
                   : "text-slate-400"
               }
             />
@@ -531,22 +471,20 @@ const allItems = useMemo<SearchItem[]>(() => {
                 setQuery(
                   event.target.value
                 );
-
                 setSelectedIndex(0);
               }}
-              placeholder="Search..."
+              placeholder="Search anything..."
               className={`
                 min-w-0
                 flex-1
                 bg-transparent
-                text-[15px]
+                text-[14px]
                 outline-none
-                placeholder:text-slate-400
 
                 ${
                   isDark
                     ? "text-white placeholder:text-[#666]"
-                    : "text-slate-900"
+                    : "text-slate-900 placeholder:text-slate-400"
                 }
               `}
             />
@@ -557,7 +495,6 @@ const allItems = useMemo<SearchItem[]>(() => {
                 onClick={() => {
                   setQuery("");
                   setSelectedIndex(0);
-
                   inputRef.current?.focus();
                 }}
                 className={`
@@ -570,12 +507,12 @@ const allItems = useMemo<SearchItem[]>(() => {
 
                   ${
                     isDark
-                      ? "text-[#888] hover:bg-[#222] hover:text-white"
+                      ? "text-[#777] hover:bg-[#222] hover:text-white"
                       : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                   }
                 `}
               >
-                <X size={15} />
+                <X size={14} />
               </button>
             )}
 
@@ -583,20 +520,20 @@ const allItems = useMemo<SearchItem[]>(() => {
               type="button"
               onClick={onClose}
               className={`
-                hidden
-                h-7
+                flex
+                h-6
                 items-center
                 gap-1
                 rounded-md
                 border
-                px-2
-                text-[10px]
-                sm:flex
+                px-1.5
+                text-[9px]
+                font-medium
 
                 ${
                   isDark
-                    ? "border-[#333] text-[#777]"
-                    : "border-slate-200 text-slate-400"
+                    ? "border-[#333] text-[#666] hover:text-[#aaa]"
+                    : "border-slate-200 text-slate-400 hover:text-slate-600"
                 }
               `}
             >
@@ -608,9 +545,9 @@ const allItems = useMemo<SearchItem[]>(() => {
               RESULTS
           ================================================= */}
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <div className="max-h-[min(560px,calc(100vh-190px))] min-h-[240px] overflow-y-auto p-2.5">
             {filteredItems.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center">
+              <div className="flex min-h-[240px] flex-col items-center justify-center">
                 <div
                   className={`
                     flex
@@ -627,13 +564,13 @@ const allItems = useMemo<SearchItem[]>(() => {
                     }
                   `}
                 >
-                  <Search size={18} />
+                  <Search size={17} />
                 </div>
 
                 <p
                   className={`
                     mt-3
-                    text-sm
+                    text-[13px]
                     font-medium
 
                     ${
@@ -649,7 +586,7 @@ const allItems = useMemo<SearchItem[]>(() => {
                 <p
                   className={`
                     mt-1
-                    text-xs
+                    text-[11px]
 
                     ${
                       isDark
@@ -662,7 +599,7 @@ const allItems = useMemo<SearchItem[]>(() => {
                 </p>
               </div>
             ) : (
-              <div className="space-y-5">
+              <div className="space-y-4">
                 {/* =================================================
                     RECENT PROJECTS
                 ================================================= */}
@@ -671,15 +608,15 @@ const allItems = useMemo<SearchItem[]>(() => {
                   <section>
                     <div
                       className={`
-                        mb-2
+                        mb-1.5
                         flex
                         items-center
-                        gap-2
-                        px-3
-                        text-[10px]
+                        gap-1.5
+                        px-2.5
+                        text-[9px]
                         font-semibold
                         uppercase
-                        tracking-[0.08em]
+                        tracking-[0.09em]
 
                         ${
                           isDark
@@ -688,7 +625,7 @@ const allItems = useMemo<SearchItem[]>(() => {
                         }
                       `}
                     >
-                      <Clock3 size={12} />
+                      <Clock3 size={11} />
                       Recent projects
                     </div>
 
@@ -697,11 +634,11 @@ const allItems = useMemo<SearchItem[]>(() => {
                         className={`
                           flex
                           items-center
-                          gap-3
+                          gap-2.5
                           rounded-lg
-                          px-3
-                          py-4
-                          text-xs
+                          px-2.5
+                          py-3
+                          text-[11px]
 
                           ${
                             isDark
@@ -711,23 +648,23 @@ const allItems = useMemo<SearchItem[]>(() => {
                         `}
                       >
                         <Loader2
-                          size={15}
+                          size={14}
                           className="animate-spin"
                         />
 
-                        Loading recent projects...
+                        Loading projects...
                       </div>
                     ) : projectsError ? (
                       <div
                         className={`
                           rounded-lg
-                          px-3
-                          py-4
-                          text-xs
+                          px-2.5
+                          py-3
+                          text-[11px]
 
                           ${
                             isDark
-                              ? "bg-[#141414] text-[#777]"
+                              ? "bg-[#151515] text-[#777]"
                               : "bg-slate-50 text-slate-400"
                           }
                         `}
@@ -746,16 +683,16 @@ const allItems = useMemo<SearchItem[]>(() => {
                           flex
                           w-full
                           items-center
-                          gap-3
+                          gap-2.5
                           rounded-lg
-                          p-3
+                          p-2.5
                           text-left
                           transition
 
                           ${
                             isDark
-                              ? "bg-[#141414] text-[#aaa] hover:bg-[#202020]"
-                              : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                              ? "hover:bg-[#1d1d1d]"
+                              : "hover:bg-slate-50"
                           }
                         `}
                       >
@@ -764,24 +701,25 @@ const allItems = useMemo<SearchItem[]>(() => {
                             flex
                             h-8
                             w-8
+                            shrink-0
                             items-center
                             justify-center
                             rounded-lg
 
                             ${
                               isDark
-                                ? "bg-[#242424]"
-                                : "bg-white"
+                                ? "bg-[#202020] text-[#888]"
+                                : "bg-slate-100 text-slate-500"
                             }
                           `}
                         >
                           <FolderKanban
-                            size={16}
+                            size={15}
                           />
                         </div>
 
                         <div>
-                          <p className="text-[13px] font-medium">
+                          <p className="text-[12px] font-medium">
                             No recent projects
                           </p>
 
@@ -843,18 +781,13 @@ const allItems = useMemo<SearchItem[]>(() => {
                 )}
 
                 {/* =================================================
-                    ALL CATEGORIES
+                    CATEGORIES
                 ================================================= */}
 
                 {Object.entries(
                   groupedItems
                 ).map(
                   ([category, items]) => {
-                    /*
-                     * When there is no query,
-                     * Recent projects have already
-                     * been rendered above.
-                     */
                     if (
                       !query &&
                       category ===
@@ -869,12 +802,12 @@ const allItems = useMemo<SearchItem[]>(() => {
                       >
                         <div
                           className={`
-                            mb-2
-                            px-3
-                            text-[10px]
+                            mb-1.5
+                            px-2.5
+                            text-[9px]
                             font-semibold
                             uppercase
-                            tracking-[0.08em]
+                            tracking-[0.09em]
 
                             ${
                               isDark
@@ -940,27 +873,27 @@ const allItems = useMemo<SearchItem[]>(() => {
           <div
             className={`
               flex
-              h-[48px]
+              h-[42px]
               shrink-0
               items-center
-              gap-4
+              gap-3
               border-t
-              px-4
-              text-[10px]
+              px-3
+              text-[9px]
 
               ${
                 isDark
-                  ? "border-[#252525] text-[#666]"
+                  ? "border-[#242424] text-[#666]"
                   : "border-slate-200 text-slate-400"
               }
             `}
           >
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1">
               <kbd
                 className={`
                   rounded
                   border
-                  px-1.5
+                  px-1
                   py-0.5
 
                   ${
@@ -977,7 +910,7 @@ const allItems = useMemo<SearchItem[]>(() => {
                 className={`
                   rounded
                   border
-                  px-1.5
+                  px-1
                   py-0.5
 
                   ${
@@ -993,12 +926,12 @@ const allItems = useMemo<SearchItem[]>(() => {
               Navigate
             </span>
 
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1">
               <kbd
                 className={`
                   rounded
                   border
-                  px-1.5
+                  px-1
                   py-0.5
 
                   ${
@@ -1014,25 +947,10 @@ const allItems = useMemo<SearchItem[]>(() => {
               Open
             </span>
 
-            <span className="flex items-center gap-1.5">
-              <kbd
-                className={`
-                  rounded
-                  border
-                  px-1.5
-                  py-0.5
+            <span className="ml-auto flex items-center gap-1">
+              <Command size={10} />
 
-                  ${
-                    isDark
-                      ? "border-[#333]"
-                      : "border-slate-200"
-                  }
-                `}
-              >
-                Esc
-              </kbd>
-
-              Close
+              K
             </span>
           </div>
         </div>
@@ -1044,15 +962,16 @@ const allItems = useMemo<SearchItem[]>(() => {
         <div
           className={`
             hidden
-            min-w-0
-            flex-1
+            w-[300px]
+            shrink-0
             flex-col
+            border-l
             md:flex
 
             ${
               isDark
-                ? "bg-[#0c0c0c]"
-                : "bg-[#fafafa]"
+                ? "border-[#242424] bg-[#0c0c0c]"
+                : "border-slate-200 bg-slate-50/70"
             }
           `}
         >
@@ -1061,23 +980,23 @@ const allItems = useMemo<SearchItem[]>(() => {
           <div
             className={`
               flex
-              h-[64px]
+              h-[58px]
               shrink-0
               items-center
               justify-between
               border-b
-              px-6
+              px-4
 
               ${
                 isDark
-                  ? "border-[#252525]"
+                  ? "border-[#242424]"
                   : "border-slate-200"
               }
             `}
           >
-            <div
+            <span
               className={`
-                text-[11px]
+                text-[10px]
                 font-medium
 
                 ${
@@ -1088,10 +1007,10 @@ const allItems = useMemo<SearchItem[]>(() => {
               `}
             >
               Preview
-            </div>
+            </span>
 
             <Command
-              size={15}
+              size={13}
               className={
                 isDark
                   ? "text-[#444]"
@@ -1102,24 +1021,22 @@ const allItems = useMemo<SearchItem[]>(() => {
 
           {/* PREVIEW CONTENT */}
 
-          <div className="flex flex-1 items-center justify-center overflow-y-auto p-10">
+          <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">
             {selectedItem ? (
-              <div className="w-full max-w-[420px]">
-                {/* ICON */}
-
+              <div className="w-full">
                 <div
                   className={`
                     flex
-                    h-16
-                    w-16
+                    h-12
+                    w-12
                     items-center
                     justify-center
-                    rounded-2xl
+                    rounded-xl
                     border
 
                     ${
                       isDark
-                        ? "border-[#333] bg-[#1b1b1b]"
+                        ? "border-[#303030] bg-[#191919]"
                         : "border-slate-200 bg-white"
                     }
                   `}
@@ -1127,8 +1044,8 @@ const allItems = useMemo<SearchItem[]>(() => {
                   {React.createElement(
                     selectedItem.icon,
                     {
-                      size: 27,
-                      strokeWidth: 1.6,
+                      size: 21,
+                      strokeWidth: 1.7,
                       className:
                         isDark
                           ? "text-[#aaa]"
@@ -1137,12 +1054,10 @@ const allItems = useMemo<SearchItem[]>(() => {
                   )}
                 </div>
 
-                {/* TITLE */}
-
                 <p
                   className={`
-                    mt-6
-                    text-2xl
+                    mt-4
+                    text-lg
                     font-semibold
                     tracking-tight
 
@@ -1156,12 +1071,11 @@ const allItems = useMemo<SearchItem[]>(() => {
                   {selectedItem.title}
                 </p>
 
-                {/* DESCRIPTION */}
-
                 <p
                   className={`
-                    mt-2
-                    text-sm
+                    mt-1.5
+                    text-xs
+                    leading-relaxed
 
                     ${
                       isDark
@@ -1174,16 +1088,14 @@ const allItems = useMemo<SearchItem[]>(() => {
                     `Open ${selectedItem.title}`}
                 </p>
 
-                {/* PROJECT DETAILS */}
-
                 {selectedItem.project && (
                   <div
                     className={`
-                      mt-6
-                      space-y-4
+                      mt-5
+                      space-y-3
                       rounded-xl
                       border
-                      p-4
+                      p-3
 
                       ${
                         isDark
@@ -1195,7 +1107,7 @@ const allItems = useMemo<SearchItem[]>(() => {
                     <div>
                       <p
                         className={`
-                          text-[10px]
+                          text-[9px]
                           font-semibold
                           uppercase
                           tracking-[0.08em]
@@ -1213,7 +1125,8 @@ const allItems = useMemo<SearchItem[]>(() => {
                       <p
                         className={`
                           mt-1
-                          text-sm
+                          truncate
+                          text-xs
                           font-medium
 
                           ${
@@ -1230,13 +1143,11 @@ const allItems = useMemo<SearchItem[]>(() => {
                       </p>
                     </div>
 
-                    {selectedItem
-                      .project
-                      .description && (
+                    {selectedItem.project.description && (
                       <div>
                         <p
                           className={`
-                            text-[10px]
+                            text-[9px]
                             font-semibold
                             uppercase
                             tracking-[0.08em]
@@ -1255,7 +1166,7 @@ const allItems = useMemo<SearchItem[]>(() => {
                           className={`
                             mt-1
                             line-clamp-3
-                            text-xs
+                            text-[11px]
                             leading-relaxed
 
                             ${
@@ -1277,7 +1188,7 @@ const allItems = useMemo<SearchItem[]>(() => {
                     <div>
                       <p
                         className={`
-                          text-[10px]
+                          text-[9px]
                           font-semibold
                           uppercase
                           tracking-[0.08em]
@@ -1295,7 +1206,7 @@ const allItems = useMemo<SearchItem[]>(() => {
                       <p
                         className={`
                           mt-1
-                          text-sm
+                          text-[11px]
 
                           ${
                             isDark
@@ -1310,15 +1221,13 @@ const allItems = useMemo<SearchItem[]>(() => {
                   </div>
                 )}
 
-                {/* NORMAL CATEGORY */}
-
                 {!selectedItem.project && (
                   <div
                     className={`
-                      mt-6
+                      mt-5
                       rounded-xl
                       border
-                      p-4
+                      p-3
 
                       ${
                         isDark
@@ -1329,7 +1238,7 @@ const allItems = useMemo<SearchItem[]>(() => {
                   >
                     <p
                       className={`
-                        text-[10px]
+                        text-[9px]
                         font-semibold
                         uppercase
                         tracking-[0.08em]
@@ -1347,7 +1256,7 @@ const allItems = useMemo<SearchItem[]>(() => {
                     <p
                       className={`
                         mt-1
-                        text-sm
+                        text-xs
 
                         ${
                           isDark
@@ -1361,8 +1270,6 @@ const allItems = useMemo<SearchItem[]>(() => {
                   </div>
                 )}
 
-                {/* OPEN BUTTON */}
-
                 {selectedItem.path && (
                   <button
                     type="button"
@@ -1372,14 +1279,16 @@ const allItems = useMemo<SearchItem[]>(() => {
                       )
                     }
                     className={`
-                      mt-4
+                      mt-3
                       flex
+                      w-full
                       items-center
+                      justify-center
                       gap-2
-                      rounded-xl
-                      px-4
-                      py-2.5
-                      text-sm
+                      rounded-lg
+                      px-3
+                      py-2
+                      text-xs
                       font-medium
                       transition
 
@@ -1395,7 +1304,7 @@ const allItems = useMemo<SearchItem[]>(() => {
                       : "Open"}
 
                     <ExternalLink
-                      size={14}
+                      size={12}
                     />
                   </button>
                 )}
@@ -1403,7 +1312,7 @@ const allItems = useMemo<SearchItem[]>(() => {
             ) : (
               <p
                 className={`
-                  text-sm
+                  text-xs
 
                   ${
                     isDark
@@ -1418,20 +1327,18 @@ const allItems = useMemo<SearchItem[]>(() => {
           </div>
         </div>
 
-        {/* =================================================
-            MOBILE CLOSE
-        ================================================= */}
+        {/* MOBILE CLOSE */}
 
         <button
           type="button"
           onClick={onClose}
           className={`
             absolute
-            right-4
-            top-4
+            right-3
+            top-3
             flex
-            h-8
-            w-8
+            h-7
+            w-7
             items-center
             justify-center
             rounded-lg
@@ -1444,7 +1351,7 @@ const allItems = useMemo<SearchItem[]>(() => {
             }
           `}
         >
-          <X size={17} />
+          <X size={15} />
         </button>
       </div>
     </div>

@@ -9,6 +9,8 @@ import {
   FolderOpen,
   Plus,
   Trash2,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
@@ -21,14 +23,23 @@ import {
   type ProjectResponse,
 } from "../../api/projectApi";
 
+import { useTheme } from "../../context/ThemeContext";
 
 // ============================================================
 // PAGE
 // ============================================================
 
 const ProjectsPage: React.FC = () => {
-
   const navigate = useNavigate();
+
+  // ----------------------------------------------------------
+  // THEME
+  // ----------------------------------------------------------
+
+  const { resolvedTheme } = useTheme();
+
+  const isDark =
+    resolvedTheme === "dark";
 
   // ----------------------------------------------------------
   // SIDEBAR
@@ -38,7 +49,6 @@ const ProjectsPage: React.FC = () => {
     sidebarCollapsed,
     setSidebarCollapsed,
   ] = useState<boolean>(false);
-
 
   // ----------------------------------------------------------
   // PROJECTS
@@ -59,24 +69,19 @@ const ProjectsPage: React.FC = () => {
     setError,
   ] = useState<string>("");
 
-
   // ----------------------------------------------------------
   // LOAD PROJECTS
   // ----------------------------------------------------------
 
   const loadProjects = async (): Promise<void> => {
-
     try {
-
       setLoading(true);
       setError("");
 
       const data = await getProjectsApi();
 
       setProjects(data);
-
     } catch (err: any) {
-
       console.error(
         "Failed to load projects:",
         err
@@ -84,28 +89,21 @@ const ProjectsPage: React.FC = () => {
 
       setError(
         err?.response?.data?.detail ||
-        err?.message ||
-        "Failed to load projects."
+          err?.message ||
+          "Failed to load projects."
       );
-
     } finally {
-
       setLoading(false);
-
     }
   };
-
 
   // ----------------------------------------------------------
   // INITIAL LOAD
   // ----------------------------------------------------------
 
   useEffect(() => {
-
     loadProjects();
-
   }, []);
-
 
   // ----------------------------------------------------------
   // DELETE
@@ -114,7 +112,6 @@ const ProjectsPage: React.FC = () => {
   const handleDelete = async (
     projectId: string
   ): Promise<void> => {
-
     const confirmed = window.confirm(
       "Are you sure you want to delete this project?"
     );
@@ -124,7 +121,6 @@ const ProjectsPage: React.FC = () => {
     }
 
     try {
-
       await deleteProjectApi(projectId);
 
       setProjects((current) =>
@@ -133,9 +129,7 @@ const ProjectsPage: React.FC = () => {
             project.id !== projectId
         )
       );
-
     } catch (err: any) {
-
       console.error(
         "Failed to delete project:",
         err
@@ -143,12 +137,11 @@ const ProjectsPage: React.FC = () => {
 
       alert(
         err?.response?.data?.detail ||
-        err?.message ||
-        "Failed to delete project."
+          err?.message ||
+          "Failed to delete project."
       );
     }
   };
-
 
   // ----------------------------------------------------------
   // DATE
@@ -157,7 +150,6 @@ const ProjectsPage: React.FC = () => {
   const formatDate = (
     project: ProjectResponse
   ): string => {
-
     const value =
       project.updated_at ||
       project.created_at;
@@ -182,7 +174,6 @@ const ProjectsPage: React.FC = () => {
     );
   };
 
-
   // ----------------------------------------------------------
   // INITIAL
   // ----------------------------------------------------------
@@ -190,7 +181,6 @@ const ProjectsPage: React.FC = () => {
   const getInitial = (
     name: string
   ): string => {
-
     return (
       name
         ?.trim()
@@ -200,22 +190,25 @@ const ProjectsPage: React.FC = () => {
     );
   };
 
-
   // ==========================================================
   // RENDER
   // ==========================================================
 
   return (
-
     <div
-      className="
+      className={`
         min-h-screen
         overflow-x-hidden
-        bg-[#050505]
-        text-white
-      "
-    >
+        transition-colors
+        duration-200
 
+        ${
+          isDark
+            ? "bg-[#080808] text-white"
+            : "bg-[#fafafa] text-slate-900"
+        }
+      `}
+    >
       {/* ======================================================
           SIDEBAR
       ====================================================== */}
@@ -225,7 +218,6 @@ const ProjectsPage: React.FC = () => {
         setCollapsed={setSidebarCollapsed}
       />
 
-
       {/* ======================================================
           MAIN
       ====================================================== */}
@@ -234,117 +226,140 @@ const ProjectsPage: React.FC = () => {
         className={`
           min-h-screen
           transition-[padding]
-          duration-300
+          duration-200
           ease-in-out
 
           ${
             sidebarCollapsed
-              ? "pl-[84px]"
-              : "pl-[280px]"
+              ? "pl-[72px]"
+              : "pl-[232px]"
           }
         `}
       >
-
         {/* ====================================================
             HEADER
         ==================================================== */}
 
         <header
-          className="
+          className={`
             sticky
             top-0
             z-30
-
-            h-[82px]
-
+            h-[54px]
             border-b
-            border-white/[0.06]
-
-            bg-[#050505]/95
             backdrop-blur-xl
-          "
-        >
+            transition-colors
 
+            ${
+              isDark
+                ? "border-[#242424] bg-[#080808]/90"
+                : "border-slate-200 bg-white/90"
+            }
+          `}
+        >
           <div
             className="
               flex
               h-full
               items-center
               justify-between
-
-              px-6
-              lg:px-10
-              xl:px-12
+              px-5
+              lg:px-7
             "
           >
+            <div className="flex items-center gap-2.5">
+              <div
+                className={`
+                  flex
+                  h-7
+                  w-7
+                  items-center
+                  justify-center
+                  rounded-lg
 
-            <div>
-
-              <p
-                className="
-                  text-sm
-                  text-slate-500
-                "
+                  ${
+                    isDark
+                      ? "bg-[#1d1d1d]"
+                      : "bg-slate-100"
+                  }
+                `}
               >
-                ICOGON AI
-              </p>
+                <FolderOpen
+                  size={14}
+                  className={
+                    isDark
+                      ? "text-[#aaa]"
+                      : "text-slate-500"
+                  }
+                />
+              </div>
 
-              <h1
-                className="
-                  mt-0.5
-                  text-base
-                  font-semibold
-                  text-white
-                "
-              >
-                My Projects
-              </h1>
+              <div>
+                <p
+                  className={`
+                    text-[12px]
+                    font-medium
 
+                    ${
+                      isDark
+                        ? "text-white"
+                        : "text-slate-800"
+                    }
+                  `}
+                >
+                  My Projects
+                </p>
+
+                <p
+                  className={`
+                    hidden
+                    text-[9px]
+                    sm:block
+
+                    ${
+                      isDark
+                        ? "text-[#666]"
+                        : "text-slate-400"
+                    }
+                  `}
+                >
+                  {projects.length}{" "}
+                  {projects.length === 1
+                    ? "project"
+                    : "projects"}
+                </p>
+              </div>
             </div>
-
 
             <button
               type="button"
               onClick={() =>
                 navigate("/builder")
               }
-              className="
+              className={`
                 inline-flex
                 items-center
-                gap-2
-
-                rounded-xl
-
-                border
-                border-cyan-500/20
-
-                bg-cyan-500/[0.08]
-
-                px-4
-                py-2.5
-
-                text-sm
+                gap-1.5
+                rounded-lg
+                px-3
+                py-1.5
+                text-[11px]
                 font-medium
-                text-cyan-400
-
                 transition
 
-                hover:border-cyan-500/40
-                hover:bg-cyan-500/[0.14]
-                hover:text-cyan-300
-              "
+                ${
+                  isDark
+                    ? "bg-white text-black hover:bg-[#ddd]"
+                    : "bg-slate-900 text-white hover:bg-slate-800"
+                }
+              `}
             >
+              <Plus size={13} />
 
-              <Plus size={16} />
-
-              New Project
-
+              New project
             </button>
-
           </div>
-
         </header>
-
 
         {/* ====================================================
             CONTENT
@@ -353,102 +368,167 @@ const ProjectsPage: React.FC = () => {
         <main
           className="
             mx-auto
-            min-h-[calc(100vh-82px)]
-            max-w-[1500px]
-
-            px-6
-            py-10
-
-            lg:px-10
-            xl:px-12
+            min-h-[calc(100vh-54px)]
+            max-w-[1320px]
+            px-5
+            py-7
+            lg:px-8
           "
         >
-
           {/* ==================================================
-              TITLE
+              PAGE INTRO
           ================================================== */}
 
-          <section
-            className="
-              mb-8
-            "
-          >
+          <section className="mb-6">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles
+                    size={14}
+                    className={
+                      isDark
+                        ? "text-[#aaa]"
+                        : "text-slate-500"
+                    }
+                  />
 
-            <p
-              className="
-                text-sm
-                font-medium
-                text-cyan-400
-              "
-            >
-              Workspace
-            </p>
+                  <span
+                    className={`
+                      text-[10px]
+                      font-semibold
+                      uppercase
+                      tracking-[0.1em]
 
-            <h2
-              className="
-                mt-2
-                text-3xl
-                font-semibold
-                tracking-tight
+                      ${
+                        isDark
+                          ? "text-[#666]"
+                          : "text-slate-400"
+                      }
+                    `}
+                  >
+                    Workspace
+                  </span>
+                </div>
 
-                md:text-4xl
-              "
-            >
-              Projects
-            </h2>
+                <h1
+                  className={`
+                    mt-2
+                    text-2xl
+                    font-semibold
+                    tracking-tight
+                    sm:text-3xl
 
-            <p
-              className="
-                mt-3
-                max-w-2xl
-                text-sm
-                leading-6
-                text-slate-500
+                    ${
+                      isDark
+                        ? "text-white"
+                        : "text-slate-900"
+                    }
+                  `}
+                >
+                  Projects
+                </h1>
 
-                md:text-base
-              "
-            >
-              Build and manage your AI projects
-              in one place.
-            </p>
+                <p
+                  className={`
+                    mt-1.5
+                    max-w-xl
+                    text-xs
+                    leading-5
+                    sm:text-sm
 
+                    ${
+                      isDark
+                        ? "text-[#777]"
+                        : "text-slate-500"
+                    }
+                  `}
+                >
+                  Build and manage everything
+                  you create with ICOGON AI.
+                </p>
+              </div>
+
+              {projects.length > 0 && (
+                <button
+                  type="button"
+                  onClick={loadProjects}
+                  disabled={loading}
+                  className={`
+                    hidden
+                    h-8
+                    w-8
+                    items-center
+                    justify-center
+                    rounded-lg
+                    border
+                    transition
+                    sm:flex
+
+                    ${
+                      isDark
+                        ? "border-[#292929] text-[#777] hover:bg-[#181818] hover:text-white"
+                        : "border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    }
+                  `}
+                  title="Refresh projects"
+                >
+                  <RefreshCw
+                    size={13}
+                    className={
+                      loading
+                        ? "animate-spin"
+                        : ""
+                    }
+                  />
+                </button>
+              )}
+            </div>
           </section>
-
 
           {/* ==================================================
               ERROR
           ================================================== */}
 
           {!loading && error && (
-
             <div
-              className="
-                rounded-2xl
+              className={`
+                rounded-xl
                 border
-                border-red-500/20
+                p-5
 
-                bg-red-500/[0.05]
-
-                p-6
-              "
+                ${
+                  isDark
+                    ? "border-red-500/20 bg-red-500/[0.05]"
+                    : "border-red-200 bg-red-50"
+                }
+              `}
             >
-
               <h3
-                className="
-                  text-sm
+                className={`
+                  text-xs
                   font-semibold
-                  text-red-300
-                "
+
+                  ${
+                    isDark
+                      ? "text-red-300"
+                      : "text-red-700"
+                  }
+                `}
               >
                 Unable to load projects
               </h3>
 
               <p
-                className="
-                  mt-2
-                  text-sm
-                  text-red-400/80
-                "
+                className={`
+                  mt-1.5
+                  text-xs
+
+                  ${
+                    isDark
+                      ? "text-red-400/70"
+                      : "text-red-600/70"
+                  }
+                `}
               >
                 {error}
               </p>
@@ -456,71 +536,129 @@ const ProjectsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={loadProjects}
-                className="
+                className={`
                   mt-4
-                  rounded-xl
+                  inline-flex
+                  items-center
+                  gap-1.5
+                  rounded-lg
                   border
-                  border-white/[0.08]
-                  bg-white/[0.04]
+                  px-3
+                  py-1.5
+                  text-[11px]
+                  transition
 
-                  px-4
-                  py-2
-
-                  text-sm
-                  text-slate-300
-
-                  hover:bg-white/[0.08]
-                "
+                  ${
+                    isDark
+                      ? "border-[#333] bg-[#151515] text-[#ccc] hover:bg-[#202020]"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }
+                `}
               >
+                <RefreshCw size={12} />
+
                 Try again
               </button>
-
             </div>
-
           )}
-
 
           {/* ==================================================
               LOADING
           ================================================== */}
 
           {loading && (
-
             <div
               className="
                 grid
-                gap-4
-
+                gap-3
                 sm:grid-cols-2
                 lg:grid-cols-3
+                xl:grid-cols-4
               "
             >
-
-              {[1, 2, 3].map(
+              {[1, 2, 3, 4].map(
                 (item) => (
-
                   <div
                     key={item}
-                    className="
-                      h-[230px]
-
+                    className={`
+                      h-[190px]
                       animate-pulse
-
-                      rounded-2xl
+                      rounded-xl
                       border
-                      border-white/[0.06]
 
-                      bg-[#0a0a0a]
-                    "
-                  />
+                      ${
+                        isDark
+                          ? "border-[#202020] bg-[#101010]"
+                          : "border-slate-200 bg-white"
+                      }
+                    `}
+                  >
+                    <div
+                      className={`
+                        m-4
+                        h-9
+                        w-9
+                        rounded-lg
 
+                        ${
+                          isDark
+                            ? "bg-[#1b1b1b]"
+                            : "bg-slate-100"
+                        }
+                      `}
+                    />
+
+                    <div
+                      className={`
+                        mx-4
+                        h-3
+                        w-2/3
+                        rounded
+
+                        ${
+                          isDark
+                            ? "bg-[#1b1b1b]"
+                            : "bg-slate-100"
+                        }
+                      `}
+                    />
+
+                    <div
+                      className={`
+                        mx-4
+                        mt-3
+                        h-2
+                        w-5/6
+                        rounded
+
+                        ${
+                          isDark
+                            ? "bg-[#171717]"
+                            : "bg-slate-100"
+                        }
+                      `}
+                    />
+
+                    <div
+                      className={`
+                        mx-4
+                        mt-2
+                        h-2
+                        w-1/2
+                        rounded
+
+                        ${
+                          isDark
+                            ? "bg-[#171717]"
+                            : "bg-slate-100"
+                        }
+                      `}
+                    />
+                  </div>
                 )
               )}
-
             </div>
-
           )}
-
 
           {/* ==================================================
               EMPTY
@@ -529,128 +667,111 @@ const ProjectsPage: React.FC = () => {
           {!loading &&
             !error &&
             projects.length === 0 && (
-
               <div
-                className="
+                className={`
                   flex
-                  min-h-[430px]
-
+                  min-h-[390px]
                   flex-col
                   items-center
                   justify-center
-
-                  rounded-[28px]
-
+                  rounded-2xl
                   border
                   border-dashed
-                  border-white/[0.08]
-
-                  bg-[#080808]
-
                   px-6
                   py-12
-
                   text-center
-                "
+
+                  ${
+                    isDark
+                      ? "border-[#292929] bg-[#0c0c0c]"
+                      : "border-slate-200 bg-white"
+                  }
+                `}
               >
-
                 <div
-                  className="
-                    mb-6
-
+                  className={`
                     flex
-                    h-16
-                    w-16
-
+                    h-12
+                    w-12
                     items-center
                     justify-center
+                    rounded-xl
 
-                    rounded-2xl
-
-                    border
-                    border-cyan-500/10
-
-                    bg-cyan-500/[0.06]
-
-                    text-cyan-400
-                  "
+                    ${
+                      isDark
+                        ? "bg-[#181818] text-[#888]"
+                        : "bg-slate-100 text-slate-500"
+                    }
+                  `}
                 >
-
-                  <FolderOpen size={27} />
-
+                  <FolderOpen size={21} />
                 </div>
 
-
                 <h3
-                  className="
-                    text-lg
+                  className={`
+                    mt-4
+                    text-sm
                     font-semibold
-                    text-white
-                  "
+
+                    ${
+                      isDark
+                        ? "text-white"
+                        : "text-slate-900"
+                    }
+                  `}
                 >
                   No projects yet
                 </h3>
 
-
                 <p
-                  className="
-                    mt-2
-                    max-w-md
+                  className={`
+                    mt-1.5
+                    max-w-sm
+                    text-xs
+                    leading-5
 
-                    text-sm
-                    leading-6
-                    text-slate-600
-                  "
+                    ${
+                      isDark
+                        ? "text-[#666]"
+                        : "text-slate-400"
+                    }
+                  `}
                 >
-                  Start your first project by
-                  describing what you want
-                  ICOGON AI to build.
+                  Describe what you want
+                  to build and let ICOGON AI
+                  create your first project.
                 </p>
-
 
                 <button
                   type="button"
                   onClick={() =>
                     navigate("/builder")
                   }
-                  className="
-                    mt-6
-
+                  className={`
+                    mt-5
                     inline-flex
                     items-center
-                    gap-2
-
-                    rounded-xl
-
-                    border
-                    border-cyan-500/20
-
-                    bg-cyan-500/[0.08]
-
-                    px-5
-                    py-2.5
-
-                    text-sm
+                    gap-1.5
+                    rounded-lg
+                    px-4
+                    py-2
+                    text-xs
                     font-medium
-                    text-cyan-400
-
                     transition
 
-                    hover:border-cyan-500/40
-                    hover:bg-cyan-500/[0.14]
-                  "
+                    ${
+                      isDark
+                        ? "bg-white text-black hover:bg-[#ddd]"
+                        : "bg-slate-900 text-white hover:bg-slate-800"
+                    }
+                  `}
                 >
+                  <Plus size={13} />
 
-                  <Plus size={16} />
-
-                  Create your first project
-
+                  Create project
                 </button>
-
               </div>
-
             )}
-
 
           {/* ==================================================
               PROJECT GRID
@@ -659,82 +780,61 @@ const ProjectsPage: React.FC = () => {
           {!loading &&
             !error &&
             projects.length > 0 && (
-
               <div
                 className="
                   grid
-                  gap-5
-
+                  gap-3
                   sm:grid-cols-2
                   lg:grid-cols-3
+                  xl:grid-cols-4
                 "
               >
-
                 {projects.map(
                   (project) => (
-
                     <article
                       key={project.id}
-                      className="
+                      className={`
                         group
-
                         relative
                         overflow-hidden
-
-                        rounded-2xl
-
+                        rounded-xl
                         border
-                        border-white/[0.07]
-
-                        bg-[#0a0a0a]
-
-                        p-5
-
+                        p-4
                         transition-all
-                        duration-200
+                        duration-150
 
-                        hover:-translate-y-1
-                        hover:border-cyan-500/20
-                        hover:bg-[#0d0d0d]
-                      "
+                        ${
+                          isDark
+                            ? "border-[#242424] bg-[#101010] hover:border-[#353535] hover:bg-[#121212]"
+                            : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+                        }
+                      `}
                     >
-
                       {/* TOP */}
 
-                      <div
-                        className="
-                          flex
-                          items-start
-                          justify-between
-                        "
-                      >
-
+                      <div className="flex items-start justify-between">
                         <div
-                          className="
+                          className={`
                             flex
-                            h-11
-                            w-11
-
+                            h-9
+                            w-9
                             items-center
                             justify-center
-
-                            rounded-xl
-
-                            border
-                            border-cyan-500/10
-
-                            bg-cyan-500/[0.06]
-
-                            text-sm
+                            rounded-lg
+                            text-xs
                             font-semibold
-                            text-cyan-400
-                          "
+
+                            ${
+                              isDark
+                                ? "bg-[#1d1d1d] text-[#aaa]"
+                                : "bg-slate-100 text-slate-600"
+                            }
+                          `}
                         >
                           {getInitial(
                             project.name
                           )}
                         </div>
-
 
                         <button
                           type="button"
@@ -743,98 +843,106 @@ const ProjectsPage: React.FC = () => {
                               project.id
                             )
                           }
-                          className="
-                            rounded-lg
-                            p-2
-
-                            text-slate-700
-
+                          className={`
+                            flex
+                            h-7
+                            w-7
+                            items-center
+                            justify-center
+                            rounded-md
+                            opacity-0
                             transition
+                            group-hover:opacity-100
 
-                            hover:bg-red-500/10
-                            hover:text-red-400
-                          "
+                            ${
+                              isDark
+                                ? "text-[#666] hover:bg-red-500/10 hover:text-red-400"
+                                : "text-slate-400 hover:bg-red-50 hover:text-red-500"
+                            }
+                          `}
                           title="Delete project"
                         >
-
-                          <Trash2 size={16} />
-
+                          <Trash2 size={13} />
                         </button>
-
                       </div>
-
 
                       {/* NAME */}
 
                       <h3
-                        className="
-                          mt-5
-
+                        className={`
+                          mt-4
                           truncate
-
-                          text-base
+                          text-[13px]
                           font-semibold
-                          text-white
-                        "
+
+                          ${
+                            isDark
+                              ? "text-white"
+                              : "text-slate-900"
+                          }
+                        `}
+                        title={project.name}
                       >
                         {project.name}
                       </h3>
 
-
                       {/* DESCRIPTION */}
 
                       <p
-                        className="
-                          mt-2
-
-                          min-h-[48px]
-
+                        className={`
+                          mt-1.5
+                          min-h-[40px]
                           line-clamp-2
+                          text-[11px]
+                          leading-5
 
-                          text-sm
-                          leading-6
-                          text-slate-600
-                        "
+                          ${
+                            isDark
+                              ? "text-[#666]"
+                              : "text-slate-400"
+                          }
+                        `}
                       >
                         {project.description ||
                           "No project description"}
                       </p>
 
-
                       {/* FOOTER */}
 
                       <div
-                        className="
-                          mt-5
-
+                        className={`
+                          mt-4
                           flex
                           items-center
                           justify-between
-
                           border-t
-                          border-white/[0.05]
+                          pt-3
 
-                          pt-4
-                        "
+                          ${
+                            isDark
+                              ? "border-[#202020]"
+                              : "border-slate-100"
+                          }
+                        `}
                       >
-
                         <div
-                          className="
+                          className={`
                             flex
                             items-center
                             gap-1.5
+                            text-[9px]
 
-                            text-[11px]
-                            text-slate-700
-                          "
+                            ${
+                              isDark
+                                ? "text-[#555]"
+                                : "text-slate-400"
+                            }
+                          `}
                         >
-
-                          <Clock3 size={12} />
+                          <Clock3 size={10} />
 
                           {formatDate(project)}
-
                         </div>
-
 
                         <button
                           type="button"
@@ -843,47 +951,38 @@ const ProjectsPage: React.FC = () => {
                               `/builder/${project.id}`
                             )
                           }
-                          className="
+                          className={`
                             flex
                             items-center
                             gap-1
-
-                            text-xs
+                            text-[10px]
                             font-medium
-                            text-slate-500
-
                             transition
 
-                            group-hover:text-cyan-400
-                          "
+                            ${
+                              isDark
+                                ? "text-[#777] hover:text-white"
+                                : "text-slate-400 hover:text-slate-900"
+                            }
+                          `}
                         >
-
                           Open
 
                           <ArrowRight
-                            size={13}
+                            size={11}
+                            className="transition-transform group-hover:translate-x-0.5"
                           />
-
                         </button>
-
                       </div>
-
                     </article>
-
                   )
                 )}
-
               </div>
-
             )}
-
         </main>
-
       </div>
-
     </div>
   );
 };
-
 
 export default ProjectsPage;

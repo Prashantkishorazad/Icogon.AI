@@ -7,12 +7,8 @@ import React, {
 import {
   Home,
   Search,
-  BookOpen,
   Plug,
-  LayoutGrid,
-  Star,
-  User,
-  Users,
+  FolderKanban,
   ChevronDown,
   ChevronRight,
   PanelLeftClose,
@@ -26,6 +22,7 @@ import {
   Monitor,
   Check,
   Palette,
+  User,
 } from "lucide-react";
 
 import {
@@ -34,7 +31,6 @@ import {
 } from "react-router-dom";
 
 import { useAuthStore } from "../../store/authStore";
-import { supabase } from "../../lib/supabase";
 
 import {
   useTheme,
@@ -43,19 +39,25 @@ import {
 
 import GlobalSearch from "../search/GlobalSearch";
 
+/* =========================================================
+   TYPES
+========================================================= */
+
 interface DashboardSidebarProps {
   collapsed: boolean;
-
   setCollapsed: React.Dispatch<
     React.SetStateAction<boolean>
   >;
 }
 
-interface NavigationItem {
+interface RecentProject {
+  id: string;
   name: string;
-  icon: React.ElementType;
-  path: string;
 }
+
+/* =========================================================
+   COMPONENT
+========================================================= */
 
 const DashboardSidebar: React.FC<
   DashboardSidebarProps
@@ -65,18 +67,18 @@ const DashboardSidebar: React.FC<
 }) => {
   const navigate = useNavigate();
 
-  // =====================================================
-  // AUTH
-  // =====================================================
+  /* =======================================================
+     AUTH
+  ======================================================= */
 
   const {
     user,
     logout,
   } = useAuthStore();
 
-  // =====================================================
-  // THEME
-  // =====================================================
+  /* =======================================================
+     THEME
+  ======================================================= */
 
   const {
     theme,
@@ -87,9 +89,9 @@ const DashboardSidebar: React.FC<
   const isDark =
     resolvedTheme === "dark";
 
-  // =====================================================
-  // STATE
-  // =====================================================
+  /* =======================================================
+     STATE
+  ======================================================= */
 
   const [
     workspaceOpen,
@@ -116,9 +118,24 @@ const DashboardSidebar: React.FC<
     setSearchOpen,
   ] = useState(false);
 
-  // =====================================================
-  // REFS
-  // =====================================================
+  const [
+    projectsOpen,
+    setProjectsOpen,
+  ] = useState(true);
+
+  /*
+   * Recent projects are intentionally local for now.
+   * API integration can be connected after the sidebar UI
+   * is finalized.
+   */
+
+  const [
+    recentProjects,
+  ] = useState<RecentProject[]>([]);
+
+  /* =======================================================
+     REFS
+  ======================================================= */
 
   const workspaceRef =
     useRef<HTMLDivElement>(null);
@@ -126,9 +143,9 @@ const DashboardSidebar: React.FC<
   const profileRef =
     useRef<HTMLDivElement>(null);
 
-  // =====================================================
-  // USER
-  // =====================================================
+  /* =======================================================
+     USER
+  ======================================================= */
 
   const fullName =
     user?.user_metadata?.full_name ||
@@ -144,62 +161,62 @@ const DashboardSidebar: React.FC<
     user?.user_metadata?.picture ||
     "";
 
-  // =====================================================
-  // COLORS
-  // =====================================================
+  /* =======================================================
+     THEME COLORS
+  ======================================================= */
 
   const colors = isDark
     ? {
         sidebar:
-          "border-[#1f1f1f] bg-[#090909] text-white",
+          "border-[#242424] bg-[#0b0b0b] text-white",
 
         text:
           "text-white",
 
         muted:
-          "text-[#777]",
+          "text-[#858585]",
 
         navInactive:
-          "text-[#a3a3a3] hover:bg-[#1c1c1c] hover:text-white",
+          "text-[#a8a8a8] hover:bg-[#181818] hover:text-white",
 
         navActive:
-          "bg-[#252525] text-white",
+          "bg-[#242424] text-white",
 
         hover:
-          "hover:bg-[#1b1b1b]",
+          "hover:bg-[#181818]",
 
         hoverSoft:
-          "hover:bg-[#191919]",
+          "hover:bg-[#151515]",
 
         border:
-          "border-[#1f1f1f]",
+          "border-[#242424]",
 
         divider:
-          "bg-[#222]",
+          "bg-[#242424]",
 
         popup:
-          "border-[#2a2a2a] bg-[#161616]",
+          "border-[#2c2c2c] bg-[#171717]",
 
         popupText:
-          "text-[#ccc] hover:bg-[#242424]",
+          "text-[#d0d0d0] hover:bg-[#242424]",
 
         iconMuted:
           "text-[#777]",
 
         button:
-          "border-[#333] bg-[#161616] text-[#aaa]",
+          "border-[#333] bg-[#171717] text-[#aaa] hover:bg-[#202020] hover:text-white",
 
         upgrade:
-          "from-[#1d1628] to-[#21192d]",
+          "from-[#20152b] to-[#281b35]",
 
         upgradeText:
           "text-white",
 
         upgradeSubtext:
-          "text-[#9d8aad]",
+          "text-[#b69bc9]",
 
         themeInactive:
-          "text-[#ccc] hover:bg-[#242424]",
+          "text-[#d0d0d0] hover:bg-[#242424]",
       }
     : {
         sidebar:
@@ -212,16 +229,16 @@ const DashboardSidebar: React.FC<
           "text-slate-500",
 
         navInactive:
-          "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+          "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
 
         navActive:
-          "bg-slate-200 text-slate-900",
+          "bg-slate-100 text-slate-950",
 
         hover:
           "hover:bg-slate-100",
 
         hoverSoft:
-          "hover:bg-slate-100",
+          "hover:bg-slate-50",
 
         border:
           "border-slate-200",
@@ -233,13 +250,13 @@ const DashboardSidebar: React.FC<
           "border-slate-200 bg-white",
 
         popupText:
-          "text-slate-700 hover:bg-slate-100",
+          "text-slate-700 hover:bg-slate-100 hover:text-slate-950",
 
         iconMuted:
-          "text-slate-500",
+          "text-slate-400",
 
         button:
-          "border-slate-200 bg-white text-slate-600",
+          "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900",
 
         upgrade:
           "from-purple-50 to-purple-100",
@@ -254,59 +271,9 @@ const DashboardSidebar: React.FC<
           "text-slate-700 hover:bg-slate-100",
       };
 
-  // =====================================================
-  // NAVIGATION
-  // =====================================================
-
-  const mainNavigation: NavigationItem[] = [
-    {
-      name: "Dashboard",
-      icon: Home,
-      path: "/dashboard",
-    },
-
-    {
-      name: "Resources",
-      icon: BookOpen,
-      path: "/resources",
-    },
-
-    {
-      name: "Connectors",
-      icon: Plug,
-      path: "/connectors",
-    },
-  ];
-
-  const projectNavigation: NavigationItem[] = [
-    {
-      name: "All projects",
-      icon: LayoutGrid,
-      path: "/projects",
-    },
-
-    {
-      name: "Starred",
-      icon: Star,
-      path: "/projects/starred",
-    },
-
-    {
-      name: "Owned by me",
-      icon: User,
-      path: "/projects/owned",
-    },
-
-    {
-      name: "Shared with me",
-      icon: Users,
-      path: "/projects/shared",
-    },
-  ];
-
-  // =====================================================
-  // OUTSIDE CLICK
-  // =====================================================
+  /* =======================================================
+     OUTSIDE CLICK
+  ======================================================= */
 
   useEffect(() => {
     const handleOutsideClick = (
@@ -344,9 +311,9 @@ const DashboardSidebar: React.FC<
     };
   }, []);
 
-  // =====================================================
-  // GLOBAL SEARCH SHORTCUT
-  // =====================================================
+  /* =======================================================
+     GLOBAL SEARCH SHORTCUT
+  ======================================================= */
 
   useEffect(() => {
     const handleSearchShortcut = (
@@ -357,7 +324,11 @@ const DashboardSidebar: React.FC<
         event.key.toLowerCase() === "k"
       ) {
         event.preventDefault();
+
         setSearchOpen(true);
+        setWorkspaceOpen(false);
+        setProfileOpen(false);
+        setAppearanceOpen(false);
       }
     };
 
@@ -374,73 +345,47 @@ const DashboardSidebar: React.FC<
     };
   }, []);
 
-  // =====================================================
-  // LOGOUT
-  // =====================================================
+  /* =======================================================
+     LOGOUT
+  ======================================================= */
 
   const handleLogout = async () => {
-    try {
-      setLoggingOut(true);
+  try {
+    setLoggingOut(true);
 
-      const {
-        error,
-      } = await supabase.auth.signOut();
+    // Close profile menu
+    setProfileOpen(false);
+    setAppearanceOpen(false);
+    setWorkspaceOpen(false);
 
-      if (error) {
-        throw error;
-      }
+    // Clear Supabase session through auth store
+    await logout();
 
-      logout();
+    // Go directly to landing page
+    navigate("/", {
+      replace: true,
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+  } finally {
+    setLoggingOut(false);
+  }
+};
 
-      navigate(
-        "/login",
-        {
-          replace: true,
-        }
-      );
-    } catch (error) {
-      console.error(
-        "LOGOUT ERROR:",
-        error
-      );
-    } finally {
-      setLoggingOut(false);
-    }
+  /* =======================================================
+     SEARCH
+  ======================================================= */
+
+  const openSearch = () => {
+    setWorkspaceOpen(false);
+    setProfileOpen(false);
+    setAppearanceOpen(false);
+    setSearchOpen(true);
   };
 
-  // =====================================================
-  // NAV CLASS
-  // =====================================================
-
-  const navClass = (
-    isActive: boolean
-  ) => {
-    return `
-      group
-      flex
-      w-full
-      items-center
-      rounded-lg
-      transition-all
-      duration-150
-
-      ${
-        collapsed
-          ? "h-10 justify-center"
-          : "h-10 gap-3 px-3"
-      }
-
-      ${
-        isActive
-          ? colors.navActive
-          : colors.navInactive
-      }
-    `;
-  };
-
-  // =====================================================
-  // THEME OPTIONS
-  // =====================================================
+  /* =======================================================
+     THEME OPTIONS
+  ======================================================= */
 
   const themeOptions: {
     value: Theme;
@@ -464,21 +409,49 @@ const DashboardSidebar: React.FC<
     },
   ];
 
-  // =====================================================
-  // SEARCH BUTTON
-  // =====================================================
+  /* =======================================================
+     NAV CLASS
+  ======================================================= */
 
-  const openSearch = () => {
-    setWorkspaceOpen(false);
-    setProfileOpen(false);
-    setAppearanceOpen(false);
-
-    setSearchOpen(true);
+  const navClass = (
+    isActive: boolean
+  ) => {
+    return `
+      group
+      flex
+      w-full
+      items-center
+      rounded-xl
+      transition-all
+      duration-150
+      ${
+        collapsed
+          ? "h-10 justify-center"
+          : "h-10 gap-3 px-3"
+      }
+      ${
+        isActive
+          ? colors.navActive
+          : colors.navInactive
+      }
+    `;
   };
 
-  // =====================================================
-  // RENDER
-  // =====================================================
+  /* =======================================================
+     RECENT PROJECT
+  ======================================================= */
+
+  const openRecentProject = (
+    project: RecentProject
+  ) => {
+    navigate(
+      `/builder/${project.id}`
+    );
+  };
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
     <>
@@ -495,25 +468,25 @@ const DashboardSidebar: React.FC<
           transition-all
           duration-300
           ${colors.sidebar}
-
           ${
             collapsed
               ? "w-[72px]"
-              : "w-[260px]"
+              : "w-[232px]"
           }
         `}
       >
         {/* =================================================
-            LOGO
+            BRAND HEADER
         ================================================= */}
 
         <div
           className={`
             flex
-            h-[68px]
+            h-[58px]
             shrink-0
             items-center
-
+            border-b
+            ${colors.border}
             ${
               collapsed
                 ? "justify-center"
@@ -530,15 +503,16 @@ const DashboardSidebar: React.FC<
               flex
               items-center
               gap-2.5
+              outline-none
             "
           >
             <img
               src="/logo.png"
               alt="ICOGON"
               className="
-                h-9
-                w-9
-                rounded-[10px]
+                h-8
+                w-8
+                rounded-[9px]
                 object-cover
               "
             />
@@ -546,9 +520,9 @@ const DashboardSidebar: React.FC<
             {!collapsed && (
               <span
                 className={`
-                  text-[18px]
+                  text-[17px]
                   font-bold
-                  tracking-[-0.4px]
+                  tracking-[-0.45px]
                   ${colors.text}
                 `}
               >
@@ -565,22 +539,27 @@ const DashboardSidebar: React.FC<
               }
               className={`
                 flex
-                h-8
-                w-8
+                h-7
+                w-7
                 items-center
                 justify-center
-                rounded-md
+                rounded-lg
                 ${colors.muted}
                 ${colors.hover}
+                transition
               `}
+              aria-label="Collapse sidebar"
             >
-              <PanelLeftClose size={18} />
+              <PanelLeftClose
+                size={16}
+                strokeWidth={1.8}
+              />
             </button>
           )}
         </div>
 
         {/* =================================================
-            COLLAPSED BUTTON
+            EXPAND BUTTON
         ================================================= */}
 
         {collapsed && (
@@ -591,8 +570,8 @@ const DashboardSidebar: React.FC<
             }
             className={`
               absolute
-              right-[-12px]
-              top-[20px]
+              right-[-11px]
+              top-[18px]
               z-[100]
               flex
               h-6
@@ -601,11 +580,15 @@ const DashboardSidebar: React.FC<
               justify-center
               rounded-full
               border
-              shadow-lg
+              shadow-sm
               ${colors.button}
             `}
+            aria-label="Expand sidebar"
           >
-            <PanelLeftOpen size={14} />
+            <PanelLeftOpen
+              size={13}
+              strokeWidth={1.8}
+            />
           </button>
         )}
 
@@ -619,7 +602,7 @@ const DashboardSidebar: React.FC<
             relative
             shrink-0
             px-3
-            pb-5
+            py-3
           "
         >
           <button
@@ -636,6 +619,7 @@ const DashboardSidebar: React.FC<
               }
 
               setProfileOpen(false);
+              setAppearanceOpen(false);
 
               setWorkspaceOpen(
                 (value) => !value
@@ -648,27 +632,26 @@ const DashboardSidebar: React.FC<
               rounded-xl
               transition
               ${colors.hoverSoft}
-
               ${
                 collapsed
-                  ? "h-11 justify-center"
-                  : "gap-3 px-2 py-2"
+                  ? "h-10 justify-center"
+                  : "gap-2.5 px-1.5 py-1.5"
               }
             `}
           >
             <div
               className="
                 flex
-                h-9
-                w-9
+                h-8
+                w-8
                 shrink-0
                 items-center
                 justify-center
-                rounded-lg
+                rounded-[9px]
                 bg-gradient-to-br
                 from-orange-500
                 to-orange-600
-                text-sm
+                text-xs
                 font-bold
                 text-white
               "
@@ -688,7 +671,7 @@ const DashboardSidebar: React.FC<
                   <p
                     className={`
                       truncate
-                      text-[13px]
+                      text-[12px]
                       font-semibold
                       ${colors.text}
                     `}
@@ -698,9 +681,8 @@ const DashboardSidebar: React.FC<
 
                   <p
                     className={`
-                      mt-0.5
                       truncate
-                      text-[11px]
+                      text-[10px]
                       ${colors.muted}
                     `}
                   >
@@ -709,11 +691,11 @@ const DashboardSidebar: React.FC<
                 </div>
 
                 <ChevronDown
-                  size={16}
+                  size={14}
                   className={`
-                    transition-transform
+                    shrink-0
                     ${colors.muted}
-
+                    transition-transform
                     ${
                       workspaceOpen
                         ? "rotate-180"
@@ -725,7 +707,7 @@ const DashboardSidebar: React.FC<
             )}
           </button>
 
-          {/* WORKSPACE DROPDOWN */}
+          {/* WORKSPACE POPUP */}
 
           {workspaceOpen && !collapsed && (
             <div
@@ -733,16 +715,16 @@ const DashboardSidebar: React.FC<
                 absolute
                 left-3
                 right-3
-                top-[52px]
+                top-[58px]
                 z-[200]
                 overflow-hidden
                 rounded-xl
                 border
-                shadow-2xl
+                shadow-xl
                 ${colors.popup}
               `}
             >
-              <div className="p-2">
+              <div className="p-1.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -761,11 +743,14 @@ const DashboardSidebar: React.FC<
                     py-2.5
                     text-left
                     text-sm
+                    transition
                     ${colors.popupText}
                   `}
                 >
-                  <Settings size={17} />
-                  Workspace settings
+                  <Settings size={16} />
+                  <span>
+                    Workspace settings
+                  </span>
                 </button>
 
                 <button
@@ -786,11 +771,14 @@ const DashboardSidebar: React.FC<
                     py-2.5
                     text-left
                     text-sm
+                    transition
                     ${colors.popupText}
                   `}
                 >
-                  <Plus size={17} />
-                  New workspace
+                  <Plus size={16} />
+                  <span>
+                    New workspace
+                  </span>
                 </button>
               </div>
             </div>
@@ -798,7 +786,7 @@ const DashboardSidebar: React.FC<
         </div>
 
         {/* =================================================
-            NAVIGATION
+            MAIN NAVIGATION
         ================================================= */}
 
         <div
@@ -824,19 +812,13 @@ const DashboardSidebar: React.FC<
               }
             >
               <Home
-                size={18}
+                size={17}
                 strokeWidth={1.8}
                 className="shrink-0"
               />
 
               {!collapsed && (
-                <span
-                  className="
-                    truncate
-                    text-[13px]
-                    font-medium
-                  "
-                >
+                <span className="text-[13px] font-medium">
                   Dashboard
                 </span>
               )}
@@ -852,45 +834,24 @@ const DashboardSidebar: React.FC<
                   ? "Search"
                   : "Search (⌘ K)"
               }
-              className={`
-                group
-                flex
-                w-full
-                items-center
-                rounded-lg
-                transition-all
-                duration-150
-                ${colors.navInactive}
-
-                ${
-                  collapsed
-                    ? "h-10 justify-center"
-                    : "h-10 gap-3 px-3"
-                }
-              `}
+              className={navClass(false)}
             >
               <Search
-                size={18}
+                size={17}
                 strokeWidth={1.8}
                 className="shrink-0"
               />
 
               {!collapsed && (
                 <>
-                  <span
-                    className="
-                      truncate
-                      text-[13px]
-                      font-medium
-                    "
-                  >
+                  <span className="text-[13px] font-medium">
                     Search
                   </span>
 
                   <span
                     className={`
                       ml-auto
-                      text-[10px]
+                      text-[9px]
                       ${colors.iconMuted}
                     `}
                   >
@@ -900,127 +861,229 @@ const DashboardSidebar: React.FC<
               )}
             </button>
 
-            {/* OTHER MAIN NAVIGATION */}
+            {/* CONNECTORS */}
 
-            {mainNavigation
-              .filter(
-                (item) =>
-                  item.name !== "Dashboard"
-              )
-              .map((item) => {
-                const Icon =
-                  item.icon;
+            <NavLink
+              to="/connectors"
+              title={
+                collapsed
+                  ? "Connectors"
+                  : undefined
+              }
+              className={({ isActive }) =>
+                navClass(isActive)
+              }
+            >
+              <Plug
+                size={17}
+                strokeWidth={1.8}
+                className="shrink-0"
+              />
 
-                return (
-                  <NavLink
-                    key={item.name}
-                    to={item.path}
-                    title={
-                      collapsed
-                        ? item.name
-                        : undefined
-                    }
-                    className={({ isActive }) =>
-                      navClass(isActive)
-                    }
-                  >
-                    <Icon
-                      size={18}
-                      strokeWidth={1.8}
-                      className="shrink-0"
-                    />
+              {!collapsed && (
+                <span className="text-[13px] font-medium">
+                  Connectors
+                </span>
+              )}
+            </NavLink>
 
-                    {!collapsed && (
-                      <span
-                        className="
-                          truncate
-                          text-[13px]
-                          font-medium
-                        "
-                      >
-                        {item.name}
-                      </span>
-                    )}
-                  </NavLink>
-                );
-              })}
+            {/* PROJECTS */}
+
+            <NavLink
+              to="/projects"
+              title={
+                collapsed
+                  ? "Projects"
+                  : undefined
+              }
+              className={({ isActive }) =>
+                navClass(isActive)
+              }
+            >
+              <FolderKanban
+                size={17}
+                strokeWidth={1.8}
+                className="shrink-0"
+              />
+
+              {!collapsed && (
+                <span className="text-[13px] font-medium">
+                  Projects
+                </span>
+              )}
+            </NavLink>
           </nav>
 
           {/* =================================================
-              PROJECTS
+              RECENTS
           ================================================= */}
 
-          <section className="mt-7">
-            {!collapsed ? (
-              <p
-                className={`
-                  mb-2
-                  px-3
-                  text-[11px]
-                  font-semibold
-                  uppercase
-                  tracking-[0.08em]
-                  ${colors.iconMuted}
-                `}
-              >
-                Projects
-              </p>
-            ) : (
-              <div
-                className={`
-                  mb-3
-                  h-px
-                  ${colors.divider}
-                `}
-              />
-            )}
+          {!collapsed && (
+            <section className="mt-7">
+              <div className="mb-2 flex items-center justify-between px-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setProjectsOpen(
+                      (value) => !value
+                    )
+                  }
+                  className={`
+                    flex
+                    items-center
+                    gap-1
+                    text-[10px]
+                    font-semibold
+                    uppercase
+                    tracking-[0.09em]
+                    ${colors.iconMuted}
+                  `}
+                >
+                  <span>
+                    Recents
+                  </span>
 
-            <nav className="space-y-1">
-              {projectNavigation.map(
-                (item) => {
-                  const Icon =
-                    item.icon;
-
-                  return (
-                    <NavLink
-                      key={item.name}
-                      to={item.path}
-                      title={
-                        collapsed
-                          ? item.name
-                          : undefined
+                  <ChevronDown
+                    size={12}
+                    className={`
+                      transition-transform
+                      ${
+                        projectsOpen
+                          ? ""
+                          : "-rotate-90"
                       }
-                      className={({ isActive }) =>
-                        navClass(isActive)
-                      }
-                    >
-                      <Icon
-                        size={18}
-                        strokeWidth={1.8}
-                        className="shrink-0"
-                      />
+                    `}
+                  />
+                </button>
 
-                      {!collapsed && (
-                        <span
-                          className="
-                            truncate
-                            text-[13px]
-                            font-medium
-                          "
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate("/projects")
+                  }
+                  className={`
+                    text-[10px]
+                    transition
+                    ${colors.iconMuted}
+                    ${
+                      isDark
+                        ? "hover:text-white"
+                        : "hover:text-slate-900"
+                    }
+                  `}
+                >
+                  View all
+                </button>
+              </div>
+
+              {projectsOpen && (
+                <div className="space-y-0.5">
+                  {recentProjects.length > 0 ? (
+                    recentProjects.map(
+                      (project) => (
+                        <button
+                          key={project.id}
+                          type="button"
+                          onClick={() =>
+                            openRecentProject(
+                              project
+                            )
+                          }
+                          className={`
+                            flex
+                            w-full
+                            items-center
+                            gap-2.5
+                            rounded-lg
+                            px-3
+                            py-2
+                            text-left
+                            transition
+                            ${colors.navInactive}
+                          `}
                         >
-                          {item.name}
-                        </span>
-                      )}
-                    </NavLink>
-                  );
-                }
+                          <div
+                            className={`
+                              flex
+                              h-6
+                              w-6
+                              shrink-0
+                              items-center
+                              justify-center
+                              rounded-md
+                              border
+                              ${
+                                isDark
+                                  ? "border-[#333]"
+                                  : "border-slate-200"
+                              }
+                              text-[10px]
+                            `}
+                          >
+                            <FolderKanban
+                              size={13}
+                            />
+                          </div>
+
+                          <span className="truncate text-[12px]">
+                            {project.name}
+                          </span>
+                        </button>
+                      )
+                    )
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate("/projects")
+                      }
+                      className={`
+                        flex
+                        w-full
+                        items-center
+                        gap-2.5
+                        rounded-lg
+                        px-3
+                        py-2
+                        text-left
+                        transition
+                        ${colors.navInactive}
+                      `}
+                    >
+                      <div
+                        className={`
+                          flex
+                          h-6
+                          w-6
+                          shrink-0
+                          items-center
+                          justify-center
+                          rounded-md
+                          border
+                          border-dashed
+                          ${
+                            isDark
+                              ? "border-[#444]"
+                              : "border-slate-300"
+                          }
+                        `}
+                      >
+                        <Plus size={13} />
+                      </div>
+
+                      <span className="text-[12px]">
+                        Create your first project
+                      </span>
+                    </button>
+                  )}
+                </div>
               )}
-            </nav>
-          </section>
+            </section>
+          )}
         </div>
 
         {/* =================================================
-            BOTTOM
+            BOTTOM AREA
         ================================================= */}
 
         <div
@@ -1048,10 +1111,10 @@ const DashboardSidebar: React.FC<
                 rounded-xl
                 bg-gradient-to-r
                 px-3
-                py-3
+                py-2.5
                 text-left
                 transition
-                hover:brightness-110
+                hover:brightness-105
                 ${colors.upgrade}
               `}
             >
@@ -1060,6 +1123,7 @@ const DashboardSidebar: React.FC<
                   flex
                   h-8
                   w-8
+                  shrink-0
                   items-center
                   justify-center
                   rounded-lg
@@ -1068,15 +1132,15 @@ const DashboardSidebar: React.FC<
                 "
               >
                 <Zap
-                  size={16}
+                  size={15}
                   fill="currentColor"
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <p
                   className={`
-                    text-[12px]
+                    text-[11px]
                     font-semibold
                     ${colors.upgradeText}
                   `}
@@ -1086,8 +1150,8 @@ const DashboardSidebar: React.FC<
 
                 <p
                   className={`
-                    mt-0.5
-                    text-[10px]
+                    truncate
+                    text-[9px]
                     ${colors.upgradeSubtext}
                   `}
                 >
@@ -1097,7 +1161,9 @@ const DashboardSidebar: React.FC<
             </button>
           )}
 
-          {/* PROFILE */}
+          {/* =================================================
+              PROFILE
+          ================================================= */}
 
           <div
             ref={profileRef}
@@ -1112,7 +1178,7 @@ const DashboardSidebar: React.FC<
                   bottom-[58px]
                   left-0
                   z-[250]
-                  w-[300px]
+                  w-[280px]
                   overflow-hidden
                   rounded-xl
                   border
@@ -1137,8 +1203,8 @@ const DashboardSidebar: React.FC<
                             src={avatar}
                             alt={fullName}
                             className="
-                              h-10
-                              w-10
+                              h-9
+                              w-9
                               rounded-full
                               object-cover
                             "
@@ -1147,15 +1213,15 @@ const DashboardSidebar: React.FC<
                           <div
                             className="
                               flex
-                              h-10
-                              w-10
+                              h-9
+                              w-9
                               items-center
                               justify-center
                               rounded-full
                               bg-gradient-to-br
                               from-orange-500
                               to-orange-600
-                              text-sm
+                              text-xs
                               font-bold
                               text-white
                             "
@@ -1180,9 +1246,8 @@ const DashboardSidebar: React.FC<
 
                           <p
                             className={`
-                              mt-0.5
                               truncate
-                              text-[11px]
+                              text-[10px]
                               ${colors.muted}
                             `}
                           >
@@ -1194,7 +1259,7 @@ const DashboardSidebar: React.FC<
 
                     {/* MENU */}
 
-                    <div className="p-2">
+                    <div className="p-1.5">
                       <button
                         type="button"
                         onClick={() => {
@@ -1210,11 +1275,14 @@ const DashboardSidebar: React.FC<
                           px-3
                           py-2.5
                           text-sm
+                          transition
                           ${colors.popupText}
                         `}
                       >
-                        <User size={17} />
-                        Profile
+                        <User size={16} />
+                        <span>
+                          Profile
+                        </span>
                       </button>
 
                       <button
@@ -1231,16 +1299,17 @@ const DashboardSidebar: React.FC<
                           px-3
                           py-2.5
                           text-sm
+                          transition
                           ${colors.popupText}
                         `}
                       >
                         <span className="flex items-center gap-3">
-                          <Palette size={17} />
+                          <Palette size={16} />
                           Appearance
                         </span>
 
                         <ChevronRight
-                          size={16}
+                          size={15}
                           className={
                             colors.iconMuted
                           }
@@ -1262,11 +1331,14 @@ const DashboardSidebar: React.FC<
                           px-3
                           py-2.5
                           text-sm
+                          transition
                           ${colors.popupText}
                         `}
                       >
-                        <Settings size={17} />
-                        Settings
+                        <Settings size={16} />
+                        <span>
+                          Settings
+                        </span>
                       </button>
                     </div>
 
@@ -1275,7 +1347,7 @@ const DashboardSidebar: React.FC<
                     <div
                       className={`
                         border-t
-                        p-2
+                        p-1.5
                         ${colors.border}
                       `}
                     >
@@ -1293,11 +1365,12 @@ const DashboardSidebar: React.FC<
                           py-2.5
                           text-sm
                           text-red-500
+                          transition
                           hover:bg-red-500/10
                           disabled:opacity-50
                         "
                       >
-                        <LogOut size={17} />
+                        <LogOut size={16} />
 
                         {loggingOut
                           ? "Logging out..."
@@ -1326,16 +1399,20 @@ const DashboardSidebar: React.FC<
                         }
                         className={`
                           flex
-                          h-8
-                          w-8
+                          h-7
+                          w-7
                           items-center
                           justify-center
                           rounded-lg
                           ${colors.muted}
                           ${colors.hover}
                         `}
+                        aria-label="Back"
                       >
-                        ←
+                        <ChevronRight
+                          size={15}
+                          className="rotate-180"
+                        />
                       </button>
 
                       <div>
@@ -1351,8 +1428,7 @@ const DashboardSidebar: React.FC<
 
                         <p
                           className={`
-                            mt-0.5
-                            text-[11px]
+                            text-[10px]
                             ${colors.muted}
                           `}
                         >
@@ -1361,16 +1437,17 @@ const DashboardSidebar: React.FC<
                       </div>
                     </div>
 
-                    {/* THEME */}
+                    {/* THEME OPTIONS */}
 
-                    <div className="p-2">
+                    <div className="p-1.5">
                       {themeOptions.map(
                         (item) => {
                           const Icon =
                             item.icon;
 
                           const active =
-                            theme === item.value;
+                            theme ===
+                            item.value;
 
                           return (
                             <button
@@ -1388,11 +1465,10 @@ const DashboardSidebar: React.FC<
                                 gap-3
                                 rounded-lg
                                 px-3
-                                py-3
+                                py-2.5
                                 text-left
                                 text-sm
                                 transition
-
                                 ${
                                   active
                                     ? "bg-cyan-500/10 text-cyan-600"
@@ -1400,7 +1476,7 @@ const DashboardSidebar: React.FC<
                                 }
                               `}
                             >
-                              <Icon size={18} />
+                              <Icon size={17} />
 
                               <span className="font-medium">
                                 {item.label}
@@ -1408,7 +1484,7 @@ const DashboardSidebar: React.FC<
 
                               {active && (
                                 <Check
-                                  size={18}
+                                  size={16}
                                   className="ml-auto"
                                 />
                               )}
@@ -1446,14 +1522,13 @@ const DashboardSidebar: React.FC<
                 flex
                 w-full
                 items-center
-                rounded-lg
+                rounded-xl
                 transition
                 ${colors.hover}
-
                 ${
                   collapsed
-                    ? "justify-center p-2"
-                    : "gap-3 px-2 py-2"
+                    ? "justify-center p-1.5"
+                    : "gap-2.5 px-1.5 py-1.5"
                 }
               `}
             >
@@ -1462,8 +1537,8 @@ const DashboardSidebar: React.FC<
                   src={avatar}
                   alt={fullName}
                   className="
-                    h-9
-                    w-9
+                    h-8
+                    w-8
                     shrink-0
                     rounded-full
                     object-cover
@@ -1473,8 +1548,8 @@ const DashboardSidebar: React.FC<
                 <div
                   className="
                     flex
-                    h-9
-                    w-9
+                    h-8
+                    w-8
                     shrink-0
                     items-center
                     justify-center
@@ -1482,7 +1557,7 @@ const DashboardSidebar: React.FC<
                     bg-gradient-to-br
                     from-orange-500
                     to-orange-600
-                    text-sm
+                    text-xs
                     font-bold
                     text-white
                   "
@@ -1504,7 +1579,7 @@ const DashboardSidebar: React.FC<
                   <p
                     className={`
                       truncate
-                      text-[12px]
+                      text-[11px]
                       font-medium
                       ${colors.text}
                     `}
@@ -1514,9 +1589,8 @@ const DashboardSidebar: React.FC<
 
                   <p
                     className={`
-                      mt-0.5
                       truncate
-                      text-[10px]
+                      text-[9px]
                       ${colors.iconMuted}
                     `}
                   >
@@ -1529,9 +1603,9 @@ const DashboardSidebar: React.FC<
         </div>
       </aside>
 
-      {/* =================================================
+      {/* =====================================================
           GLOBAL SEARCH
-      ================================================= */}
+      ===================================================== */}
 
       <GlobalSearch
         open={searchOpen}

@@ -9,11 +9,20 @@ from app.sandbox.models import ResourceLimits, SandboxCommand, SandboxResult
 
 
 class DockerSandbox:
-    def __init__(self, image: str, executable: str = "docker") -> None:
+    def __init__(
+        self,
+        image: str,
+        executable: str = "docker",
+        network: str = "none",
+    ) -> None:
         if not image.strip():
             raise ValueError("A sandbox image is required")
+        if not network.strip():
+            raise ValueError("A sandbox network is required")
+
         self._image = image
         self._executable = executable
+        self._network = network.strip()
 
     def build_argv(
         self,
@@ -32,7 +41,7 @@ class DockerSandbox:
             "--name",
             name,
             "--network",
-            "none",
+            self._network,
             "--read-only",
             "--cap-drop",
             "ALL",

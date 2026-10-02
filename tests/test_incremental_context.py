@@ -171,6 +171,29 @@ class IncrementalContextTests(unittest.IsolatedAsyncioTestCase):
         )
         result = await service.execute((await service.submit(request)).id)
         self.assertEqual(result.status.value, "completed")
+
+        print(
+            "DEBUG STATUS:",
+            result.status,
+        )
+        print(
+            "DEBUG FAILURE:",
+            result.failure.model_dump()
+            if result.failure
+            else None,
+        )
+        print(
+            "DEBUG STEPS:",
+            [
+                {
+                    "name": step.name,
+                    "status": step.status,
+                    "error": step.error,
+                }
+                for step in result.steps
+            ],
+        )
+
         snapshot = {file.path: file.content for file in result.changes.files}
         self.assertEqual(snapshot["src/feature.ts"], "stable feature")
         self.assertEqual(snapshot["package-lock.json"], "stable lock")
