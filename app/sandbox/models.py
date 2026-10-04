@@ -16,6 +16,7 @@ class ResourceLimits(BaseModel):
 class SandboxCommand(BaseModel):
     argv: list[str] = Field(min_length=1, max_length=64)
     working_directory: str = "/workspace"
+    network: str | None = None
 
     @field_validator("argv")
     @classmethod
@@ -34,6 +35,22 @@ class SandboxCommand(BaseModel):
             raise ValueError("working directory must stay under /workspace")
         if ".." in path.parts:
             raise ValueError("working directory must stay under /workspace")
+        return value
+
+    @field_validator("network")
+    @classmethod
+    def validate_network(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        value = value.strip()
+
+        if not value:
+            raise ValueError("network cannot be empty")
+
+        if "\x00" in value or any(char.isspace() for char in value):
+            raise ValueError("network must be a single Docker network value")
+
         return value
 
 

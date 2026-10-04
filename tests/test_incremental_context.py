@@ -21,6 +21,7 @@ from app.orchestrator.models import (
 )
 from app.orchestrator.repository import InMemoryRunRepository
 from app.orchestrator.service import OrchestratorService
+from tests.test_orchestrator import request
 
 
 def plan(*entries: FilePlanEntry) -> GenerationPlan:
@@ -137,8 +138,45 @@ class IncrementalContextTests(unittest.IsolatedAsyncioTestCase):
                 idempotency_key="handoff-test-001",
             )
         )
+
         result = await service.execute(submitted.id)
-        self.assertEqual(result.status.value, "completed")
+
+        print("\n========== INCREMENTAL DEBUG ==========")
+        print("STATUS:", result.status.value)
+
+        print(
+            "FAILURE:",
+            result.failure.model_dump()
+            if result.failure
+            else None,
+        )
+
+        print(
+            "STEPS:",
+            [
+                {
+                    "name": step.name,
+                    "status": step.status,
+                    "error": step.error,
+                }
+                for step in result.steps
+            ],
+        )
+
+        print(
+            "FILES:",
+            [
+                file.path
+                for file in (result.changes.files if result.changes else [])
+            ],
+        )
+
+        print("========================================\n")
+
+        self.assertEqual(
+            result.status.value,
+            "completed",
+        )
         self.assertEqual(
             [(item.sender, item.recipient) for item in result.handoffs],
             [
@@ -170,11 +208,46 @@ class IncrementalContextTests(unittest.IsolatedAsyncioTestCase):
             base_run_id="previous-run",
         )
         result = await service.execute((await service.submit(request)).id)
-        self.assertEqual(result.status.value, "completed")
 
         print(
             "DEBUG STATUS:",
             result.status,
+        )
+
+        print(
+            "DEBUG FAILURE:",
+            result.failure.model_dump()
+            if result.failure
+            else None,
+        )
+
+        print(
+            "DEBUG STEPS:",
+            [
+                {
+                    "name": step.name,
+                    "status": step.status,
+                    "error": step.error,
+                }
+                for step in result.steps
+            ],
+        )
+
+        print(
+            "DEBUG CHANGES:",
+            [
+                file.path
+                for file in (
+                result.changes.files
+                if result.changes
+                else []
+            )
+            ],
+        )
+
+        self.assertEqual(
+            result.status.value,
+            "completed",
         )
         print(
             "DEBUG FAILURE:",

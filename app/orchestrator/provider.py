@@ -50,8 +50,8 @@ PLANNER_RETRY_OUTPUT_LIMIT = 3800
 
 QUALITY_OUTPUT_LIMIT = 850
 
-IMPLEMENTATION_OUTPUT_LIMIT = 7000
-IMPLEMENTATION_RETRY_OUTPUT_LIMIT = 6800
+IMPLEMENTATION_OUTPUT_LIMIT = 6000
+IMPLEMENTATION_RETRY_OUTPUT_LIMIT = 5800
 
 REPAIR_OUTPUT_LIMIT = 2200
 
@@ -1305,6 +1305,11 @@ class ModelProvider:
                 "template must be html, react or react-three.\n"
                 "file_plan actions must be exactly: preserve, read, modify, create, delete.\n"
                 "Never use upsert as file_plan action.\n"
+                  "FILE PLAN IS METADATA ONLY.\n"
+                "Each file_plan entry must contain ONLY: path, action, reason.\n"
+                "NEVER include content, code, source_code, contents, implementation, markup, CSS, JavaScript, TypeScript, JSON or any other file contents inside file_plan.\n"
+                "The planner designs WHAT files are needed; the implementation engineer writes the actual file contents later.\n"
+                "Keep file_plan entries concise. Do not embed source code in reasons.\n"
                 "Every task must have id, title, description, target_files and depends_on.\n"
                 "blueprint.pages must list the actual pages/routes or major views.\n"
                 "blueprint.interactions must list concrete interactive behaviors.\n"
@@ -1342,10 +1347,15 @@ class ModelProvider:
             "You are the primary production code-generation engineer.\n"
             "Implement the user's requested product, not a generic demo and not an ICOGON-branded sample.\n"
             "Treat the supplied plan as the source of truth for the project architecture.\n"
-            "Implement every actionable file in the plan and nothing outside the allowed scope.\n"            "Treat file_plan as a mandatory manifest: return every actionable planned file.\n"
+            "Implement every actionable file in the plan and nothing outside the allowed scope.\n"
+            "IMPLEMENTATION BATCH SCOPE IS STRICT.\n"
+            "When implementation_file_plan is supplied, return files ONLY from that exact file_plan.\n"
+            "Do not return files assigned to another batch, even if they are referenced by imports or needed by the application.\n"
+            "If a file is not present in the current implementation_file_plan, DO NOT return it.\n"
+            "Generate only the files explicitly assigned to the current batch.\n"
+            "Treat file_plan as a mandatory manifest: return every actionable planned file.\n"
             "Never merge separate planned components just to reduce file count.\n"
             "Use blueprint pages, tasks and prompt-specific requirements to drive actual content and UI.\n"
-
             "For a non-trivial React website, produce a coherent multi-file project with a real entry point, App, styling, reusable components and feature/page modules where planned.\n"
             "Build polished responsive desktop, tablet and mobile layouts.\n"
             "Use realistic, prompt-specific copy and content. Never use lorem ipsum, generic 'Welcome to our website', fake ICOGON branding, TODOs, empty handlers or visual placeholders.\n"
@@ -1562,9 +1572,42 @@ class ModelProvider:
                 5500,
             )
 
-            payload["plan"] = self._compact_plan(
-                context.get("plan")
+            # --------------------------------------------------------
+            # PLAN / BATCH SCOPE
+            # --------------------------------------------------------
+
+            plan = context.get("plan")
+
+            compact_plan = self._compact_plan(
+                plan
             )
+
+            scoped_file_plan = context.get(
+                "implementation_file_plan"
+            )
+
+            scoped_tasks = context.get(
+                "implementation_tasks"
+            )
+
+            if isinstance(
+                    compact_plan,
+                    dict,
+            ):
+
+                if scoped_file_plan is not None:
+                    compact_plan["file_plan"] = [
+                        _model_dump(entry)
+                        for entry in scoped_file_plan
+                    ]
+
+                if scoped_tasks is not None:
+                    compact_plan["tasks"] = [
+                        _model_dump(task)
+                        for task in scoped_tasks
+                    ]
+
+            payload["plan"] = compact_plan
 
             payload["existing_files"] = (
                 self._implementation_files(
@@ -1752,7 +1795,9 @@ class ModelProvider:
 
         if is_groq and is_gpt_oss:
             body["max_completion_tokens"] = safe_max_tokens
+            body["reasoning_effort"] = "low"
             body["include_reasoning"] = False
+            body["response_format"] = {"type": "json_object"}
         else:
             body["max_tokens"] = safe_max_tokens
 
@@ -1923,6 +1968,34 @@ class ModelProvider:
                     if provider_message:
                         message += (
                             f" {provider_message}"
+                        )
+
+                    failed_generation = error.get(
+                        "failed_generation"
+                    )
+
+                    if failed_generation:
+                        message += (
+                            " failed_generation="
+                            f"{failed_generation}"
+                        )
+
+                    error_type = error.get(
+                        "type"
+                    )
+
+                    if error_type:
+                        message += (
+                            f" error_type={error_type}"
+                        )
+
+                    error_code = error.get(
+                        "code"
+                    )
+
+                    if error_code:
+                        message += (
+                            f" error_code={error_code}"
                         )
 
         except Exception:
@@ -2541,6 +2614,7 @@ class ModelProvider:
             request,
             brief=brief,
             architecture=architecture,
+            max_tokens=7000,
         )
 
         if result is None:
@@ -2567,67 +2641,533 @@ class ModelProvider:
     # ========================================================
 
     async def generate_changes(
-        self,
-        request,
-        brief,
-        architecture,
-        plan,
+            self,
+            request,
+            brief,
+            architecture,
+            plan,
     ) -> ChangeResponse:
 
-        result, usage = await self._call(
-            "implementation engineer",
-            ChangeSet,
-            request,
-            brief=brief,
-            architecture=architecture,
-            plan=plan,
+        # ========================================================
+        # DETERMINE ACTIONABLE FILES
+        # ========================================================
+
+        file_plan = list(
+            getattr(
+                plan,
+                "file_plan",
+                [],
+            )
+            or []
         )
 
-        # ----------------------------------------------------
-        # HARD CONTRACT
-        # ----------------------------------------------------
+        actionable_entries = [
+            entry
+            for entry in file_plan
+            if getattr(
+                entry,
+                "action",
+                None,
+            )
+               in {
+                   "create",
+                   "modify",
+                   "delete",
+               }
+        ]
 
-        if result is None:
+        # ========================================================
+        # SMALL PROJECT
+        #
+        # Keep the original single-call behaviour for small
+        # projects. This preserves the existing pipeline exactly.
+        # ========================================================
 
-            raise ProviderError(
-                "implementation_empty_result",
-                (
-                    "Implementation model returned no ChangeSet."
-                ),
-                False,
+        if len(actionable_entries) <= 6:
+
+            result, usage = await self._call(
+                "implementation engineer",
+                ChangeSet,
+                request,
+                brief=brief,
+                architecture=architecture,
+                plan=plan,
             )
 
-        if not isinstance(
-            result,
-            ChangeSet,
+            if result is None:
+                raise ProviderError(
+                    "implementation_empty_result",
+                    (
+                        "Implementation model returned "
+                        "no ChangeSet."
+                    ),
+                    False,
+                )
+
+            if not isinstance(
+                    result,
+                    ChangeSet,
+            ):
+                raise ProviderError(
+                    "implementation_invalid_result",
+                    (
+                        "Implementation provider returned "
+                        f"{type(result).__name__}, "
+                        "expected ChangeSet."
+                    ),
+                    False,
+                )
+
+            if usage is None:
+                usage = self._empty_usage(
+                    self.model
+                )
+
+            response = ChangeResponse(
+                changes=result,
+                usage=usage,
+            )
+
+            if response is None:
+                raise ProviderError(
+                    "implementation_response_creation_failed",
+                    "Could not create ChangeResponse.",
+                    False,
+                )
+
+            return response
+
+        # ========================================================
+        # LARGE PROJECT
+        #
+        # Generate in small independent batches to avoid hitting
+        # Groq GPT-OSS output limits.
+        # ========================================================
+
+        BATCH_SIZE = 3
+
+        batches = [
+            actionable_entries[index:index + BATCH_SIZE]
+            for index in range(
+                0,
+                len(actionable_entries),
+                BATCH_SIZE,
+            )
+        ]
+
+        all_files = []
+        summaries = []
+
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_tokens = 0
+
+        # --------------------------------------------------------
+        # Generate each batch
+        # --------------------------------------------------------
+
+        for batch_number, batch_entries in enumerate(
+                batches,
+                start=1,
         ):
 
-            raise ProviderError(
-                "implementation_invalid_result",
-                (
-                    "Implementation provider returned "
-                    f"{type(result).__name__}, expected ChangeSet."
-                ),
-                False,
+            batch_paths = {
+                entry.path
+                for entry in batch_entries
+            }
+
+            # ----------------------------------------------------
+            # Find tasks belonging to this batch
+            # ----------------------------------------------------
+
+            batch_tasks = []
+
+            for task in getattr(
+                    plan,
+                    "tasks",
+                    [],
+            ) or []:
+
+                target_files = set(
+                    getattr(
+                        task,
+                        "target_files",
+                        [],
+                    )
+                    or []
+                )
+
+                if target_files & batch_paths:
+                    batch_tasks.append(
+                        task
+                    )
+
+
+
+            # ----------------------------------------------------
+            # Include only the files relevant to this batch
+            # ----------------------------------------------------
+
+            print(
+                f"\n[GROQ BATCH {batch_number}/{len(batches)}] "
+                f"files={sorted(batch_paths)}"
             )
 
-        if usage is None:
+            print(
+                f"[GROQ BATCH {batch_number}] "
+                f"tasks={len(batch_tasks)}"
+            )
 
-            usage = self._empty_usage(
+            print(
+                f"[GROQ BATCH {batch_number}] "
+                f"file_plan_entries={len(batch_entries)}"
+            )
+
+            result, usage = await self._call(
+                "implementation engineer",
+                ChangeSet,
+                request,
+                brief=brief,
+                architecture=architecture,
+                plan=plan,
+                implementation_file_plan=batch_entries,
+                implementation_tasks=batch_tasks,
+            )
+
+            # ----------------------------------------------------
+            # HARD CONTRACT
+            # ----------------------------------------------------
+
+            if result is None:
+                raise ProviderError(
+                    "implementation_batch_empty",
+                    (
+                        f"Implementation batch "
+                        f"{batch_number}/{len(batches)} "
+                        "returned no ChangeSet."
+                    ),
+                    True,
+                )
+
+            if not isinstance(
+                    result,
+                    ChangeSet,
+            ):
+                raise ProviderError(
+                    "implementation_batch_invalid",
+                    (
+                        f"Implementation batch "
+                        f"{batch_number}/{len(batches)} returned "
+                        f"{type(result).__name__}, "
+                        "expected ChangeSet."
+                    ),
+                    False,
+                )
+
+            # ----------------------------------------------------
+            # VALIDATE BATCH OUTPUT
+            # ----------------------------------------------------
+
+            returned_paths = {
+                file.path
+                for file in result.files
+            }
+
+            unexpected_paths = (
+                    returned_paths
+                    - batch_paths
+            )
+
+            if unexpected_paths:
+                raise ProviderError(
+                    "implementation_batch_scope_violation",
+                    (
+                            f"Implementation batch "
+                            f"{batch_number}/{len(batches)} returned "
+                            "files outside its assigned scope: "
+                            + ", ".join(
+                        sorted(
+                            unexpected_paths
+                        )
+                    )
+                    ),
+                    False,
+                )
+
+            required_paths = {
+                entry.path
+                for entry in batch_entries
+                if entry.action in {
+                    "create",
+                    "modify",
+                }
+            }
+
+            missing_paths = (
+                    required_paths
+                    - returned_paths
+            )
+
+            if missing_paths:
+                print(
+                    f"[GROQ BATCH {batch_number}] "
+                    f"missing files={sorted(missing_paths)}"
+                )
+
+                missing_entries = [
+                    entry
+                    for entry in batch_entries
+                    if entry.path in missing_paths
+                ]
+
+                missing_tasks = [
+                    task
+                    for task in batch_tasks
+                    if set(
+                        getattr(
+                            task,
+                            "target_files",
+                            [],
+                        )
+                        or []
+                    ) & missing_paths
+                ]
+
+                print(
+                    f"[GROQ BATCH {batch_number}] "
+                    f"retrying missing files only"
+                )
+
+                retry_result, retry_usage = await self._call(
+                    "implementation engineer",
+                    ChangeSet,
+                    request,
+                    brief=brief,
+                    architecture=architecture,
+                    plan=plan,
+                    implementation_file_plan=missing_entries,
+                    implementation_tasks=missing_tasks,
+                )
+
+                if retry_result is None:
+                    raise ProviderError(
+                        "implementation_batch_retry_empty",
+                        (
+                            f"Implementation batch "
+                            f"{batch_number}/{len(batches)} "
+                            "missing-file retry returned no ChangeSet."
+                        ),
+                        True,
+                    )
+
+                if not isinstance(
+                        retry_result,
+                        ChangeSet,
+                ):
+                    raise ProviderError(
+                        "implementation_batch_retry_invalid",
+                        (
+                            f"Implementation batch "
+                            f"{batch_number}/{len(batches)} "
+                            "missing-file retry returned "
+                            f"{type(retry_result).__name__}, "
+                            "expected ChangeSet."
+                        ),
+                        False,
+                    )
+
+                retry_paths = {
+                    file.path
+                    for file in retry_result.files
+                }
+
+                retry_unexpected_paths = (
+                        retry_paths - missing_paths
+                )
+
+                if retry_unexpected_paths:
+                    raise ProviderError(
+                        "implementation_batch_retry_scope_violation",
+                        (
+                                f"Implementation batch "
+                                f"{batch_number}/{len(batches)} "
+                                "missing-file retry returned files "
+                                "outside its retry scope: "
+                                + ", ".join(
+                            sorted(
+                                retry_unexpected_paths
+                            )
+                        )
+                        ),
+                        False,
+                    )
+
+                still_missing_paths = (
+                        missing_paths - retry_paths
+                )
+
+                if still_missing_paths:
+                    raise ProviderError(
+                        "implementation_batch_incomplete",
+                        (
+                                f"Implementation batch "
+                                f"{batch_number}/{len(batches)} still did not "
+                                "return required files after retry: "
+                                + ", ".join(
+                            sorted(
+                                still_missing_paths
+                            )
+                        )
+                        ),
+                        True,
+                    )
+
+                # Replace/add the retry files into the original
+                # batch result. Files returned by the retry win.
+                batch_files_by_path = {
+                    file.path: file
+                    for file in result.files
+                }
+
+                for file in retry_result.files:
+                    batch_files_by_path[file.path] = file
+
+                result = result.model_copy(
+                    update={
+                        "files": list(
+                            batch_files_by_path.values()
+                        )
+                    }
+                )
+
+                if retry_result.summary:
+                    summaries.append(
+                        retry_result.summary
+                    )
+
+                if retry_usage is not None:
+                    total_input_tokens += (
+                        retry_usage.input_tokens
+                    )
+
+                    total_output_tokens += (
+                        retry_usage.output_tokens
+                    )
+
+                    total_tokens += (
+                        retry_usage.total_tokens
+                    )
+
+            # ----------------------------------------------------
+            # MERGE FILES
+            # ----------------------------------------------------
+
+            all_files.extend(
+                result.files
+            )
+
+            if result.summary:
+                summaries.append(
+                    result.summary
+                )
+
+            # ----------------------------------------------------
+            # AGGREGATE USAGE
+            # ----------------------------------------------------
+
+            if usage is not None:
+                total_input_tokens += (
+                    usage.input_tokens
+                )
+
+                total_output_tokens += (
+                    usage.output_tokens
+                )
+
+                total_tokens += (
+                    usage.total_tokens
+                )
+
+        # ========================================================
+        # REMOVE DUPLICATES
+        #
+        # Last occurrence wins.
+        # ========================================================
+
+        merged_files = {}
+
+        for file in all_files:
+            merged_files[file.path] = file
+
+        final_files = list(
+            merged_files.values()
+        )
+
+        # ========================================================
+        # FINAL CHANGESET
+        # ========================================================
+
+        final_changes = ChangeSet(
+            summary=(
+                    "Generated implementation in "
+                    f"{len(batches)} batches. "
+                    + " ".join(
+                summary
+                for summary in summaries
+                if summary
+            )
+            ),
+            files=final_files,
+        )
+
+        # ========================================================
+        # AGGREGATED USAGE
+        # ========================================================
+
+        usage_model = None
+
+        # Reconstruct the same ProviderUsage type used by
+        # _call(). We cannot use model_calls or other fields
+        # that are not part of ProviderUsage.
+
+        try:
+
+            usage_model = type(
+                self._empty_usage(
+                    self.model
+                )
+            )
+
+        except Exception:
+
+            usage_model = None
+
+        if usage_model is not None:
+
+            final_usage = usage_model(
+                model=self.model,
+                provider=self._provider_name(),
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                total_tokens=total_tokens,
+            )
+
+        else:
+
+            final_usage = self._empty_usage(
                 self.model
             )
 
+        # ========================================================
+        # FINAL RESPONSE
+        # ========================================================
+
         response = ChangeResponse(
-            changes=result,
-            usage=usage,
+            changes=final_changes,
+            usage=final_usage,
         )
 
-        # ----------------------------------------------------
-        # FINAL GUARANTEE
-        # ----------------------------------------------------
-
         if response is None:
-
             raise ProviderError(
                 "implementation_response_creation_failed",
                 "Could not create ChangeResponse.",

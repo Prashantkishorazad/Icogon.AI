@@ -455,8 +455,21 @@ def validate_implementation_contract(
         # byte. A delta may never return that file as a change.
         # ---------------------------------------------------------------
 
+        # ---------------------------------------------------------------
+        # Protected file
+        # ---------------------------------------------------------------
+
         if path in ALWAYS_PRESERVE:
-            if require_complete and path in context_paths:
+            # A complete assembled snapshot legitimately contains protected
+            # files that already existed in the project context.
+            #
+            # They are preserved, not generated or modified.
+            if (
+                    require_complete
+                    and path in context_paths
+                    and path in planned
+                    and planned[path].action == "preserve"
+            ):
                 continue
 
             issues.append(

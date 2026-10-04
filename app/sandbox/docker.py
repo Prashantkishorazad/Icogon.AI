@@ -34,6 +34,7 @@ class DockerSandbox:
         root = workspace.resolve(strict=True)
         name = container_name or f"icogon-{uuid4().hex}"
         tmpfs_mb = max(16, min(256, limits.memory_mb // 2))
+        network = command.network or self._network
         return [
             self._executable,
             "run",
@@ -41,7 +42,7 @@ class DockerSandbox:
             "--name",
             name,
             "--network",
-            self._network,
+            network,
             "--read-only",
             "--cap-drop",
             "ALL",
@@ -57,6 +58,8 @@ class DockerSandbox:
             f"/tmp:rw,noexec,nosuid,size={tmpfs_mb}m",
             "--user",
             "65532:65532",
+            "--env", "HOME=/tmp/icogon-home",
+            "--env", "NPM_CONFIG_CACHE=/tmp/icogon-npm-cache",
             "--volume",
             f"{root}:/workspace:rw",
             "--workdir",
