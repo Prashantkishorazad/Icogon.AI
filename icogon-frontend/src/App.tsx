@@ -4,6 +4,7 @@ import {
   BrowserRouter,
   Routes,
   Route,
+  Navigate,
 } from "react-router-dom";
 
 import { supabase } from "./lib/supabase";
@@ -61,14 +62,6 @@ import ProfilePage from "./pages/Profile/ProfilePage";
 
 
 // =====================================================
-// CONNECTORS
-// =====================================================
-
-// Authenticated Gmail / app connectors page.
-import ConnectorsPage from "./pages/Connectors/ConnectorsPage";
-
-
-// =====================================================
 // BUILDER
 // =====================================================
 
@@ -113,6 +106,7 @@ import PricingPage from "./pages/Pricing/PricingPage";
 // =====================================================
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import DashboardLayout from "./layouts/DashboardLayout";
 
 import SecurityPage from "./pages/Security/SecurityPage";
 import PrivacyPage from "./pages/Legal/PrivacyPage";
@@ -560,83 +554,29 @@ function App() {
           }
         >
 
-          {/* =================================================
-              CONNECTORS
-          ================================================= */}
+          {/* Legacy connector URLs now open the dashboard connector workspace. */}
+          <Route path="/connectors" element={<Navigate to="/dashboard?connectors=" replace />} />
+          <Route path="/ConnectorsPage" element={<Navigate to="/dashboard?connectors=" replace />} />
 
-          {/*
-            IMPORTANT:
+          {/* Dashboard pages share one authenticated application shell. */}
+          <Route element={<DashboardLayout />}>
+            <Route
+              path="/dashboard"
+              element={<DashboardPage />}
+            />
 
-            Sidebar Connectors
-            ↓
-            /connectors
-            ↓
-            ProtectedRoute
-            ↓
-            Gmail ConnectorsPage
-          */}
+            <Route
+              path="/projects"
+              element={<ProjectsPage />}
+            />
 
-          <Route
-            path="/connectors"
-            element={
-              <ConnectorsPage />
-            }
-          />
+            <Route
+              path="/profile"
+              element={<ProfilePage />}
+            />
+          </Route>
 
-
-          {/* =================================================
-              OLD CONNECTORS URL
-          ================================================= */}
-
-          {/*
-            Keep the old URL working so existing links
-            do not break.
-          */}
-
-          <Route
-            path="/ConnectorsPage"
-            element={
-              <ConnectorsPage />
-            }
-          />
-
-
-          {/* =================================================
-              DASHBOARD
-          ================================================= */}
-
-          <Route
-            path="/dashboard"
-            element={
-              <DashboardPage />
-            }
-          />
-
-
-          {/* =================================================
-              PROJECTS
-          ================================================= */}
-
-          <Route
-            path="/projects"
-            element={
-              <ProjectsPage />
-            }
-          />
-
-
-          {/* =================================================
-              PROFILE
-          ================================================= */}
-
-          <Route
-            path="/profile"
-            element={
-              <ProfilePage />
-            }
-          />
-
-
+          {/* Builder remains a focused workspace without dashboard chrome. */}
           {/* =================================================
               CREATE NEW PROJECT
           ================================================= */}

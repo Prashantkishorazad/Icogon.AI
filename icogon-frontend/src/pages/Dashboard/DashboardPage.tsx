@@ -25,8 +25,6 @@ import {
 import { useNavigate } from "react-router-dom";
 
 import PromptInput from "../../components/landing/PromptInput";
-import DashboardSidebar from "../../components/dashboard/DashboardSidebar";
-import DashboardHeader from "../../components/dashboard/DashboardHeader";
 
 import {
   getProjectsApi,
@@ -34,6 +32,7 @@ import {
 } from "../../api/projectApi";
 
 import { useTheme } from "../../context/ThemeContext";
+import { useAuthStore } from "../../store/authStore";
 
 /* =========================================================
    TEMPLATE TYPE
@@ -62,6 +61,12 @@ type ExploreTab =
 
 const DashboardPage: FC = () => {
   const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const displayName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email?.split("@")[0] ||
+    "there";
 
   /* =======================================================
      THEME
@@ -70,12 +75,6 @@ const DashboardPage: FC = () => {
   const { resolvedTheme } = useTheme();
 
   const isDark = resolvedTheme === "dark";
-
-  /* =======================================================
-     SIDEBAR
-  ======================================================= */
-
-  const [collapsed, setCollapsed] = useState(false);
 
   /* =======================================================
      PROJECTS
@@ -372,7 +371,7 @@ const DashboardPage: FC = () => {
   return (
     <div
       className={`
-        min-h-screen
+        min-h-full
         w-full
         overflow-x-hidden
         transition-colors
@@ -380,49 +379,7 @@ const DashboardPage: FC = () => {
         ${colors.page}
       `}
     >
-      {/* ===================================================
-          SIDEBAR
-      =================================================== */}
-
-      <DashboardSidebar
-        collapsed={collapsed}
-        setCollapsed={setCollapsed}
-      />
-
-      {/* ===================================================
-          MAIN APPLICATION
-      =================================================== */}
-
-      <div
-        className={`
-          min-h-screen
-          w-full
-          transition-all
-          duration-300
-          ${
-            collapsed
-              ? "pl-[72px]"
-              : "pl-[232px]"
-          }
-        `}
-      >
-        {/* =================================================
-            HEADER
-        ================================================= */}
-
-        <DashboardHeader
-          collapsed={collapsed}
-          onToggleSidebar={() =>
-            setCollapsed(
-              (value) => !value
-            )
-          }
-        />
-
-        {/* =================================================
-            CONTENT
-        ================================================= */}
-
+      {/* Dashboard content */}
         <main
           className="
             mx-auto
@@ -473,7 +430,7 @@ const DashboardPage: FC = () => {
                 `}
               >
                 What’s the plan,
-                Prashant?
+                {displayName}?
               </h1>
 
               <p
@@ -507,181 +464,6 @@ const DashboardPage: FC = () => {
             </div>
           </section>
 
-          {/* =================================================
-              QUICK START
-          ================================================= */}
-
-          <section className="mt-16 sm:mt-20">
-            <div className="mb-6 flex flex-col gap-1">
-              <h2
-                className={`
-                  text-xl
-                  font-semibold
-                  tracking-[-0.02em]
-                  ${colors.heading}
-                `}
-              >
-                Quick Start
-              </h2>
-
-              <p
-                className={`
-                  text-[13px]
-                  leading-5
-                  ${colors.paragraph}
-                `}
-              >
-                Start with a template or turn
-                your own idea into a project.
-              </p>
-            </div>
-
-            <div
-              className="
-                grid
-                grid-cols-1
-                gap-3
-                sm:grid-cols-2
-                lg:grid-cols-3
-                xl:grid-cols-6
-              "
-            >
-              {templates.map(
-                (template) => {
-                  const Icon =
-                    template.icon;
-
-                  return (
-                    <button
-                      key={template.title}
-                      type="button"
-                      onClick={() =>
-                        handleTemplateClick(
-                          template.prompt
-                        )
-                      }
-                      className={`
-                        group
-                        relative
-                        min-h-[150px]
-                        overflow-hidden
-                        rounded-2xl
-                        border
-                        p-4
-                        text-left
-                        transition-all
-                        duration-300
-                        hover:-translate-y-1
-                        hover:border-cyan-400/50
-                        hover:shadow-[0_12px_35px_rgba(34,211,238,0.10)]
-                        active:scale-[0.98]
-                        ${colors.card}
-                      `}
-                    >
-                      <div
-                        className="
-                          pointer-events-none
-                          absolute
-                          -right-10
-                          -top-10
-                          h-24
-                          w-24
-                          rounded-full
-                          bg-cyan-400/10
-                          opacity-0
-                          blur-2xl
-                          transition-opacity
-                          duration-300
-                          group-hover:opacity-100
-                        "
-                      />
-
-                      <div
-                        className="
-                          relative
-                          mb-5
-                          flex
-                          h-10
-                          w-10
-                          items-center
-                          justify-center
-                          rounded-xl
-                          border
-                          border-cyan-400/20
-                          bg-cyan-400/[0.06]
-                          text-cyan-500
-                          transition-all
-                          duration-300
-                          group-hover:scale-105
-                          group-hover:border-cyan-400/40
-                          group-hover:bg-cyan-400/10
-                        "
-                      >
-                        <Icon
-                          size={18}
-                          strokeWidth={1.8}
-                        />
-                      </div>
-
-                      <div className="relative">
-                        <div className="flex items-center justify-between gap-2">
-                          <span
-                            className="
-                              text-[13px]
-                              font-semibold
-                            "
-                          >
-                            {template.title}
-                          </span>
-
-                          <ChevronRight
-                            size={15}
-                            className={`
-                              shrink-0
-                              transition-all
-                              duration-300
-                              group-hover:translate-x-1
-                              group-hover:text-cyan-500
-                              ${colors.subtle}
-                            `}
-                          />
-                        </div>
-
-                        <p
-                          className={`
-                            mt-2
-                            text-[11px]
-                            leading-[1.55]
-                            ${colors.paragraph}
-                          `}
-                        >
-                          {template.description}
-                        </p>
-                      </div>
-
-                      <div
-                        className="
-                          absolute
-                          bottom-0
-                          left-4
-                          right-4
-                          h-px
-                          origin-left
-                          scale-x-0
-                          bg-gradient-to-r
-                          from-cyan-400
-                          to-blue-500
-                          transition-transform
-                          duration-300
-                          group-hover:scale-x-100
-                        "
-                      />
-                    </button>
-                  );
-                }
-              )}
-            </div>
-          </section>
 
           {/* =================================================
               PROJECT DISCOVERY
@@ -1713,8 +1495,7 @@ const DashboardPage: FC = () => {
           </section>
 
           <div className="h-10" />
-        </main>
-      </div>
+      </main>
     </div>
   );
 };

@@ -1,0 +1,13 @@
+import React from "react";
+import { Command, ExternalLink } from "lucide-react";
+import type { SearchResult } from "./SearchResultList";
+import type { Theme } from "../../context/ThemeContext";
+interface Props { item?: SearchResult; isDark: boolean; theme: Theme; onOpen: () => void; }
+const SearchPreviewPanel: React.FC<Props> = ({ item, isDark, onOpen }) => {
+ const Icon=item?.icon;
+ return <aside className={`hidden w-[300px] shrink-0 flex-col border-l md:flex ${isDark ? "border-[#242424] bg-[#0c0c0c]" : "border-slate-200 bg-slate-50/70"}`}>
+  <div className={`flex h-[58px] shrink-0 items-center justify-between border-b px-4 ${isDark ? "border-[#242424]" : "border-slate-200"}`}><span className={`text-[10px] font-medium ${isDark ? "text-[#777]" : "text-slate-400"}`}>Preview</span><Command size={13} className={isDark?"text-[#555]":"text-slate-300"}/></div>
+  <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">{item ? <div className="w-full"><div className={`flex h-12 w-12 items-center justify-center rounded-xl border ${isDark ? "border-[#303030] bg-[#191919]" : "border-slate-200 bg-white"}`}>{Icon && <Icon size={21} strokeWidth={1.7} className={isDark?"text-[#aaa]":"text-slate-600"}/>}</div><p className={`mt-4 text-lg font-semibold tracking-tight ${isDark?"text-white":"text-slate-900"}`}>{item.title}</p><p className={`mt-1.5 text-xs leading-relaxed ${isDark?"text-[#999]":"text-slate-500"}`}>{item.description || `Open ${item.title}`}</p><div className={`mt-5 rounded-xl border p-3 ${isDark?"border-[#292929] bg-[#141414]":"border-slate-200 bg-white"}`}><p className={`text-[9px] font-semibold uppercase tracking-[0.08em] ${isDark?"text-[#777]":"text-slate-400"}`}>Category</p><p className={`mt-1 text-xs ${isDark?"text-[#ccc]":"text-slate-700"}`}>{item.category}</p>{item.project?.description && <><p className={`mt-3 text-[9px] font-semibold uppercase tracking-[0.08em] ${isDark?"text-[#777]":"text-slate-400"}`}>Description</p><p className={`mt-1 line-clamp-3 text-[11px] leading-relaxed ${isDark?"text-[#999]":"text-slate-500"}`}>{item.project.description}</p></>}</div>{item.path && item.type!=="theme" && <button type="button" onClick={onOpen} className={`mt-3 flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition ${isDark?"bg-white text-black hover:bg-[#ddd]":"bg-slate-900 text-white hover:bg-slate-800"}`}>{item.project?"Open project":"Open"}<ExternalLink size={12}/></button>}</div> : <p className={`text-xs ${isDark?"text-[#777]":"text-slate-400"}`}>Select something to preview</p>}</div>
+ </aside>;
+};
+export default SearchPreviewPanel;

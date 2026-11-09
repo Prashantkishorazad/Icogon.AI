@@ -6,7 +6,6 @@ import {
 
 import {
   ArrowUp,
-  Sparkles,
   X,
 } from "lucide-react";
 
@@ -20,13 +19,6 @@ import Footer from "../../components/landing/Footer";
 import LoginModal from "../../components/auth/LoginModal";
 import SignupModal from "../../components/auth/SignupModal";
 
-type SectionId =
-  | "home"
-  | "features"
-  | "workflow"
-  | "stats"
-  | "auth";
-
 const LandingPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -34,9 +26,6 @@ const LandingPage = () => {
   const [authModal, setAuthModal] = useState<
     "login" | "signup" | null
   >(null);
-
-  const [activeSection, setActiveSection] =
-    useState<SectionId>("home");
 
   const [showBackToTop, setShowBackToTop] =
     useState(false);
@@ -88,7 +77,7 @@ useEffect(() => {
 
   /*
    * ============================================================
-   * SCROLL PROGRESS + ACTIVE SECTION
+  * SCROLL PROGRESS
    * ============================================================
    */
   useEffect(() => {
@@ -116,33 +105,6 @@ useEffect(() => {
         scrollTop > 650
       );
 
-      const sections: SectionId[] = [
-        "home",
-        "features",
-        "workflow",
-        "stats",
-        "auth",
-      ];
-
-      let current: SectionId = "home";
-
-      for (const section of sections) {
-        const element =
-          document.getElementById(section);
-
-        if (!element) {
-          continue;
-        }
-
-        const rect =
-          element.getBoundingClientRect();
-
-        if (rect.top <= 180) {
-          current = section;
-        }
-      }
-
-      setActiveSection(current);
     };
 
     handleScroll();
@@ -168,21 +130,9 @@ useEffect(() => {
    * SMOOTH SECTION NAVIGATION
    * ============================================================
    */
-  const scrollToSection = (
-    section: SectionId
-  ) => {
-    const element =
-      document.getElementById(section);
 
-    if (!element) {
-      return;
-    }
 
-    element.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  };
+
 
   /*
    * ============================================================
@@ -319,63 +269,7 @@ useEffect(() => {
           ACTIVE SECTION NAV
       ========================== */}
 
-      <div
-        className="
-          fixed
-          bottom-5
-          left-1/2
-          z-40
-          hidden
-          -translate-x-1/2
-          items-center
-          gap-1
-          rounded-full
-          border
-          border-slate-200/80
-          bg-white/90
-          p-1.5
-          shadow-lg
-          shadow-slate-900/10
-          backdrop-blur-xl
-          md:flex
-          dark:border-slate-800/80
-          dark:bg-slate-900/90
-          dark:shadow-black/20
-        "
-      >
-        {(
-          [
-            ["home", "Home"],
-            ["features", "Features"],
-            ["workflow", "Workflow"],
-            ["stats", "Stats"],
-            ["auth", "Get Started"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() =>
-              scrollToSection(id)
-            }
-            className={`
-              rounded-full
-              px-3
-              py-1.5
-              text-[11px]
-              font-medium
-              transition
-              ${
-                activeSection === id
-                  ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-900"
-                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-              }
-            `}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+
 
       {/* =========================
           FLOATING CTA
@@ -417,13 +311,13 @@ useEffect(() => {
                 dark:text-slate-950
               "
             >
-              <Sparkles
+              {/* <Sparkles
                 size={15}
                 className="
                   text-cyan-400
                   dark:text-blue-600
                 "
-              />
+              /> */}
 
               <span className="hidden sm:inline">
                 Build with ICOGON AI

@@ -8,13 +8,13 @@ import { useTheme } from "../../context/ThemeContext";
 
 interface Props {
   userName?: string;
-  onToggleSidebar?: () => void;
-  collapsed?: boolean;
+  title?: string;
+  onOpenMobileMenu?: () => void;
 }
 
 const DashboardHeader: React.FC<Props> = ({
-  onToggleSidebar,
-  collapsed = false,
+  title = "Dashboard",
+  onOpenMobileMenu,
 }) => {
   const navigate = useNavigate();
 
@@ -32,7 +32,7 @@ const DashboardHeader: React.FC<Props> = ({
         top-0
         z-30
         flex
-        h-[54px]
+        h-13.5
         items-center
         justify-between
         border-b
@@ -52,43 +52,26 @@ const DashboardHeader: React.FC<Props> = ({
       ===================================================== */}
 
       <div className="flex items-center gap-3">
-        {/* SIDEBAR TOGGLE */}
+        {/* MOBILE NAVIGATION */}
 
-        {onToggleSidebar && (
+        {onOpenMobileMenu && (
           <button
             type="button"
-            onClick={onToggleSidebar}
-            aria-label={
-              collapsed
-                ? "Expand sidebar"
-                : "Collapse sidebar"
-            }
-            className={`
-              flex
-              h-8
-              w-8
-              items-center
-              justify-center
-              rounded-lg
-              border
-              transition
-              ${
-                isDark
-                  ? "border-[#303030] bg-[#111111] text-[#999] hover:bg-[#1b1b1b] hover:text-white"
-                  : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-              }
-            `}
+            onClick={onOpenMobileMenu}
+            aria-label="Open navigation"
+            className={`flex h-8 w-8 items-center justify-center rounded-lg border md:hidden ${
+              isDark
+                ? "border-[#303030] bg-[#111111] text-[#999]"
+                : "border-slate-200 bg-white text-slate-500"
+            }`}
           >
-            <PanelLeft
-              size={15}
-              strokeWidth={1.8}
-            />
+            <PanelLeft size={15} strokeWidth={1.8} />
           </button>
         )}
 
         {/* TITLE */}
 
-        <div className="flex flex-col">
+        {/* <div className="flex flex-col">
           <h2
             className={`
               text-[13px]
@@ -102,7 +85,7 @@ const DashboardHeader: React.FC<Props> = ({
               }
             `}
           >
-            Dashboard
+            {title}
           </h2>
 
           <p
@@ -119,13 +102,14 @@ const DashboardHeader: React.FC<Props> = ({
           >
             Build with ICOGON AI
           </p>
-        </div>
+        </div> */}
       </div>
 
       {/* =====================================================
           RIGHT
       ===================================================== */}
 
+      {title !== "Projects" && (
       <button
         type="button"
         onClick={() =>
@@ -159,6 +143,7 @@ const DashboardHeader: React.FC<Props> = ({
           My Projects
         </span>
       </button>
+      )}
     </header>
   );
 };

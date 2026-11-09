@@ -243,7 +243,7 @@ const Footer = () => {
           ))}
         </div>
 
-        {/* CTA strip */}
+        {/* CTA strip
         <motion.div
           whileHover={{ y: -2 }}
           transition={{ duration: 0.2 }}
@@ -298,7 +298,7 @@ const Footer = () => {
             Start Building
             <ArrowUpRight size={14} />
           </Link>
-        </motion.div>
+        </motion.div> */}
 
         {/* Bottom */}
         <div

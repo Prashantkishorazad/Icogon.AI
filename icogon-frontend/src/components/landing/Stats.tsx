@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowUpRight,
-  BarChart3,
   Check,
   Sparkles,
   TrendingUp,
@@ -18,8 +17,8 @@ interface Metric {
 
 const metrics: Metric[] = [
   {
-    value: "130",
-    numericValue: 130,
+    value: "90",
+    numericValue: 90,
     suffix: "K",
     label: "Value created",
     description:
@@ -34,9 +33,9 @@ const metrics: Metric[] = [
       "Projects created, refined and shipped through the platform.",
   },
   {
-    value: "7.5",
-    numericValue: 7.5,
-    suffix: "M",
+    value: "785",
+    numericValue: 85,
+    suffix: "K",
     label: "Business impact",
     description:
       "Reported business impact represented in the showcase.",
@@ -45,17 +44,17 @@ const metrics: Metric[] = [
 
 const growthStats = [
   {
-    value: 12,
-    suffix: " million",
+    value: 85,
+    suffix: " Hundred",
     label: "Projects created",
   },
   {
     value: 60,
-    suffix: " million",
+    suffix: " Thousand",
     label: "AI generations",
   },
   {
-    value: 900,
+    value: 9.5,
     suffix: " million",
     label: "Lines of code generated",
   },
@@ -292,95 +291,6 @@ const Stats = () => {
           }}
           className="relative mx-auto mt-16 max-w-4xl"
         >
-          {/* LEFT FLOATING CARD */}
-
-          <motion.div
-            animate={{
-              y: [0, -7, 0],
-            }}
-            transition={{
-              duration: 4,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
-            className="
-              absolute
-              left-[-65px]
-              top-1/2
-              hidden
-              h-[130px]
-              w-[160px]
-              -translate-y-1/2
-              items-center
-              justify-center
-              rounded-2xl
-              border
-              border-slate-200
-              bg-white/90
-              shadow-[0_15px_40px_rgba(15,23,42,0.07)]
-              md:flex
-            "
-          >
-            <div className="text-center">
-              <BarChart3
-                size={18}
-                className="mx-auto mb-2 text-blue-500"
-              />
-
-              <p className="text-xl font-semibold text-slate-700">
-                exp
-              </p>
-
-              <p className="mt-1 text-[9px] text-slate-400">
-                Build & expand
-              </p>
-            </div>
-          </motion.div>
-
-          {/* RIGHT FLOATING CARD */}
-
-          <motion.div
-            animate={{
-              y: [0, 7, 0],
-            }}
-            transition={{
-              duration: 4.5,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
-            className="
-              absolute
-              right-[-65px]
-              top-1/2
-              hidden
-              h-[130px]
-              w-[160px]
-              -translate-y-1/2
-              items-center
-              justify-center
-              rounded-2xl
-              border
-              border-slate-200
-              bg-white/90
-              shadow-[0_15px_40px_rgba(15,23,42,0.07)]
-              md:flex
-            "
-          >
-            <div className="text-center">
-              <ArrowUpRight
-                size={18}
-                className="mx-auto mb-2 text-violet-500"
-              />
-
-              <p className="text-xl font-semibold text-slate-700">
-                ship
-              </p>
-
-              <p className="mt-1 text-[9px] text-slate-400">
-                Deploy instantly
-              </p>
-            </div>
-          </motion.div>
 
           {/* MAIN CARD */}
 

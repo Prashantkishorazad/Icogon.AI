@@ -7,7 +7,7 @@ import {
 
 import {
   connectGmail,
-} from "../../api/connectorsApi";
+} from "../../api/connectors/connectorsApi";
 
 import { useTheme } from "../../context/ThemeContext";
 

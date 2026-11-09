@@ -15,7 +15,6 @@ import {
 
 import { useNavigate } from "react-router-dom";
 
-import DashboardSidebar from "../../components/dashboard/DashboardSidebar";
 
 import {
   deleteProjectApi,
@@ -40,15 +39,6 @@ const ProjectsPage: React.FC = () => {
 
   const isDark =
     resolvedTheme === "dark";
-
-  // ----------------------------------------------------------
-  // SIDEBAR
-  // ----------------------------------------------------------
-
-  const [
-    sidebarCollapsed,
-    setSidebarCollapsed,
-  ] = useState<boolean>(false);
 
   // ----------------------------------------------------------
   // PROJECTS
@@ -129,15 +119,21 @@ const ProjectsPage: React.FC = () => {
             project.id !== projectId
         )
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(
         "Failed to delete project:",
         err
       );
 
+      const error = err as {
+        response?: { data?: { detail?: unknown } };
+        message?: unknown;
+      };
+      const detail = error.response?.data?.detail;
+
       alert(
-        err?.response?.data?.detail ||
-          err?.message ||
+        (typeof detail === "string" && detail) ||
+          (typeof error.message === "string" && error.message) ||
           "Failed to delete project."
       );
     }
@@ -197,7 +193,7 @@ const ProjectsPage: React.FC = () => {
   return (
     <div
       className={`
-        min-h-screen
+        min-h-full
         overflow-x-hidden
         transition-colors
         duration-200
@@ -210,156 +206,8 @@ const ProjectsPage: React.FC = () => {
       `}
     >
       {/* ======================================================
-          SIDEBAR
-      ====================================================== */}
-
-      <DashboardSidebar
-        collapsed={sidebarCollapsed}
-        setCollapsed={setSidebarCollapsed}
-      />
-
-      {/* ======================================================
           MAIN
       ====================================================== */}
-
-      <div
-        className={`
-          min-h-screen
-          transition-[padding]
-          duration-200
-          ease-in-out
-
-          ${
-            sidebarCollapsed
-              ? "pl-[72px]"
-              : "pl-[232px]"
-          }
-        `}
-      >
-        {/* ====================================================
-            HEADER
-        ==================================================== */}
-
-        <header
-          className={`
-            sticky
-            top-0
-            z-30
-            h-[54px]
-            border-b
-            backdrop-blur-xl
-            transition-colors
-
-            ${
-              isDark
-                ? "border-[#242424] bg-[#080808]/90"
-                : "border-slate-200 bg-white/90"
-            }
-          `}
-        >
-          <div
-            className="
-              flex
-              h-full
-              items-center
-              justify-between
-              px-5
-              lg:px-7
-            "
-          >
-            <div className="flex items-center gap-2.5">
-              <div
-                className={`
-                  flex
-                  h-7
-                  w-7
-                  items-center
-                  justify-center
-                  rounded-lg
-
-                  ${
-                    isDark
-                      ? "bg-[#1d1d1d]"
-                      : "bg-slate-100"
-                  }
-                `}
-              >
-                <FolderOpen
-                  size={14}
-                  className={
-                    isDark
-                      ? "text-[#aaa]"
-                      : "text-slate-500"
-                  }
-                />
-              </div>
-
-              <div>
-                <p
-                  className={`
-                    text-[12px]
-                    font-medium
-
-                    ${
-                      isDark
-                        ? "text-white"
-                        : "text-slate-800"
-                    }
-                  `}
-                >
-                  My Projects
-                </p>
-
-                <p
-                  className={`
-                    hidden
-                    text-[9px]
-                    sm:block
-
-                    ${
-                      isDark
-                        ? "text-[#666]"
-                        : "text-slate-400"
-                    }
-                  `}
-                >
-                  {projects.length}{" "}
-                  {projects.length === 1
-                    ? "project"
-                    : "projects"}
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                navigate("/builder")
-              }
-              className={`
-                inline-flex
-                items-center
-                gap-1.5
-                rounded-lg
-                px-3
-                py-1.5
-                text-[11px]
-                font-medium
-                transition
-
-                ${
-                  isDark
-                    ? "bg-white text-black hover:bg-[#ddd]"
-                    : "bg-slate-900 text-white hover:bg-slate-800"
-                }
-              `}
-            >
-              <Plus size={13} />
-
-              New project
-            </button>
-          </div>
-        </header>
 
         {/* ====================================================
             CONTENT
@@ -368,7 +216,7 @@ const ProjectsPage: React.FC = () => {
         <main
           className="
             mx-auto
-            min-h-[calc(100vh-54px)]
+            min-h-full
             max-w-[1320px]
             px-5
             py-7
@@ -980,7 +828,6 @@ const ProjectsPage: React.FC = () => {
               </div>
             )}
         </main>
-      </div>
     </div>
   );
 };

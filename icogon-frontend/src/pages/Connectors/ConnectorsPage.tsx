@@ -108,7 +108,7 @@ const ConnectorsPage = () => {
     }, []);
 
   useEffect(() => {
-    void loadGmailStatus();
+    // void loadGmailStatus();
   }, [loadGmailStatus]);
 
   useEffect(() => {
@@ -154,7 +154,7 @@ const ConnectorsPage = () => {
   if (loading) {
     return (
       <div
-        className={`flex min-h-screen items-center justify-center font-sans ${
+        className={`flex min-h-full items-center justify-center font-sans ${
           isDark
             ? "bg-[#0b0d10] text-white"
             : "bg-[#fafafa] text-slate-900"
@@ -180,7 +180,7 @@ const ConnectorsPage = () => {
 
   return (
     <div
-      className={`min-h-screen font-sans ${
+      className={`min-h-full font-sans ${
         isDark
           ? "bg-[#0b0d10] text-white"
           : "bg-[#fafafa] text-slate-900"

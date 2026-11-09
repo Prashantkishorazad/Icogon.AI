@@ -10,6 +10,7 @@ interface SearchResultItemProps {
   item: SearchNavigationItem;
   selected: boolean;
   activeTheme?: string;
+  resolvedTheme?: string;
   onClick: () => void;
   onMouseEnter: () => void;
 }
@@ -18,13 +19,14 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
   item,
   selected,
   activeTheme,
+  resolvedTheme,
   onClick,
   onMouseEnter,
 }) => {
   const Icon = item.icon;
 
   const isDark =
-    activeTheme === "dark";
+    (resolvedTheme || activeTheme) === "dark";
 
   const isThemeSelected =
     item.type === "theme" &&

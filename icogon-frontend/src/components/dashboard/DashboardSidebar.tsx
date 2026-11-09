@@ -27,6 +27,7 @@ import {
 
 import {
   NavLink,
+  useLocation,
   useNavigate,
 } from "react-router-dom";
 
@@ -38,6 +39,7 @@ import {
 } from "../../context/ThemeContext";
 
 import GlobalSearch from "../search/GlobalSearch";
+import { getProjectsApi } from "../../api/projectApi";
 
 /* =========================================================
    TYPES
@@ -48,6 +50,7 @@ interface DashboardSidebarProps {
   setCollapsed: React.Dispatch<
     React.SetStateAction<boolean>
   >;
+  onMobileClose?: () => void;
 }
 
 interface RecentProject {
@@ -64,8 +67,10 @@ const DashboardSidebar: React.FC<
 > = ({
   collapsed,
   setCollapsed,
+  onMobileClose,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   /* =======================================================
      AUTH
@@ -123,15 +128,30 @@ const DashboardSidebar: React.FC<
     setProjectsOpen,
   ] = useState(true);
 
-  /*
-   * Recent projects are intentionally local for now.
-   * API integration can be connected after the sidebar UI
-   * is finalized.
-   */
+  const [recentProjects, setRecentProjects] =
+    useState<RecentProject[]>([]);
 
-  const [
-    recentProjects,
-  ] = useState<RecentProject[]>([]);
+  useEffect(() => {
+    let active = true;
+
+    getProjectsApi()
+      .then((projects) => {
+        if (!active) return;
+        setRecentProjects(
+          projects.slice(0, 6).map((project) => ({
+            id: project.id,
+            name: project.name,
+          }))
+        );
+      })
+      .catch((error) => {
+        console.error("Unable to load sidebar recent projects:", error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   /* =======================================================
      REFS
@@ -457,22 +477,18 @@ const DashboardSidebar: React.FC<
     <>
       <aside
         className={`
-          fixed
-          left-0
-          top-0
-          z-50
+          relative
+          z-10
           flex
-          h-screen
+          h-full
+          w-full
+          min-h-0
           flex-col
+          overflow-visible
           border-r
-          transition-all
-          duration-300
+          transition-colors
+          duration-200
           ${colors.sidebar}
-          ${
-            collapsed
-              ? "w-[72px]"
-              : "w-[232px]"
-          }
         `}
       >
         {/* =================================================
@@ -798,10 +814,31 @@ const DashboardSidebar: React.FC<
           "
         >
           <nav className="space-y-1">
+            {/* NEW PROJECT */}
+
+            {/* <button
+              type="button"
+              onClick={() => {
+                onMobileClose?.();
+                navigate("/builder");
+              }}
+              title={collapsed ? "New project" : undefined}
+              className={navClass(false)}
+            >
+              <Plus size={17} strokeWidth={1.8} className="shrink-0" />
+              {!collapsed && (
+                <span className="text-[13px] font-medium">
+                  New project
+                </span>
+              )}
+            </button> */}
+
             {/* DASHBOARD */}
 
             <NavLink
               to="/dashboard"
+              end
+              onClick={onMobileClose}
               title={
                 collapsed
                   ? "Dashboard"
@@ -828,7 +865,10 @@ const DashboardSidebar: React.FC<
 
             <button
               type="button"
-              onClick={openSearch}
+              onClick={() => {
+                onMobileClose?.();
+                openSearch();
+              }}
               title={
                 collapsed
                   ? "Search"
@@ -864,14 +904,15 @@ const DashboardSidebar: React.FC<
             {/* CONNECTORS */}
 
             <NavLink
-              to="/connectors"
+              to="/dashboard?connectors="
+              onClick={onMobileClose}
               title={
                 collapsed
                   ? "Connectors"
                   : undefined
               }
-              className={({ isActive }) =>
-                navClass(isActive)
+              className={() =>
+                navClass(location.pathname === "/dashboard" && new URLSearchParams(location.search).has("connectors"))
               }
             >
               <Plug
@@ -891,6 +932,7 @@ const DashboardSidebar: React.FC<
 
             <NavLink
               to="/projects"
+              onClick={onMobileClose}
               title={
                 collapsed
                   ? "Projects"
