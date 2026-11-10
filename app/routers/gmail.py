@@ -1,8 +1,9 @@
 import os
 from datetime import datetime, timedelta, timezone
+from importlib import import_module
 from urllib.parse import quote
+from venv import logger
 
-import httpx
 from fastapi import (
     APIRouter,
     Header,
@@ -10,8 +11,6 @@ from fastapi import (
     Query,
 )
 from fastapi.responses import RedirectResponse
-from supabase import create_client
-
 from app.services.gmail_oauth import (
     build_google_authorization_url,
     decrypt_token,
@@ -77,6 +76,13 @@ def get_supabase_admin():
         raise RuntimeError(
             "SUPABASE_SERVICE_ROLE_KEY is missing."
         )
+
+    try:
+        create_client = import_module("supabase").create_client
+    except ImportError as exc:
+        raise RuntimeError(
+            "The Supabase Python package is required. Install it with 'pip install supabase'."
+        ) from exc
 
     return create_client(
         SUPABASE_URL,
@@ -387,21 +393,11 @@ async def gmail_callback(
             )
         )
 
-    except Exception as exc:
-
-        print(
-            "GMAIL CALLBACK ERROR:",
-            repr(exc),
-        )
+    except Exception:
+        logger.exception("Gmail OAuth callback failed")
 
         return RedirectResponse(
-            url=(
-                f"{FRONTEND_URL}"
-                f"/connectors?"
-                f"gmail=error"
-                f"&message="
-                f"{quote(str(exc))}"
-            )
+            url=f"{FRONTEND_URL}/connectors?gmail=error"
         )
 
 

@@ -93,7 +93,11 @@ const GmailConnectorPanel = ({
   ========================================================== */
 
   useEffect(() => {
-    void loadMessages();
+    // const initializeGmail = async () => {
+    //   await loadMessages();
+    // };
+
+    // void initializeGmail();
 
     void getGmailProfile().catch(
       (err: unknown) => {
@@ -240,9 +244,7 @@ const GmailConnectorPanel = ({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => {
-              void loadMessages();
-            }}
+            onClick={() => void loadMessages()}
             disabled={loading}
             className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[10px] font-medium transition ${
               loading

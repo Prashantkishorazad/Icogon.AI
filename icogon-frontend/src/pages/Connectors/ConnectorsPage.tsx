@@ -108,8 +108,12 @@ const ConnectorsPage = () => {
     }, []);
 
   useEffect(() => {
-    // void loadGmailStatus();
-  }, [loadGmailStatus]);
+    if (searchParams.get("gmail") !== "connected") {
+      queueMicrotask(() => {
+        void loadGmailStatus();
+      });
+    }
+  }, [loadGmailStatus, searchParams]);
 
   useEffect(() => {
     const result =
@@ -119,16 +123,18 @@ const ConnectorsPage = () => {
       return;
     }
 
-    if (result === "connected") {
-      void loadGmailStatus();
-    }
-
     const nextParams =
       new URLSearchParams(searchParams);
 
     nextParams.delete("gmail");
     nextParams.delete("email");
     nextParams.delete("message");
+
+    if (result === "connected") {
+      queueMicrotask(() => {
+        void loadGmailStatus();
+      });
+    }
 
     setSearchParams(nextParams, {
       replace: true,
@@ -395,12 +401,9 @@ const ConnectorsPage = () => {
           GMAIL MODAL
       ===================================================== */}
 
-      <GmailConnectionModal
-        open={modalOpen}
-        onClose={() =>
-          setModalOpen(false)
-        }
-      />
+      {modalOpen && (
+        <GmailConnectionModal />
+      )}
     </div>
   );
 };
