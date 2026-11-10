@@ -84,6 +84,9 @@ type GeneratedFile = {
 
 type PreviewState = {
   available: boolean;
+  html?: string;
+  warnings?: string[];
+  compiler?: string;
   data: unknown | null;
 };
 
@@ -254,6 +257,25 @@ const getPreviewMessage = (
 };
 
 /* =========================================================
+   PREVIEW DOCUMENT SECURITY
+========================================================= */
+
+const PREVIEW_CSP =
+  `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https: data:; font-src https: data:; img-src data: blob: https:; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'">`;
+
+const createSandboxedPreviewDocument = (html: string): string => {
+  if (/http-equiv=["']Content-Security-Policy["']/i.test(html)) {
+    return html;
+  }
+
+  if (/<head(?:\s[^>]*)?>/i.test(html)) {
+    return html.replace(/<head((?:\s[^>]*)?)>/i, `<head$1>${PREVIEW_CSP}`);
+  }
+
+  return `${PREVIEW_CSP}${html}`;
+};
+
+/* =========================================================
    COMPONENT
 ========================================================= */
 
@@ -299,7 +321,11 @@ const BuilderWorkspacePage: React.FC = () => {
   const [
     sidebarOpen,
     setSidebarOpen,
-  ] = useState(true);
+  ] = useState(() =>
+    typeof window === "undefined"
+      ? true
+      : window.matchMedia("(min-width: 768px)").matches
+  );
 
   const [
     activeTab,
@@ -360,8 +386,12 @@ const BuilderWorkspacePage: React.FC = () => {
     setPreviewState,
   ] = useState<PreviewState>({
     available: false,
+    html: undefined,
+    warnings: [],
     data: null,
   });
+
+  const [previewError, setPreviewError] = useState("");
 
   const [
     isSending,
@@ -441,8 +471,6 @@ const BuilderWorkspacePage: React.FC = () => {
 
   useEffect(() => {
     if (!projectId) {
-      setProjectError("Project ID is missing.");
-      setProjectLoading(false);
       return;
     }
 
@@ -459,17 +487,30 @@ const BuilderWorkspacePage: React.FC = () => {
         if (mounted) {
           setProject(data);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(
           "PROJECT LOAD ERROR:",
           error
         );
 
         if (mounted) {
+          const projectLoadError =
+            error && typeof error === "object"
+              ? (error as {
+                  response?: {
+                    data?: { detail?: unknown; message?: unknown };
+                  };
+                  message?: unknown;
+                })
+              : undefined;
+          const errorMessage = [
+            projectLoadError?.response?.data?.detail,
+            projectLoadError?.response?.data?.message,
+            projectLoadError?.message,
+          ].find((value): value is string => typeof value === "string");
+
           setProjectError(
-            error?.response?.data?.detail ||
-              error?.response?.data?.message ||
-              error?.message ||
+            errorMessage ||
               "Unable to load project."
           );
         }
@@ -712,8 +753,35 @@ const BuilderWorkspacePage: React.FC = () => {
             runId
           );
 
+        const previewRecord =
+          preview && typeof preview === "object"
+            ? (preview as Record<string, unknown>)
+            : {};
+
+        const html =
+          typeof previewRecord.html === "string"
+            ? previewRecord.html
+            : "";
+
+        if (!html.trim()) {
+          throw new Error(
+            "The preview service returned no renderable HTML."
+          );
+        }
+
+        setPreviewError("");
         setPreviewState({
           available: true,
+          html,
+          warnings: Array.isArray(previewRecord.warnings)
+            ? previewRecord.warnings.filter(
+                (warning): warning is string => typeof warning === "string"
+              )
+            : [],
+          compiler:
+            typeof previewRecord.compiler === "string"
+              ? previewRecord.compiler
+              : undefined,
           data: preview,
         });
       } catch (error) {
@@ -724,8 +792,15 @@ const BuilderWorkspacePage: React.FC = () => {
 
         setPreviewState({
           available: false,
+          html: undefined,
+          warnings: [],
           data: null,
         });
+        setPreviewError(
+          error instanceof Error
+            ? error.message
+            : "Unable to compile the generated application preview."
+        );
       }
     },
     []
@@ -755,9 +830,10 @@ const BuilderWorkspacePage: React.FC = () => {
             processRunEvent(event);
           },
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (
-          error?.name ===
+          error instanceof Error &&
+          error.name ===
           "AbortError"
         ) {
           return;
@@ -791,15 +867,26 @@ const BuilderWorkspacePage: React.FC = () => {
         ) {
           await loadPreview(runId);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(
           "FINAL RUN LOAD ERROR:",
           error
         );
 
+        const requestError = error as {
+          response?: {
+            data?: {
+              detail?: unknown;
+            };
+          };
+          message?: unknown;
+        };
+
         setRunError(
-          error?.response?.data?.detail ||
-            error?.message ||
+          (typeof requestError.response?.data?.detail === "string" &&
+            requestError.response.data.detail) ||
+            (typeof requestError.message === "string" &&
+              requestError.message) ||
             "Unable to load final run status."
         );
       } finally {
@@ -837,8 +924,11 @@ const BuilderWorkspacePage: React.FC = () => {
     setGeneratedFiles([]);
     setPreviewState({
       available: false,
+      html: undefined,
+      warnings: [],
       data: null,
     });
+    setPreviewError("");
 
     const userMessage: Message = {
       id: createId("user"),
@@ -923,16 +1013,25 @@ const BuilderWorkspacePage: React.FC = () => {
       }
 
       await watchRun(run.id);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         "ORCHESTRATOR SUBMIT ERROR:",
         error
       );
 
+      const apiError = error as {
+        response?: {
+          data?: {
+            detail?: string;
+            message?: string;
+          };
+        };
+        message?: string;
+      };
       const message =
-        error?.response?.data?.detail ||
-        error?.response?.data?.message ||
-        error?.message ||
+        apiError.response?.data?.detail ||
+        apiError.response?.data?.message ||
+        apiError.message ||
         "Unable to start AI generation.";
 
       setRunError(message);
@@ -966,36 +1065,71 @@ const BuilderWorkspacePage: React.FC = () => {
     try {
       setIsCancelling(true);
 
-      eventAbortRef.current?.abort();
+      const cancellationResult =
+        await cancelOrchestratorRunApi(activeRun.id);
 
-      const cancelled =
-        await cancelOrchestratorRunApi(
-          activeRun.id
+      applyRunState(cancellationResult);
+
+      const cancellationStage = normalizeStage(
+        cancellationResult.status
+      );
+
+      if (cancellationStage === "cancelled") {
+        eventAbortRef.current?.abort();
+        setRunStage("cancelled");
+        setIsSending(false);
+        setMessages((previous) => [
+          ...previous,
+          {
+            id: createId("ai"),
+            role: "ai",
+            content:
+              "The current AI generation has been cancelled.",
+          },
+        ]);
+      } else if (cancellationStage === "completed" || cancellationStage === "failed") {
+        // The run reached a terminal state while the cancellation request was in flight.
+        eventAbortRef.current?.abort();
+        setIsSending(false);
+      } else {
+        // The backend records a cancellation request and may stop at its next safe checkpoint.
+        setRunError(
+          "Cancellation requested. Waiting for the current generation step to stop safely..."
         );
-
-      applyRunState(cancelled);
-
-      setRunStage("cancelled");
-      setIsSending(false);
-
-      setMessages((previous) => [
-        ...previous,
-        {
-          id: createId("ai"),
-          role: "ai",
-          content:
-            "The current AI generation has been cancelled.",
-        },
-      ]);
-    } catch (error: any) {
+      }
+    } catch (error: unknown) {
       console.error(
         "CANCEL RUN ERROR:",
         error
       );
 
+      let detail: string | undefined;
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "response" in error
+      ) {
+        const response = error.response;
+        if (
+          typeof response === "object" &&
+          response !== null &&
+          "data" in response
+        ) {
+          const data = response.data;
+          if (
+            typeof data === "object" &&
+            data !== null &&
+            "detail" in data &&
+            typeof data.detail === "string"
+          ) {
+            detail = data.detail;
+          }
+        }
+      }
+
       setRunError(
-        error?.response?.data?.detail ||
-          error?.message ||
+        detail ||
+          (error instanceof Error ? error.message : undefined) ||
           "Unable to cancel this run."
       );
     } finally {
@@ -1048,6 +1182,11 @@ const BuilderWorkspacePage: React.FC = () => {
       console.error(
         "REFRESH PREVIEW ERROR:",
         error
+      );
+      setPreviewError(
+        error instanceof Error
+          ? error.message
+          : "Unable to refresh the generated preview."
       );
     } finally {
       setIsRefreshing(false);
@@ -1120,12 +1259,13 @@ export default function App() {
      LOADING
   ======================================================= */
 
-  if (projectLoading) {
+  if (projectLoading && projectId) {
     return (
       <div
         className={`
           flex
-          h-screen
+          h-full
+          min-h-full
           items-center
           justify-center
           ${colors.page}
@@ -1181,12 +1321,13 @@ export default function App() {
      ERROR
   ======================================================= */
 
-  if (projectError || !project) {
+  if (!projectId || projectError || !project) {
     return (
       <div
         className={`
           flex
-          h-screen
+          h-full
+          min-h-full
           items-center
           justify-center
           px-5
@@ -1241,8 +1382,10 @@ export default function App() {
               ${colors.muted}
             `}
           >
-            {projectError ||
-              "This project could not be loaded."}
+            {!projectId
+              ? "Project ID is missing."
+              : projectError ||
+                "This project could not be loaded."}
           </p>
 
           <button
@@ -1284,6 +1427,7 @@ export default function App() {
     "planning",
     "generating",
     "reviewing",
+    "repairing",
     "verifying",
   ];
 
@@ -1310,7 +1454,8 @@ export default function App() {
     <div
       className={`
         flex
-        h-screen
+        h-full
+        min-h-0
         w-full
         overflow-hidden
         ${colors.page}
@@ -1321,6 +1466,16 @@ export default function App() {
         }
       `}
     >
+      {/* Mobile AI-panel backdrop */}
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close AI assistant panel"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-20 bg-black/50 md:hidden"
+        />
+      )}
+
       {/* ===================================================
           AI SIDEBAR
       =================================================== */}
@@ -1332,14 +1487,18 @@ export default function App() {
           flex-col
           overflow-hidden
           border-r
-          transition-all
+          relative
+          z-30
+          min-h-0
+          transition-[width,transform]
           duration-200
+          ease-in-out
           ${colors.panel}
           ${colors.border}
           ${
             sidebarOpen
-              ? "w-[340px]"
-              : "w-0"
+              ? "w-[340px] max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-[min(340px,88vw)] max-md:translate-x-0 max-md:shadow-2xl"
+              : "w-0 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-[min(340px,88vw)] max-md:-translate-x-full"
           }
         `}
       >
@@ -1913,7 +2072,7 @@ export default function App() {
           MAIN WORKSPACE
       =================================================== */}
 
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* TOP HEADER */}
 
         <header
@@ -2226,6 +2385,7 @@ export default function App() {
         <div
           className={`
             relative
+            min-h-0
             flex-1
             overflow-hidden
             ${colors.preview}
@@ -2237,6 +2397,7 @@ export default function App() {
                 className={`
                   mx-auto
                   flex
+                  h-full
                   min-h-full
                   max-w-[1500px]
                   flex-col
@@ -2360,343 +2521,78 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* GENERATED PREVIEW */}
+                {/* REAL BACKEND-COMPILED APPLICATION PREVIEW */}
 
-                {previewState.available ? (
-                  <div className="min-h-[calc(100vh-150px)] bg-white">
-                    <div
-                      className="
-                        flex
-                        h-16
-                        items-center
-                        justify-between
-                        border-b
-                        border-slate-100
-                        px-6
-                        sm:px-10
-                      "
-                    >
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="
-                            flex
-                            h-8
-                            w-8
-                            items-center
-                            justify-center
-                            rounded-lg
-                            bg-gradient-to-br
-                            from-cyan-400
-                            to-blue-600
-                            text-white
-                          "
-                        >
-                          <Sparkles size={15} />
-                        </div>
-
-                        <span
-                          className="
-                            text-sm
-                            font-bold
-                            tracking-tight
-                            text-slate-900
-                          "
-                        >
-                          {project.name}
-                        </span>
-                      </div>
-
-                      <div className="hidden items-center gap-6 md:flex">
-                        <span className="text-[11px] text-slate-400">
-                          Home
-                        </span>
-
-                        <span className="text-[11px] text-slate-400">
-                          Features
-                        </span>
-
-                        <span className="text-[11px] text-slate-400">
-                          About
-                        </span>
-
-                        <span className="text-[11px] text-slate-400">
-                          Contact
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="
-                          rounded-lg
-                          bg-slate-900
-                          px-3
-                          py-2
-                          text-[10px]
-                          font-semibold
-                          text-white
-                        "
-                      >
-                        Get Started
-                      </button>
-                    </div>
-
-                    <div
-                      className="
-                        relative
-                        overflow-hidden
-                        px-6
-                        py-20
-                        sm:px-12
-                        sm:py-28
-                      "
-                    >
-                      <div
-                        className="
-                          pointer-events-none
-                          absolute
-                          left-1/2
-                          top-0
-                          h-[300px]
-                          w-[500px]
-                          -translate-x-1/2
-                          rounded-full
-                          bg-cyan-200/40
-                          blur-[100px]
-                        "
-                      />
-
-                      <div className="relative mx-auto max-w-3xl text-center">
-                        <div
-                          className="
-                            mx-auto
-                            flex
-                            w-fit
-                            items-center
-                            gap-1.5
-                            rounded-full
-                            border
-                            border-cyan-200
-                            bg-cyan-50
-                            px-3
-                            py-1.5
-                            text-[10px]
-                            font-medium
-                            text-cyan-700
-                          "
-                        >
-                          <Sparkles size={11} />
-                          AI-generated application
-                        </div>
-
-                        <h1
-                          className="
-                            mt-6
-                            text-4xl
-                            font-bold
-                            tracking-[-0.04em]
-                            text-slate-900
-                            sm:text-6xl
-                          "
-                        >
-                          {project.name}
-
-                          <span className="block bg-gradient-to-r from-cyan-500 via-blue-600 to-violet-600 bg-clip-text text-transparent">
-                            built with ICOGON AI.
-                          </span>
-                        </h1>
-
-                        <p
-                          className="
-                            mx-auto
-                            mt-5
-                            max-w-xl
-                            text-sm
-                            leading-6
-                            text-slate-500
-                            sm:text-base
-                          "
-                        >
-                          Your generated application
-                          has passed the ICOGON AI
-                          orchestration pipeline.
+                {previewState.available && previewState.html ? (
+                  <div className="flex h-full min-h-0 flex-col bg-white">
+                    {previewState.warnings && previewState.warnings.length > 0 && (
+                      <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        <p className="font-semibold">
+                          Preview warnings ({previewState.warnings.length})
                         </p>
-
-                        <div className="mt-8 flex flex-wrap justify-center gap-3">
-                          <button
-                            type="button"
-                            className="
-                              rounded-xl
-                              bg-slate-900
-                              px-5
-                              py-3
-                              text-xs
-                              font-semibold
-                              text-white
-                            "
-                          >
-                            Get Started
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setActiveTab(
-                                "code"
-                              )
-                            }
-                            className="
-                              rounded-xl
-                              border
-                              border-slate-200
-                              bg-white
-                              px-5
-                              py-3
-                              text-xs
-                              font-semibold
-                              text-slate-700
-                            "
-                          >
-                            View Code
-                          </button>
-                        </div>
+                        <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                          {previewState.warnings.map((warning, index) => (
+                            <li key={`${index}-${warning}`}>{warning}</li>
+                          ))}
+                        </ul>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="px-6 pb-16 sm:px-12">
-                      <div className="mx-auto grid max-w-5xl grid-cols-1 gap-4 sm:grid-cols-3">
-                        {[
-                          {
-                            title: "Generated",
-                            text: "Created by the ICOGON AI pipeline.",
-                          },
-                          {
-                            title: "Reviewed",
-                            text: "Passed structural and security checks.",
-                          },
-                          {
-                            title: "Verified",
-                            text: "Application verification completed.",
-                          },
-                        ].map(
-                          (item) => (
-                            <div
-                              key={
-                                item.title
-                              }
-                              className="
-                                rounded-2xl
-                                border
-                                border-slate-200
-                                bg-white
-                                p-5
-                                shadow-sm
-                              "
-                            >
-                              <div
-                                className="
-                                  flex
-                                  h-9
-                                  w-9
-                                  items-center
-                                  justify-center
-                                  rounded-xl
-                                  bg-slate-100
-                                  text-slate-700
-                                "
-                              >
-                                <Check size={15} />
-                              </div>
-
-                              <h3
-                                className="
-                                  mt-4
-                                  text-sm
-                                  font-semibold
-                                  text-slate-900
-                                "
-                              >
-                                {
-                                  item.title
-                                }
-                              </h3>
-
-                              <p
-                                className="
-                                  mt-2
-                                  text-xs
-                                  leading-5
-                                  text-slate-500
-                                "
-                              >
-                                {
-                                  item.text
-                                }
-                              </p>
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </div>
+                    <iframe
+                      key={`${activeRun?.id ?? project.id}-${previewState.html.length}`}
+                      title={`${project.name} generated application preview`}
+                      srcDoc={createSandboxedPreviewDocument(previewState.html)}
+                      sandbox="allow-scripts allow-forms allow-modals"
+                      referrerPolicy="no-referrer"
+                      className="min-h-0 w-full flex-1 border-0 bg-white"
+                    />
                   </div>
                 ) : (
-                  <div className="flex min-h-[calc(100vh-150px)] items-center justify-center bg-white px-6">
+                  <div className="flex min-h-[420px] h-full items-center justify-center bg-white px-6">
                     <div className="max-w-md text-center">
                       <div
-                        className="
-                          mx-auto
-                          flex
-                          h-14
-                          w-14
-                          items-center
-                          justify-center
-                          rounded-2xl
-                          bg-gradient-to-br
-                          from-cyan-500
-                          via-blue-500
-                          to-violet-500
-                          text-white
-                          shadow-lg
-                        "
+                        className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 via-blue-500 to-violet-500 text-white shadow-lg"
                       >
                         {isRunning ? (
-                          <Loader2
-                            size={24}
-                            className="animate-spin"
-                          />
-                        ) : runStage ===
-                          "failed" ? (
-                          <CircleAlert
-                            size={24}
-                          />
-                        ) : runStage ===
-                          "cancelled" ? (
+                          <Loader2 size={24} className="animate-spin" />
+                        ) : runStage === "failed" || previewError ? (
+                          <CircleAlert size={24} />
+                        ) : runStage === "cancelled" ? (
                           <X size={24} />
                         ) : (
-                          <Sparkles
-                            size={24}
-                          />
+                          <Sparkles size={24} />
                         )}
                       </div>
 
                       <h2 className="mt-5 text-lg font-semibold text-slate-900">
-                        {stageLabel(
-                          runStage
-                        )}
+                        {previewError ? "Preview unavailable" : stageLabel(runStage)}
                       </h2>
 
                       <p className="mt-2 text-sm leading-6 text-slate-500">
-                        {runStage ===
-                        "idle"
-                          ? "Describe what you want to build using the AI composer on the left."
-                          : runStage ===
-                            "failed"
-                          ? runError ||
-                            "The generation pipeline encountered an error."
-                          : runStage ===
-                            "cancelled"
-                          ? "Start another request whenever you're ready."
-                          : "ICOGON AI is processing your request. The live pipeline status is shown in the left panel."}
+                        {previewError
+                          ? previewError
+                          : runStage === "idle"
+                            ? "Describe what you want to build using the AI composer on the left."
+                            : runStage === "failed"
+                              ? runError || "The generation pipeline encountered an error."
+                              : runStage === "cancelled"
+                                ? "Start another request whenever you're ready."
+                                : runStage === "completed"
+                                  ? "The build completed, but no preview document was returned. Try refreshing the preview."
+                                  : "ICOGON AI is processing your request. The live pipeline status is shown in the left panel."}
                       </p>
+
+                      {previewError && activeRun?.id && (
+                        <button
+                          type="button"
+                          onClick={() => void handleRefreshPreview()}
+                          disabled={isRefreshing}
+                          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
+                        >
+                          <RefreshCw size={13} className={isRefreshing ? "animate-spin" : ""} />
+                          Retry preview
+                        </button>
+                      )}
 
                       {isRunning && (
                         <div className="mt-6">
@@ -2778,15 +2674,19 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="flex min-h-[calc(100vh-160px)]">
+                <div className="flex min-h-full flex-col sm:flex-row">
                   <div
                     className={`
-                      hidden
-                      w-56
+                      max-h-32
+                      w-full
                       shrink-0
-                      border-r
+                      overflow-y-auto
+                      border-b
                       p-3
-                      sm:block
+                      sm:max-h-none
+                      sm:w-56
+                      sm:border-b-0
+                      sm:border-r
                       ${colors.border}
                     `}
                   >

@@ -1,5 +1,5 @@
-
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentType } from "react";
 import {
   Bot,
   ChevronDown,
@@ -27,6 +27,11 @@ import GmailConnectionModal from "./GmailConnectionModal";
 import { getGmailStatus } from "../../api/connectors/connectorsApi";
 import GmailConnectorPanel from "./GmailConnectorPanel";
 import ConnectorDetail from "./ConnectorDetail";
+
+const GmailOAuthDialog = GmailConnectionModal as unknown as ComponentType<{
+  open: boolean;
+  onClose: () => void;
+}>;
 
 type Filter = "enabled" | "all" | string;
 
@@ -86,6 +91,8 @@ export default function ConnectorModal({
   const [gmailConnectOpen, setGmailConnectOpen] = useState(false);
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
+  const [gmailStatusLoading, setGmailStatusLoading] = useState(false);
+  const [gmailStatusError, setGmailStatusError] = useState<string | null>(null);
 
   // References for outside-click handling
   const panelRef = useRef<HTMLElement>(null);
@@ -105,7 +112,7 @@ export default function ConnectorModal({
   // CLOSE CONNECTOR PANEL
   // ---------------------------------------------------------
 
-  const close = () => {
+  const close = useCallback(() => {
     const next = new URLSearchParams(params);
 
     next.delete("connectors");
@@ -115,7 +122,13 @@ export default function ConnectorModal({
     setParams(next);
     setCustomOpen(false);
     setGmailConnectOpen(false);
-  };
+  }, [params, setParams]);
+
+  const closeRef = useRef(close);
+
+  useEffect(() => {
+    closeRef.current = close;
+  }, [close]);
 
   // ---------------------------------------------------------
   // CLOSE WHEN CLICKING OUTSIDE THE CONNECTOR PANEL
@@ -136,23 +149,25 @@ export default function ConnectorModal({
       if (target.closest('[aria-modal="true"]')) return;
 
       // Any other click outside closes the connector panel.
-      close();
+      closeRef.current();
     };
 
-    document.addEventListener(
-      "pointerdown",
-      handleOutsideClick,
-      true
-    );
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (gmailConnectOpen) {
+        setGmailConnectOpen(false);
+        return;
+      }
+      closeRef.current();
+    };
 
+    document.addEventListener("pointerdown", handleOutsideClick, true);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener(
-        "pointerdown",
-        handleOutsideClick,
-        true
-      );
+      document.removeEventListener("pointerdown", handleOutsideClick, true);
+      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, params, setParams]);
+  }, [open, gmailConnectOpen]);
 
   // ---------------------------------------------------------
   // CUSTOM DROPDOWN OUTSIDE CLICK
@@ -208,24 +223,32 @@ export default function ConnectorModal({
     if (!open) return;
 
     let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setGmailStatusLoading(true);
+        setGmailStatusError(null);
+      }
+    });
 
     getGmailStatus()
       .then((data) => {
         if (!cancelled) {
           setGmailConnected(Boolean(data.connected));
           setGmailEmail(data.email ?? null);
+          setGmailStatusError(null);
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled) {
-          setGmailConnected(false);
-          setGmailEmail(null);
+          // A failed status request must not be presented as a confirmed disconnect.
+          setGmailStatusError(error instanceof Error ? error.message : "Unable to check Gmail connection status.");
         }
+      })
+      .finally(() => {
+        if (!cancelled) setGmailStatusLoading(false);
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [open]);
 
   // ---------------------------------------------------------
@@ -338,7 +361,7 @@ export default function ConnectorModal({
           cursor-default
           bg-black/15
           backdrop-blur-[2px]
-          max-md:left-0
+          max-md:!left-0
         "
         style={{
           left: `${sidebarWidth}px`,
@@ -350,7 +373,7 @@ export default function ConnectorModal({
       <section
         ref={panelRef}
         role="dialog"
-        aria-modal="false"
+        aria-modal="true"
         aria-label="Connectors"
         className={`
           fixed
@@ -386,11 +409,16 @@ export default function ConnectorModal({
             max-xl:w-[230px]
             max-md:w-[190px]
             max-sm:w-[150px]
+            max-md:!w-full
+            max-md:max-h-[176px]
+            max-md:flex-row
+            max-md:border-r-0
+            max-md:border-b
           `}
         >
           {/* SEARCH */}
 
-          <div className="p-2.5">
+          <div className="p-2.5 max-md:w-[42%] max-md:shrink-0">
             <label
               className={`
                 flex
@@ -437,13 +465,14 @@ export default function ConnectorModal({
 
           {/* FILTERS */}
 
-          <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+          <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 max-md:flex max-md:items-center max-md:gap-1 max-md:overflow-x-auto max-md:overflow-y-hidden max-md:pb-2">
             <button
               type="button"
               onClick={() => setFilter("enabled")}
               className={`
                 mb-1
                 flex
+                max-md:mb-0 max-md:w-auto max-md:shrink-0
                 w-full
                 items-center
                 justify-between
@@ -472,6 +501,7 @@ export default function ConnectorModal({
               className={`
                 mb-5
                 flex
+                max-md:mb-0 max-md:w-auto max-md:shrink-0
                 w-full
                 items-center
                 justify-between
@@ -494,7 +524,7 @@ export default function ConnectorModal({
               </span>
             </button>
 
-            <p className={`px-3 pb-2 text-xs font-medium ${muted}`}>
+            <p className={`px-3 pb-2 text-xs font-medium ${muted} max-md:hidden`}>
               Categories
             </p>
 
@@ -514,6 +544,7 @@ export default function ConnectorModal({
                     items-center
                     justify-between
                     rounded-lg
+                    max-md:w-auto max-md:shrink-0
                     px-3
                     py-2.5
                     text-left
@@ -536,14 +567,11 @@ export default function ConnectorModal({
 
           {/* ADMIN SETTINGS */}
 
-          <div className={`border-t p-2.5 ${subtle}`}>
+          <div className={`border-t p-2.5 ${subtle} max-md:hidden`}>
             <button
               type="button"
-              onClick={() =>
-                window.alert(
-                  "Connector admin settings will be implemented in a later stage."
-                )
-              }
+              disabled
+              title="Admin settings are coming soon"
               className={`
                 flex
                 h-10
@@ -579,6 +607,7 @@ export default function ConnectorModal({
               justify-between
               border-b
               px-6
+              max-md:px-3
               ${subtle}
               ${dark ? "bg-[#101216]" : "bg-white"}
             `}
@@ -681,16 +710,10 @@ export default function ConnectorModal({
                         },
                       ].map(
                         ({ title, desc, icon: Icon }) => (
-                          <button
+                          <div
                             key={title}
-                            type="button"
-                            onClick={() => {
-                              setCustomOpen(false);
-
-                              window.alert(
-                                `${title} configuration will be implemented in the next stage.`
-                              );
-                            }}
+                            aria-disabled="true"
+                            title="Coming soon"
                             className={`
                               flex
                               w-full
@@ -700,7 +723,7 @@ export default function ConnectorModal({
                               px-2.5
                               py-2.5
                               text-left
-                              ${hover}
+                              cursor-not-allowed opacity-60
                             `}
                           >
                             <Icon
@@ -719,7 +742,7 @@ export default function ConnectorModal({
                                 {desc}
                               </span>
                             </span>
-                          </button>
+                          </div>
                         )
                       )}
                     </div>
@@ -742,7 +765,7 @@ export default function ConnectorModal({
 
           {/* MAIN CONTENT */}
 
-          <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
+          <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5 max-md:p-3">
             {isDetail && selected ? (
               <ConnectorDetail
                 connector={selected}
@@ -826,6 +849,13 @@ export default function ConnectorModal({
 
                 {/* CONNECTOR LIST */}
 
+                {gmailStatusError && (
+                  <div role="status" className={`mb-3 rounded-lg border px-3 py-2 text-xs ${dark ? "border-amber-400/20 bg-amber-400/5 text-amber-200" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                    Gmail connection status could not be verified. {gmailStatusError}
+                    <button type="button" onClick={() => { setGmailStatusError(null); setGmailStatusLoading(true); getGmailStatus().then((data) => { setGmailConnected(Boolean(data.connected)); setGmailEmail(data.email ?? null); }).catch((error: unknown) => setGmailStatusError(error instanceof Error ? error.message : "Unable to check Gmail status.")).finally(() => setGmailStatusLoading(false)); }} className="ml-2 underline">Retry</button>
+                  </div>
+                )}
+
                 <div className="mb-2.5 flex items-center justify-between gap-3">
                   <h2 className="text-[14px] font-semibold">
                     {filter === "all"
@@ -836,7 +866,7 @@ export default function ConnectorModal({
                   </h2>
 
                   <span className={`text-xs ${muted}`}>
-                    {filtered.length} results
+                    {filtered.length} results{gmailStatusLoading ? " · checking Gmail…" : ""}
                   </span>
                 </div>
 
@@ -1041,11 +1071,8 @@ export default function ConnectorModal({
 
                     <button
                       type="button"
-                      onClick={() =>
-                        window.alert(
-                          "MCP registry setup will be implemented in the MCP stage."
-                        )
-                      }
+                      disabled
+                      title="MCP registry support is coming soon"
                       className={`
                         flex
                         shrink-0
@@ -1057,7 +1084,7 @@ export default function ConnectorModal({
                         py-2
                         text-xs
                         ${subtle}
-                        ${hover}
+                        cursor-not-allowed opacity-60
                       `}
                     >
                       <Plus size={14} />
@@ -1078,7 +1105,7 @@ export default function ConnectorModal({
 
       {/* GMAIL OAUTH DIALOG */}
 
-      <GmailConnectionModal
+      <GmailOAuthDialog
         open={gmailConnectOpen}
         onClose={() => setGmailConnectOpen(false)}
       />

@@ -11,8 +11,8 @@ import {
   FolderKanban,
   ChevronDown,
   ChevronRight,
-  PanelLeftClose,
-  PanelLeftOpen,
+  // PanelLeftClose,
+  // PanelLeftOpen,
   Zap,
   LogOut,
   Settings,
@@ -546,72 +546,7 @@ const DashboardSidebar: React.FC<
               </span>
             )}
           </button>
-
-          {!collapsed && (
-            <button
-              type="button"
-              onClick={() =>
-                setCollapsed(true)
-              }
-              className={`
-                flex
-                h-7
-                w-7
-                items-center
-                justify-center
-                rounded-lg
-                ${colors.muted}
-                ${colors.hover}
-                transition
-              `}
-              aria-label="Collapse sidebar"
-            >
-              <PanelLeftClose
-                size={16}
-                strokeWidth={1.8}
-              />
-            </button>
-          )}
         </div>
-
-        {/* =================================================
-            EXPAND BUTTON
-        ================================================= */}
-
-        {collapsed && (
-          <button
-            type="button"
-            onClick={() =>
-              setCollapsed(false)
-            }
-            className={`
-              absolute
-              right-[-11px]
-              top-[18px]
-              z-[100]
-              flex
-              h-6
-              w-6
-              items-center
-              justify-center
-              rounded-full
-              border
-              shadow-sm
-              ${colors.button}
-            `}
-            aria-label="Expand sidebar"
-          >
-            <PanelLeftOpen
-              size={13}
-              strokeWidth={1.8}
-            />
-          </button>
-        )}
-
-        {/* =================================================
-            WORKSPACE
-        ================================================= */}
-
         <div
           ref={workspaceRef}
           className="
@@ -814,27 +749,6 @@ const DashboardSidebar: React.FC<
           "
         >
           <nav className="space-y-1">
-            {/* NEW PROJECT */}
-
-            {/* <button
-              type="button"
-              onClick={() => {
-                onMobileClose?.();
-                navigate("/builder");
-              }}
-              title={collapsed ? "New project" : undefined}
-              className={navClass(false)}
-            >
-              <Plus size={17} strokeWidth={1.8} className="shrink-0" />
-              {!collapsed && (
-                <span className="text-[13px] font-medium">
-                  New project
-                </span>
-              )}
-            </button> */}
-
-            {/* DASHBOARD */}
-
             <NavLink
               to="/dashboard"
               end
