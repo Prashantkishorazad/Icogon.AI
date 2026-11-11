@@ -34,8 +34,11 @@ const DashboardLayout = () => {
       )}
 
       <div
-        className={`relative z-40 h-full shrink-0 overflow-visible transition-[width] duration-200 ease-in-out max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(280px,85vw)]! max-md:transition-transform ${mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"}`}
-        style={{ width: collapsed ? 72 : 232 }}
+        className={`relative z-40 h-full shrink-0 overflow-visible transition-[width] duration-200 ease-in-out max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:!w-[min(280px,85vw)] max-md:transition-transform ${mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"}`}
+        style={{
+          width: collapsed ? 72 : 232,
+          maxWidth: "min(280px, 85vw)",
+        }}
       >
         <DashboardSidebar
           collapsed={collapsed}

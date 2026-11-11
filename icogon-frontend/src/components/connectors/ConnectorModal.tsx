@@ -15,6 +15,7 @@ import {
   Unplug,
   X,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { useSearchParams } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
@@ -86,6 +87,7 @@ export default function ConnectorModal({
   const [gmailConnectOpen, setGmailConnectOpen] = useState(false);
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   // References for outside-click handling
   const panelRef = useRef<HTMLElement>(null);
@@ -538,29 +540,30 @@ export default function ConnectorModal({
 
           <div className={`border-t p-2.5 ${subtle}`}>
             <button
-              type="button"
-              onClick={() =>
-                window.alert(
-                  "Connector admin settings will be implemented in a later stage."
-                )
-              }
-              className={`
-                flex
-                h-10
-                w-full
-                items-center
-                justify-center
-                gap-2
-                rounded-lg
-                border
-                text-sm
-                ${subtle}
-                ${hover}
-              `}
-            >
-              <Settings size={16} />
-              Admin settings
-            </button>
+  type="button"
+  onClick={() => navigate("/settings/connector-settings")}
+  className="
+    flex
+    w-full
+    items-center
+    justify-center
+    gap-2
+    rounded-xl
+    border
+    border-slate-200
+    bg-white
+    px-4
+    py-3
+    text-sm
+    font-medium
+    text-slate-700
+    transition
+    hover:bg-slate-50
+  "
+>
+  <Settings size={16} />
+  Admin settings
+</button>
           </div>
         </aside>
 

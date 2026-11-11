@@ -51,7 +51,7 @@ import {
 import { useTheme } from "../../context/ThemeContext";
 
 /* =========================================================
-   TYPES
+  TYPES
 ========================================================= */
 
 type WorkspaceTab = "preview" | "code";

@@ -62,11 +62,24 @@ import ProfilePage from "./pages/Profile/ProfilePage";
 
 
 // =====================================================
+// CONNECTORS
+// =====================================================
+
+// Authenticated Gmail / app connectors page.
+import ConnectorsPage from "./pages/Connectors/ConnectorsPage";
+
+
+// =====================================================
 // BUILDER
 // =====================================================
 
 import BuilderPage from "./pages/Builder/BuilderPage";
 import BuilderWorkspacePage from "./pages/Builder/BuilderWorkspacePage";
+import DashboardLayout from "./layouts/DashboardLayout";
+import SettingsLayout from "./layouts/SettingsLayout";
+import SettingsOverview from "./pages/Settings/SettingsOverview";
+import SettingsSectionPage from "./pages/Settings/SettingsSectionPage";
+import ConnectorSettingsPage from "./pages/Settings/ConnectorSettingsPage";
 
 
 // =====================================================
@@ -106,7 +119,6 @@ import PricingPage from "./pages/Pricing/PricingPage";
 // =====================================================
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
-import DashboardLayout from "./layouts/DashboardLayout";
 
 import SecurityPage from "./pages/Security/SecurityPage";
 import PrivacyPage from "./pages/Legal/PrivacyPage";
@@ -554,12 +566,52 @@ function App() {
           }
         >
 
-          {/* Legacy connector URLs now open the dashboard connector workspace. */}
-          <Route path="/connectors" element={<Navigate to="/dashboard?connectors=" replace />} />
-          <Route path="/ConnectorsPage" element={<Navigate to="/dashboard?connectors=" replace />} />
+          {/* =================================================
+              WORKSPACE SETTINGS
+          ================================================= */}
 
-          {/* Dashboard pages share one authenticated application shell. */}
+          <Route
+            path="/workspace/settings"
+            element={<Navigate to="/settings/workspace" replace />}
+          />
+
+          <Route
+            element={<SettingsLayout />}
+          >
+            <Route
+              path="/settings"
+              element={<SettingsOverview />}
+            />
+            <Route
+              path="/settings/connector-settings"
+              element={<ConnectorSettingsPage />}
+            />
+            <Route
+              path="/settings/:sectionId"
+              element={<SettingsSectionPage />}
+            />
+          </Route>
+
+
+          {/* =================================================
+              MAIN APPLICATION SHELL
+              DashboardSidebar is rendered by DashboardLayout.
+              All primary app pages must be nested here so the
+              sidebar stays mounted while navigating.
+          ================================================= */}
+
           <Route element={<DashboardLayout />}>
+            <Route
+              path="/connectors"
+              element={<ConnectorsPage />}
+            />
+
+            {/* Legacy connectors URL */}
+            <Route
+              path="/ConnectorsPage"
+              element={<ConnectorsPage />}
+            />
+
             <Route
               path="/dashboard"
               element={<DashboardPage />}
@@ -576,7 +628,7 @@ function App() {
             />
           </Route>
 
-          {/* Builder remains a focused workspace without dashboard chrome. */}
+
           {/* =================================================
               CREATE NEW PROJECT
           ================================================= */}
