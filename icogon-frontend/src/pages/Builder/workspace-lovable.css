@@ -1,225 +1,40 @@
-/*
- * ICOGON Builder — Lovable-inspired workspace layer
- * Keeps the existing project/orchestrator behaviour intact.
- */
 
-/* Workspace frame */
-.icogon-builder-shell {
-  --builder-accent: #7657f6;
-  --builder-ink: #171717;
-  --builder-muted: #777b86;
-  --builder-line: #e8e8eb;
-  background: #f5f5f6 !important;
-  color: var(--builder-ink);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-/* Lovable-style conversation rail */
-.icogon-builder-shell .icogon-chat-rail {
-  width: 350px !important;
-  min-width: 300px;
-  max-width: 42vw;
-  background: #fff !important;
-  color: #202127 !important;
-  border-right: 1px solid #e7e7ea !important;
-  box-shadow: 1px 0 0 rgba(20, 20, 30, .015);
-}
-.icogon-builder-shell .icogon-chat-header {
-  min-height: 58px;
-  background: #fff !important;
-  border-color: #ededf0 !important;
-}
-.icogon-builder-shell .icogon-project-switcher {
-  background: #fff !important;
-  border-color: #ededf0 !important;
-}
-.icogon-builder-shell .icogon-project-switcher button {
-  min-height: 48px;
-  border-color: #e7e7eb !important;
-  border-radius: 12px;
-  background: #fafafa !important;
-}
-.icogon-builder-shell .icogon-project-switcher button:hover {
-  background: #f4f3ff !important;
-  border-color: #d8d0ff !important;
-}
-.icogon-builder-shell .icogon-chat-history {
-  background: #fbfbfc !important;
-  border-color: #ededf0 !important;
-}
-.icogon-builder-shell .icogon-chat-history span {
-  color: #777b86;
-}
-.icogon-builder-shell .icogon-chat-history {
-  background: #fff;
-  padding: 22px 16px;
-}
-.icogon-builder-shell .icogon-chat-history > div {
-  gap: 20px;
-}
-.icogon-builder-shell .icogon-chat-history > div > div {
-  align-items: flex-start;
-}
-.icogon-builder-shell .icogon-chat-history [class*="rounded-2xl"] {
-  border-radius: 15px !important;
-}
-.icogon-builder-shell .icogon-chat-history [class*="bg-[#161616]"],
-.icogon-builder-shell .icogon-chat-history [class*="bg-[#f3f5f7]"] {
-  background: #f5f5f7 !important;
-  color: #30313a !important;
-  border: 1px solid #ededf0;
-}
-.icogon-builder-shell .icogon-chat-history [class*="bg-[#20282b]"],
-.icogon-builder-shell .icogon-chat-history [class*="bg-[#edf8fa]"] {
-  background: #f0edff !important;
-  color: #38304f !important;
-  border: 1px solid #e6e0ff;
-}
-.icogon-builder-shell .icogon-chat-history [class*="bg-cyan-500/10"] {
-  background: #f0edff !important;
-  color: var(--builder-accent) !important;
-}
-.icogon-builder-shell .icogon-chat-composer {
-  background: #fff !important;
-  border-color: #e9e9ed !important;
-  padding: 12px 12px 10px;
-}
-.icogon-builder-shell .icogon-chat-composer > div {
-  border: 1px solid #e5e5ea !important;
-  border-radius: 18px !important;
-  background: #fff !important;
-  box-shadow: 0 5px 18px rgba(20, 20, 30, .045);
-}
-.icogon-builder-shell .icogon-chat-composer textarea {
-  min-height: 92px;
-  padding: 14px 14px 8px;
-  color: #22232a !important;
-  font-size: 13px;
-}
-.icogon-builder-shell .icogon-chat-composer textarea::placeholder {
-  color: #999ba5 !important;
-}
-.icogon-builder-shell .icogon-chat-composer button[aria-label="Send prompt"] {
-  background: #7657f6 !important;
-  border-radius: 50% !important;
-  color: #fff !important;
-}
-.icogon-builder-shell .icogon-chat-composer button[aria-label="Send prompt"]:hover {
-  background: #6242e9 !important;
-}
-
-/* Top toolbar: pale Lovable-style navigation */
-.icogon-builder-shell .icogon-topbar {
-  height: 62px !important;
-  padding-inline: 18px !important;
-  background: rgba(255,255,255,.96) !important;
-  border-bottom: 1px solid #e7e7eb !important;
-  color: #252630 !important;
-  box-shadow: 0 1px 2px rgba(15,15,25,.025);
-}
-.icogon-builder-shell .icogon-topbar button {
-  transition: background .16s ease, color .16s ease, border-color .16s ease;
-}
-.icogon-builder-shell .icogon-topbar button:hover {
-  color: #29243d !important;
-}
-.icogon-builder-shell .icogon-topbar > div:nth-child(2) > div {
-  background: #f4f4f6 !important;
-  border: 1px solid #e8e8ed !important;
-  border-radius: 13px !important;
-  padding: 3px !important;
-}
-.icogon-builder-shell .icogon-topbar > div:nth-child(2) > div button {
-  min-height: 34px;
-  border-radius: 10px !important;
-}
-.icogon-builder-shell .icogon-topbar > div:nth-child(2) > div button[class*="bg-[#202020]"],
-.icogon-builder-shell .icogon-topbar > div:nth-child(2) > div button[class*="bg-[#f0f2f5]"] {
-  background: #fff !important;
-  color: #282936 !important;
-  box-shadow: 0 1px 3px rgba(20,20,30,.08);
-}
-
-/* Preview stage */
-.icogon-builder-shell .icogon-workstage {
-  background: #f3f4f6 !important;
-}
-.icogon-builder-shell .icogon-tool-view {
-  background:
-    radial-gradient(ellipse at 50% -15%, rgba(118,87,246,.075), transparent 42%),
-    #f7f7f9 !important;
-}
-.icogon-builder-shell .icogon-tool-view article,
-.icogon-builder-shell .icogon-tool-view > div > div > div {
-  border-color: #e7e7eb !important;
-  background: #fff !important;
-  box-shadow: 0 3px 12px rgba(20,20,30,.035);
-}
-.icogon-builder-shell .icogon-tool-view h2,
-.icogon-builder-shell .icogon-tool-view h3 {
-  color: #20212a !important;
-}
-.icogon-builder-shell .icogon-tool-view p {
-  color: #777d8b;
-}
-
-/* Browser-like preview frame */
-.icogon-builder-shell .icogon-tool-view,
-.icogon-builder-shell .overflow-auto > .mx-auto.max-w-\[1500px\] {
-  scrollbar-width: thin;
-  scrollbar-color: #d2d2d8 transparent;
-}
-.icogon-builder-shell .icogon-workstage > div > div {
-  border-radius: 16px !important;
-  border-color: #e1e2e7 !important;
-  box-shadow: 0 10px 35px rgba(20,20,30,.075) !important;
-}
-.icogon-builder-shell .icogon-workstage > div > div > div:first-child {
-  background: #fff !important;
-  border-color: #e9e9ed !important;
-}
-
-/* Code editor chrome */
-.icogon-builder-shell pre {
-  tab-size: 2;
-  white-space: pre;
-}
-.icogon-builder-shell footer {
-  height: 30px !important;
-  background: #fff !important;
-  border-color: #e8e8eb !important;
-  color: #858894 !important;
-}
-
-/* Responsive behaviour */
-@media (max-width: 900px) {
-  .icogon-builder-shell .icogon-chat-rail {
-    width: min(330px, 42vw) !important;
-    min-width: 270px;
-  }
-}
-@media (max-width: 767px) {
-  .icogon-builder-shell {
-    height: 100dvh !important;
-  }
-  .icogon-builder-shell .icogon-chat-rail {
-    position: absolute;
-    inset: 0 auto 0 0;
-    z-index: 30;
-    width: min(88vw, 350px) !important;
-    max-width: 88vw;
-    min-width: 0;
-    box-shadow: 18px 0 45px rgba(20,20,30,.14);
-  }
-  .icogon-builder-shell > aside.w-0 {
-    transform: translateX(-105%);
-    pointer-events: none;
-  }
-  .icogon-builder-shell .icogon-topbar {
-    height: 54px !important;
-    padding-inline: 8px !important;
-  }
-  .icogon-builder-shell .icogon-workstage > div {
-    padding: 8px !important;
-  }
-}
+/* Integrated Lovable-style developer dock */
+.icogon-dev-dock{display:flex;flex:0 0 auto;flex-direction:column;overflow:hidden;border-top:1px solid #e7eaf0;background:#fff}
+.icogon-dev-dock.is-closed{min-height:42px}
+.icogon-dev-dock-bar{display:flex;min-height:42px;align-items:center;gap:12px;padding:0 10px;background:#fff;border-bottom:1px solid #edf0f4}
+.icogon-dev-dock-toggle,.icogon-dev-dock-tabs button,.icogon-dev-dock-close{display:inline-flex;align-items:center;gap:7px}
+.icogon-dev-dock-toggle{font-size:11px;font-weight:700;color:#4b5565;white-space:nowrap}
+.icogon-dev-dock-count{border-radius:99px;background:#f1f3f7;padding:2px 7px;color:#818a9a;font-size:9px}
+.icogon-dev-dock-tabs{display:flex;flex:1;min-width:0;gap:3px}
+.icogon-dev-dock-tabs button{border-radius:8px;padding:7px 9px;color:#7b8494;font-size:10px}
+.icogon-dev-dock-tabs button:hover{background:#f5f6f9}
+.icogon-dev-dock-tabs button.is-active{background:#f0edff;color:#6854d6}
+.icogon-dev-dock-close{padding:6px;color:#8b93a1}
+.icogon-dev-dock-resize{display:flex;min-height:27px;align-items:center;justify-content:flex-end;gap:10px;padding:0 12px;background:#fafbfc;border-bottom:1px solid #edf0f4}
+.icogon-dev-dock-resize label{font-size:9px;color:#98a0ae}
+.icogon-dev-dock-resize input{width:110px;accent-color:#7662e8}
+.icogon-dev-dock-content{min-height:0;flex-shrink:0;overflow:auto;background:#fbfcfe}
+.icogon-dev-file-list{display:flex;height:100%;flex-direction:column;overflow:auto;padding:7px}
+.icogon-dev-file-list button{display:flex;min-height:31px;align-items:center;gap:8px;border-radius:6px;padding:0 9px;color:#687387;text-align:left}
+.icogon-dev-file-list button:hover{background:#f0f2f8}
+.icogon-dev-file-list button.is-selected{background:#efedff;color:#5e4acb}
+.icogon-dev-file-list button span{flex:1;min-width:0;overflow:hidden;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.icogon-dev-file-list small{font-size:9px;color:#9ba3b1}
+.icogon-dev-code,.icogon-dev-terminal{display:flex;height:100%;flex-direction:column;overflow:hidden;background:#171923;color:#d5d9e6}
+.icogon-dev-code-header,.icogon-dev-terminal-header{display:flex;min-height:34px;align-items:center;justify-content:space-between;gap:8px;padding:0 12px;border-bottom:1px solid #2c3040;font-size:10px}
+.icogon-dev-code-header span,.icogon-dev-code-header button{display:inline-flex;align-items:center;gap:7px}
+.icogon-dev-code-header button{color:#bbc2d0}
+.icogon-dev-code-header button:disabled{opacity:.4}
+.icogon-dev-code pre{flex:1;min-height:0;overflow:auto;padding:12px 15px;font:10px/1.65 "SFMono-Regular",Consolas,monospace;white-space:pre}
+.icogon-dev-terminal-header small{color:#e6b85b}
+.icogon-dev-terminal-body{padding:14px;font:10px/1.8 "SFMono-Regular",Consolas,monospace}
+.icogon-dev-terminal-body .muted{color:#8b94a7}
+.icogon-dev-console{height:100%;overflow:auto;padding:10px 13px;font-size:10px}
+.icogon-dev-console-summary{display:flex;justify-content:space-between;color:#8791a2}
+.icogon-dev-console .error{padding:8px 0;color:#c74450}
+.icogon-dev-console .warning{padding:8px 0;color:#a87920}
+.icogon-dev-empty{display:flex;min-height:100%;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:18px;color:#9aa3b2;text-align:center}
+.icogon-dev-empty strong{font-size:10px;color:#626e82}
+.icogon-dev-empty span{font-size:9px}
+@media(max-width:640px){.icogon-dev-dock-bar{gap:5px;padding:0 6px}.icogon-dev-dock-toggle{font-size:9px}.icogon-dev-dock-count{display:none}.icogon-dev-dock-tabs{justify-content:flex-end;gap:0}.icogon-dev-dock-tabs button{gap:4px;padding:6px;font-size:9px}}

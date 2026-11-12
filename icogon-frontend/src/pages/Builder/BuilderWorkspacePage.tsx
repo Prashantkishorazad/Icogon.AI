@@ -17,11 +17,9 @@ import {
   FileCode2,
   Folder,
   Loader2,
-  Maximize2,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
-  RefreshCw,
   Rocket,
   Send,
   Sparkles,
@@ -47,6 +45,9 @@ import {
   type OrchestratorRunStep,
   type ProjectResponse,
 } from "../../api/projectApi";
+
+import BuilderPreviewPanel from "./components/BuilderPreviewPanel";
+import BuilderDeveloperDock from "./components/BuilderDeveloperDock";
 
 import { useTheme } from "../../context/ThemeContext";
 import "./workspace.css";
@@ -87,6 +88,7 @@ type GeneratedFile = {
 type PreviewState = {
   available: boolean;
   data: unknown | null;
+  error?: string | null;
 };
 
 /* =========================================================
@@ -318,6 +320,12 @@ const BuilderWorkspacePage: React.FC = () => {
     setIsRefreshing,
   ] = useState(false);
 
+  const [developerDockOpen, setDeveloperDockOpen] = useState(false);
+  const [developerDockTab, setDeveloperDockTab] = useState<
+    "files" | "code" | "terminal" | "console"
+  >("files");
+  const [developerDockHeight, setDeveloperDockHeight] = useState(260);
+
   /* =======================================================
      ORCHESTRATOR
   ======================================================= */
@@ -363,6 +371,7 @@ const BuilderWorkspacePage: React.FC = () => {
   ] = useState<PreviewState>({
     available: false,
     data: null,
+    error: null,
   });
 
   const [
@@ -717,6 +726,7 @@ const BuilderWorkspacePage: React.FC = () => {
         setPreviewState({
           available: true,
           data: preview,
+          error: null,
         });
       } catch (error) {
         console.error(
@@ -727,6 +737,10 @@ const BuilderWorkspacePage: React.FC = () => {
         setPreviewState({
           available: false,
           data: null,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unable to prepare the preview.",
         });
       }
     },
@@ -840,6 +854,7 @@ const BuilderWorkspacePage: React.FC = () => {
     setPreviewState({
       available: false,
       data: null,
+      error: null,
     });
 
     const userMessage: Message = {
@@ -1341,10 +1356,11 @@ export default function App() {
           ${colors.panel}
           ${colors.border}
           ${
-            sidebarOpen
+            sidebarOpen && !isFullscreen
               ? "w-[310px]"
               : "w-0"
           }
+          ${isFullscreen ? "hidden" : ""}
         `}
       >
         {/* SIDEBAR HEADER */}
@@ -1932,6 +1948,7 @@ export default function App() {
             sm:px-4
             ${colors.panel}
             ${colors.border}
+            ${isFullscreen ? "hidden" : ""}
           `}
         >
           <div className="flex min-w-0 items-center gap-2">
@@ -2241,21 +2258,23 @@ export default function App() {
             flex-1
             overflow-hidden
             ${colors.preview}
+            ${isFullscreen ? "fixed inset-0 z-[10000] h-screen w-screen" : ""}
           `}
         >
           {activeTab === "preview" ? (
-            <div className="h-full overflow-auto p-3 sm:p-5">
+            <div className={`h-full overflow-auto ${isFullscreen ? "p-0" : "p-3 sm:p-5"}`}>
               <div
                 className={`
                   mx-auto
                   flex
                   min-h-full
-                  max-w-[1500px]
+                  w-full
                   flex-col
                   overflow-hidden
                   border
                   bg-white
                   shadow-[0_15px_50px_rgba(15,23,42,0.08)]
+                  ${isFullscreen ? "h-full max-w-none border-0 shadow-none" : "max-w-[1500px]"}
                   ${
                     isFullscreen
                       ? "rounded-none"
@@ -2268,458 +2287,56 @@ export default function App() {
                   }
                 `}
               >
-                {/* PREVIEW TOOLBAR */}
-
-                <div
-                  className="
-                    flex
-                    h-11
-                    shrink-0
-                    items-center
-                    justify-between
-                    border-b
-                    border-slate-200
-                    bg-white
-                    px-3
-                  "
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-red-300" />
-                      <span className="h-2 w-2 rounded-full bg-yellow-300" />
-                      <span className="h-2 w-2 rounded-full bg-green-300" />
-                    </div>
-
-                    <div
-                      className="
-                        ml-2
-                        hidden
-                        h-6
-                        min-w-[220px]
-                        items-center
-                        rounded-md
-                        bg-slate-50
-                        px-3
-                        text-[9px]
-                        text-slate-400
-                        sm:flex
-                      "
-                    >
-                      {previewState.available
-                        ? "ICOGON AI Preview"
-                        : "Preview will appear after generation"}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void handleRefreshPreview()
-                      }
-                      disabled={
-                        !activeRun ||
-                        runStage !==
-                          "completed" ||
-                        isRefreshing
-                      }
-                      aria-label="Refresh preview"
-                      className="
-                        rounded-lg
-                        p-1.5
-                        text-slate-400
-                        transition
-                        hover:bg-slate-100
-                        hover:text-slate-800
-                        disabled:cursor-not-allowed
-                        disabled:opacity-30
-                      "
-                    >
-                      <RefreshCw
-                        size={13}
-                        className={
-                          isRefreshing
-                            ? "animate-spin"
-                            : ""
-                        }
-                      />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setIsFullscreen(
-                          (value) =>
-                            !value
+                <BuilderPreviewPanel
+                  projectName={project.name}
+                  preview={previewState.data}
+                  available={previewState.available}
+                  error={previewState.error ?? null}
+                  runStatus={runStage}
+                  isRefreshing={isRefreshing}
+                  isFullscreen={isFullscreen}
+                  onRefresh={
+                    activeRun?.id
+                      ? () => void handleRefreshPreview()
+                      : undefined
+                  }
+                  onToggleFullscreen={() =>
+                    setIsFullscreen((value) => !value)
+                  }
+                  onViewCode={() => {
+                    setActiveTab("code");
+                    setDeveloperDockTab("code");
+                    setDeveloperDockOpen(true);
+                  }}
+                />
+                <BuilderDeveloperDock
+                  open={developerDockOpen}
+                  onToggle={() => setDeveloperDockOpen((value) => !value)}
+                  activeTab={developerDockTab}
+                  onTabChange={setDeveloperDockTab}
+                  height={developerDockHeight}
+                  onHeightChange={setDeveloperDockHeight}
+                  files={generatedFiles}
+                  selectedFilePath={selectedFilePath}
+                  onSelectFile={(path) => {
+                    setSelectedFilePath(path);
+                    setDeveloperDockTab("code");
+                  }}
+                  code={generatedCode}
+                  previewError={previewState.error ?? null}
+                  previewWarnings={
+                    previewState.data &&
+                    typeof previewState.data === "object" &&
+                    Array.isArray(
+                      (previewState.data as { warnings?: unknown }).warnings
+                    )
+                      ? (previewState.data as { warnings: unknown[] }).warnings.filter(
+                          (item): item is string => typeof item === "string"
                         )
-                      }
-                      aria-label={
-                        isFullscreen
-                          ? "Exit fullscreen"
-                          : "Enter fullscreen"
-                      }
-                      className="
-                        rounded-lg
-                        p-1.5
-                        text-slate-400
-                        transition
-                        hover:bg-slate-100
-                        hover:text-slate-800
-                      "
-                    >
-                      <Maximize2 size={13} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* GENERATED PREVIEW */}
-
-                {previewState.available ? (
-                  <div className="min-h-[calc(100vh-150px)] bg-white">
-                    <div
-                      className="
-                        flex
-                        h-16
-                        items-center
-                        justify-between
-                        border-b
-                        border-slate-100
-                        px-6
-                        sm:px-10
-                      "
-                    >
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="
-                            flex
-                            h-8
-                            w-8
-                            items-center
-                            justify-center
-                            rounded-lg
-                            bg-gradient-to-br
-                            from-cyan-400
-                            to-blue-600
-                            text-white
-                          "
-                        >
-                          <Sparkles size={15} />
-                        </div>
-
-                        <span
-                          className="
-                            text-sm
-                            font-bold
-                            tracking-tight
-                            text-slate-900
-                          "
-                        >
-                          {project.name}
-                        </span>
-                      </div>
-
-                      <div className="hidden items-center gap-6 md:flex">
-                        <span className="text-[11px] text-slate-400">
-                          Home
-                        </span>
-
-                        <span className="text-[11px] text-slate-400">
-                          Features
-                        </span>
-
-                        <span className="text-[11px] text-slate-400">
-                          About
-                        </span>
-
-                        <span className="text-[11px] text-slate-400">
-                          Contact
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="
-                          rounded-lg
-                          bg-slate-900
-                          px-3
-                          py-2
-                          text-[10px]
-                          font-semibold
-                          text-white
-                        "
-                      >
-                        Get Started
-                      </button>
-                    </div>
-
-                    <div
-                      className="
-                        relative
-                        overflow-hidden
-                        px-6
-                        py-20
-                        sm:px-12
-                        sm:py-28
-                      "
-                    >
-                      <div
-                        className="
-                          pointer-events-none
-                          absolute
-                          left-1/2
-                          top-0
-                          h-[300px]
-                          w-[500px]
-                          -translate-x-1/2
-                          rounded-full
-                          bg-cyan-200/40
-                          blur-[100px]
-                        "
-                      />
-
-                      <div className="relative mx-auto max-w-3xl text-center">
-                        <div
-                          className="
-                            mx-auto
-                            flex
-                            w-fit
-                            items-center
-                            gap-1.5
-                            rounded-full
-                            border
-                            border-cyan-200
-                            bg-cyan-50
-                            px-3
-                            py-1.5
-                            text-[10px]
-                            font-medium
-                            text-cyan-700
-                          "
-                        >
-                          <Sparkles size={11} />
-                          AI-generated application
-                        </div>
-
-                        <h1
-                          className="
-                            mt-6
-                            text-4xl
-                            font-bold
-                            tracking-[-0.04em]
-                            text-slate-900
-                            sm:text-6xl
-                          "
-                        >
-                          {project.name}
-
-                          <span className="block bg-gradient-to-r from-cyan-500 via-blue-600 to-violet-600 bg-clip-text text-transparent">
-                            built with ICOGON AI.
-                          </span>
-                        </h1>
-
-                        <p
-                          className="
-                            mx-auto
-                            mt-5
-                            max-w-xl
-                            text-sm
-                            leading-6
-                            text-slate-500
-                            sm:text-base
-                          "
-                        >
-                          Your generated application
-                          has passed the ICOGON AI
-                          orchestration pipeline.
-                        </p>
-
-                        <div className="mt-8 flex flex-wrap justify-center gap-3">
-                          <button
-                            type="button"
-                            className="
-                              rounded-xl
-                              bg-slate-900
-                              px-5
-                              py-3
-                              text-xs
-                              font-semibold
-                              text-white
-                            "
-                          >
-                            Get Started
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setActiveTab(
-                                "code"
-                              )
-                            }
-                            className="
-                              rounded-xl
-                              border
-                              border-slate-200
-                              bg-white
-                              px-5
-                              py-3
-                              text-xs
-                              font-semibold
-                              text-slate-700
-                            "
-                          >
-                            View Code
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="px-6 pb-16 sm:px-12">
-                      <div className="mx-auto grid max-w-5xl grid-cols-1 gap-4 sm:grid-cols-3">
-                        {[
-                          {
-                            title: "Generated",
-                            text: "Created by the ICOGON AI pipeline.",
-                          },
-                          {
-                            title: "Reviewed",
-                            text: "Passed structural and security checks.",
-                          },
-                          {
-                            title: "Verified",
-                            text: "Application verification completed.",
-                          },
-                        ].map(
-                          (item) => (
-                            <div
-                              key={
-                                item.title
-                              }
-                              className="
-                                rounded-2xl
-                                border
-                                border-slate-200
-                                bg-white
-                                p-5
-                                shadow-sm
-                              "
-                            >
-                              <div
-                                className="
-                                  flex
-                                  h-9
-                                  w-9
-                                  items-center
-                                  justify-center
-                                  rounded-xl
-                                  bg-slate-100
-                                  text-slate-700
-                                "
-                              >
-                                <Check size={15} />
-                              </div>
-
-                              <h3
-                                className="
-                                  mt-4
-                                  text-sm
-                                  font-semibold
-                                  text-slate-900
-                                "
-                              >
-                                {
-                                  item.title
-                                }
-                              </h3>
-
-                              <p
-                                className="
-                                  mt-2
-                                  text-xs
-                                  leading-5
-                                  text-slate-500
-                                "
-                              >
-                                {
-                                  item.text
-                                }
-                              </p>
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex min-h-[calc(100vh-150px)] items-center justify-center bg-white px-6">
-                    <div className="max-w-md text-center">
-                      <div
-                        className="
-                          mx-auto
-                          flex
-                          h-14
-                          w-14
-                          items-center
-                          justify-center
-                          rounded-2xl
-                          bg-gradient-to-br
-                          from-cyan-500
-                          via-blue-500
-                          to-violet-500
-                          text-white
-                          shadow-lg
-                        "
-                      >
-                        {isRunning ? (
-                          <Loader2
-                            size={24}
-                            className="animate-spin"
-                          />
-                        ) : runStage ===
-                          "failed" ? (
-                          <CircleAlert
-                            size={24}
-                          />
-                        ) : runStage ===
-                          "cancelled" ? (
-                          <X size={24} />
-                        ) : (
-                          <Sparkles
-                            size={24}
-                          />
-                        )}
-                      </div>
-
-                      <h2 className="mt-5 text-lg font-semibold text-slate-900">
-                        {stageLabel(
-                          runStage
-                        )}
-                      </h2>
-
-                      <p className="mt-2 text-sm leading-6 text-slate-500">
-                        {runStage ===
-                        "idle"
-                          ? "Describe what you want to build using the AI composer on the left."
-                          : runStage ===
-                            "failed"
-                          ? runError ||
-                            "The generation pipeline encountered an error."
-                          : runStage ===
-                            "cancelled"
-                          ? "Start another request whenever you're ready."
-                          : "ICOGON AI is processing your request. The live pipeline status is shown in the left panel."}
-                      </p>
-
-                      {isRunning && (
-                        <div className="mt-6">
-                          <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                            <div className="h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500" />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                      : []
+                  }
+                  runStatus={runStage}
+                />
               </div>
             </div>
           ) : activeTab === "files" ? (
