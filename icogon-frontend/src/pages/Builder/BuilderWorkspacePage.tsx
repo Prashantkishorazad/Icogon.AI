@@ -49,12 +49,14 @@ import {
 } from "../../api/projectApi";
 
 import { useTheme } from "../../context/ThemeContext";
+import "./workspace.css";
+import "./workspace-lovable.css";
 
 /* =========================================================
   TYPES
 ========================================================= */
 
-type WorkspaceTab = "preview" | "code";
+type WorkspaceTab = "preview" | "files" | "code" | "more";
 
 type Message = {
   id: string;
@@ -1148,7 +1150,7 @@ export default function App() {
               shadow-lg
             "
           >
-            <Sparkles size={19} />
+            <img src="/logo.png" alt="ICOGON" className="h-7 w-7 object-contain" />
           </div>
 
           <div className="text-center">
@@ -1309,6 +1311,7 @@ export default function App() {
   return (
     <div
       className={`
+        icogon-builder-shell
         flex
         h-screen
         w-full
@@ -1326,7 +1329,8 @@ export default function App() {
       =================================================== */}
 
       <aside
-        className={`
+        className={`icogon-chat-rail
+
           flex
           shrink-0
           flex-col
@@ -1338,7 +1342,7 @@ export default function App() {
           ${colors.border}
           ${
             sidebarOpen
-              ? "w-[340px]"
+              ? "w-[310px]"
               : "w-0"
           }
         `}
@@ -1346,7 +1350,7 @@ export default function App() {
         {/* SIDEBAR HEADER */}
 
         <div
-          className={`
+          className={`icogon-chat-header
             flex
             h-[58px]
             shrink-0
@@ -1374,7 +1378,7 @@ export default function App() {
                 shadow-sm
               "
             >
-              <Sparkles size={15} />
+              <img src="/logo.png" alt="ICOGON" className="h-7 w-7 object-contain" />
             </div>
 
             <div>
@@ -1420,7 +1424,7 @@ export default function App() {
         {/* PROJECT SELECTOR */}
 
         <div
-          className={`
+          className={`icogon-project-switcher
             border-b
             px-4
             py-3
@@ -1619,7 +1623,7 @@ export default function App() {
         {/* CHAT */}
 
         <div
-          className="
+          className="icogon-chat-history
             flex-1
             overflow-y-auto
             px-3
@@ -1751,7 +1755,7 @@ export default function App() {
         {/* PROMPT COMPOSER */}
 
         <div
-          className={`
+          className={`icogon-chat-composer
             shrink-0
             border-t
             p-3
@@ -1917,7 +1921,7 @@ export default function App() {
         {/* TOP HEADER */}
 
         <header
-          className={`
+          className={`icogon-topbar
             flex
             h-[58px]
             shrink-0
@@ -2084,6 +2088,12 @@ export default function App() {
                 <Code2 size={13} />
                 Code
               </button>
+              <button type="button" onClick={() => setActiveTab("files")} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium ${activeTab === "files" ? colors.active : colors.muted}`}>
+                <Folder size={13} /> Files
+              </button>
+              <button type="button" onClick={() => setActiveTab("more")} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium ${activeTab === "more" ? colors.active : colors.muted}`}>
+                <MoreHorizontal size={13} /> More
+              </button>
             </div>
 
             <button
@@ -2219,12 +2229,14 @@ export default function App() {
             <Code2 size={13} />
             Code
           </button>
+          <button type="button" onClick={() => setActiveTab("files")} className={`flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] ${activeTab === "files" ? colors.active : colors.muted}`}><Folder size={13} />Files</button>
+          <button type="button" onClick={() => setActiveTab("more")} className={`flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] ${activeTab === "more" ? colors.active : colors.muted}`}><MoreHorizontal size={13} />More</button>
         </div>
 
         {/* WORKSPACE */}
 
         <div
-          className={`
+          className={`icogon-workstage
             relative
             flex-1
             overflow-hidden
@@ -2710,6 +2722,19 @@ export default function App() {
                 )}
               </div>
             </div>
+          ) : activeTab === "files" ? (
+            <section className="icogon-tool-view h-full overflow-auto p-5 sm:p-8">
+              <div className="mx-auto max-w-5xl">
+                <div className="mb-7 flex items-center justify-between gap-4"><div><p className="text-xs text-violet-400">PROJECT WORKSPACE</p><h2 className={`mt-1 text-2xl font-semibold ${colors.text}`}>Files</h2><p className={`mt-1 text-sm ${colors.muted}`}>Browse the files generated for this project.</p></div><span className={`rounded-full border px-3 py-1.5 text-xs ${colors.border} ${colors.muted}`}>{generatedFiles.length} files</span></div>
+                <div className={`overflow-hidden rounded-2xl border ${colors.border} ${colors.panel}`}>
+                  {generatedFiles.length ? generatedFiles.map((file) => <button key={file.path} type="button" onClick={() => { setSelectedFilePath(file.path); setActiveTab("code"); }} className={`flex w-full items-center gap-3 border-b px-4 py-3 text-left last:border-b-0 ${colors.border} ${colors.hover}`}><FileCode2 size={17} className="shrink-0 text-violet-400"/><span className={`min-w-0 flex-1 truncate text-sm ${colors.text}`}>{file.path}</span><span className={`text-xs ${colors.muted}`}>{file.operation || "generated"}</span><Code2 size={14} className={colors.muted}/></button>) : <div className="flex min-h-72 flex-col items-center justify-center px-6 text-center"><Folder size={30} className="mb-3 text-violet-400"/><h3 className={`text-base font-semibold ${colors.text}`}>No generated files yet</h3><p className={`mt-2 max-w-sm text-sm ${colors.muted}`}>Your project files will appear here after the first successful generation.</p><button type="button" onClick={() => setActiveTab("preview")} className="mt-5">Back to preview</button></div>}
+                </div>
+              </div>
+            </section>
+          ) : activeTab === "more" ? (
+            <section className="icogon-tool-view h-full overflow-auto p-5 sm:p-8"><div className="mx-auto max-w-5xl"><p className="text-xs text-violet-400">PROJECT WORKSPACE</p><h2 className={`mt-1 text-2xl font-semibold ${colors.text}`}>More tools</h2><p className={`mt-1 text-sm ${colors.muted}`}>Project services and workspace capabilities.</p><div className="mt-7 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{[
+              ["Analytics", "Understand project activity and usage."], ["Database", "Plan and manage application data."], ["Users", "User and access management."], ["Storage", "Project assets and uploaded files."], ["AI", "AI configuration and generation settings."], ["Payments", "Payment integration settings."], ["Emails", "Email delivery configuration."], ["Domains", "Custom domain configuration."], ["Connectors", "Connect external services."], ["Security", "Application security overview."], ["SEO & AI search", "Search visibility settings."], ["Settings", "Project preferences and configuration."]
+            ].map(([title, description]) => <article key={title} className={`flex items-start gap-3 rounded-2xl border p-4 ${colors.border} ${colors.panel}`}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-lg text-violet-400">✳</span><div><h3 className={`text-sm font-semibold ${colors.text}`}>{title}</h3><p className={`mt-1 text-xs leading-5 ${colors.muted}`}>{description}</p></div></article>)}</div><p className={`mt-5 text-xs ${colors.muted}`}>Individual service actions require their respective backend integrations.</p></div></section>
           ) : (
             /* =================================================
                CODE
