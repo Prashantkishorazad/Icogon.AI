@@ -1,533 +1,170 @@
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
-
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  CircleAlert,
-  Code2,
-  Copy,
-  Eye,
-  FileCode2,
-  Folder,
-  Loader2,
-  MoreHorizontal,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Rocket,
-  Send,
-  Sparkles,
-  Square,
-  WandSparkles,
-  X,
-} from "lucide-react";
-
-import {
-  useNavigate,
-  useParams,
-} from "react-router-dom";
-
-import {
-  getProjectApi,
+  cancelOrchestratorRunApi,
   getOrchestratorPreviewApi,
   getOrchestratorRunApi,
+  getProjectApi,
   streamOrchestratorEventsApi,
   submitOrchestratorRunApi,
-  cancelOrchestratorRunApi,
   type OrchestratorRun,
   type OrchestratorRunEvent,
   type OrchestratorRunStep,
   type ProjectResponse,
 } from "../../api/projectApi";
+import {
+  type ChatMessage,
+  type DeviceMode,
+  type GeneratedFile,
+  type PreviewState,
+  type RunStage,
+  type WorkspaceTab,
+  createId,
+  extractGeneratedFiles,
+  normalizeStage,
+} from "./types";
+import { WorkspaceHeader } from "./components/WorkspaceHeader";
+import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
+import WorkspaceNavigation from "./components/WorkspaceNavigation";
+import WorkspaceDeveloperPanel from "./components/WorkspaceDeveloperPanel";
+import { WorkspacePreview } from "./components/WorkspacePreview";
+import { WorkspaceCodeEditor } from "./components/WorkspaceCodeEditor";
+import { WorkspaceStatusBar } from "./components/WorkspaceStatusBar";
+import { Loader2, PanelBottom } from "lucide-react";
+import { WorkspaceLayout, type WorkspaceLayoutControls } from "./components/WorkspaceLayout";
 
-import BuilderPreviewPanel from "./components/BuilderPreviewPanel";
-import BuilderDeveloperDock from "./components/BuilderDeveloperDock";
-
-import { useTheme } from "../../context/ThemeContext";
-import "./workspace.css";
-import "./workspace-lovable.css";
-
-/* =========================================================
-  TYPES
-========================================================= */
-
-type WorkspaceTab = "preview" | "files" | "code" | "more";
-
-type Message = {
-  id: string;
-  role: "ai" | "user";
-  content: string;
-};
-
-type RunStage =
-  | "idle"
-  | "queued"
-  | "analyzing"
-  | "designing"
-  | "planning"
-  | "generating"
-  | "reviewing"
-  | "repairing"
-  | "verifying"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-type GeneratedFile = {
-  path: string;
-  operation?: string;
-  content?: string | null;
-};
-
-type PreviewState = {
-  available: boolean;
-  data: unknown | null;
-  error?: string | null;
-};
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-const createId = (prefix: string) => {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-
-  return `${prefix}-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2)}`;
-};
-
-const stageLabel = (stage: RunStage): string => {
-  switch (stage) {
-    case "queued":
-      return "Queued";
-
-    case "analyzing":
-      return "Understanding requirements";
-
-    case "designing":
-      return "Designing architecture";
-
-    case "planning":
-      return "Planning implementation";
-
-    case "generating":
-      return "Generating application";
-
-    case "reviewing":
-      return "Reviewing generated code";
-
-    case "repairing":
-      return "Improving generated code";
-
-    case "verifying":
-      return "Verifying application";
-
-    case "completed":
-      return "Generation completed";
-
-    case "failed":
-      return "Generation failed";
-
-    case "cancelled":
-      return "Generation cancelled";
-
-    default:
-      return "Ready";
-  }
-};
-
-const normalizeStage = (
-  value: string | undefined
-): RunStage => {
-  if (!value) {
-    return "idle";
-  }
-
-  const normalized = value.toLowerCase();
-
-  const stages: RunStage[] = [
-    "queued",
-    "analyzing",
-    "designing",
-    "planning",
-    "generating",
-    "reviewing",
-    "repairing",
-    "verifying",
-    "completed",
-    "failed",
-    "cancelled",
-  ];
-
-  if (stages.includes(normalized as RunStage)) {
-    return normalized as RunStage;
-  }
-
-  return "idle";
-};
-
-const extractGeneratedFiles = (
-  run: OrchestratorRun | null
-): GeneratedFile[] => {
-  if (!run?.changes) {
-    return [];
-  }
-
-  if (
-    typeof run.changes !== "object" ||
-    run.changes === null
-  ) {
-    return [];
-  }
-
-  const changes = run.changes as {
-    files?: unknown;
-  };
-
-  if (!Array.isArray(changes.files)) {
-    return [];
-  }
-
-  return changes.files.filter(
-    (file): file is GeneratedFile =>
-      typeof file === "object" &&
-      file !== null &&
-      "path" in file &&
-      typeof (file as { path?: unknown }).path === "string"
-  );
-};
-
-const getFileContent = (
-  file: GeneratedFile | undefined
-): string => {
-  if (!file?.content) {
-    return "";
-  }
-
-  return file.content;
-};
-
-const getPreviewMessage = (
-  stage: RunStage,
-  run: OrchestratorRun | null
-): string => {
-  if (stage === "completed") {
-    const fileCount = extractGeneratedFiles(run).length;
-
-    if (fileCount > 0) {
-      return `Your application has been generated successfully with ${fileCount} file${
-        fileCount === 1 ? "" : "s"
-      }.`;
-    }
-
-    return "Your application has been generated successfully.";
-  }
-
-  if (stage === "failed") {
-    const failure = run?.failure;
-
-    if (
-      typeof failure === "object" &&
-      failure !== null &&
-      "message" in failure &&
-      typeof (failure as { message?: unknown }).message === "string"
-    ) {
-      return (failure as { message: string }).message;
-    }
-
-    return "Generation failed. Please try again.";
-  }
-
-  if (stage === "cancelled") {
-    return "Generation was cancelled.";
-  }
-
-  return `ICOGON AI is ${stageLabel(stage).toLowerCase()}...`;
-};
-
-/* =========================================================
-   COMPONENT
-========================================================= */
-
-const BuilderWorkspacePage: React.FC = () => {
+export const BuilderWorkspacePage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { projectId } = useParams<{ projectId: string }>();
 
-  const { projectId } = useParams<{
-    projectId: string;
-  }>();
+  // Project state
+  const [project, setProject] = useState<ProjectResponse | null>(null);
+  const [projectLoading, setProjectLoading] = useState(true);
+  const [projectError, setProjectError] = useState("");
 
-  const { resolvedTheme } = useTheme();
+  // Workspace UI state
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>("preview");
+  const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
+  const [chatOpen, setChatOpen] = useState(true);
+  const layoutControlsRef = useRef<WorkspaceLayoutControls | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [prompt, setPrompt] = useState("");
 
-  const isDark = resolvedTheme === "dark";
-
-  /* =======================================================
-     PROJECT
-  ======================================================= */
-
-  const [
-    project,
-    setProject,
-  ] = useState<ProjectResponse | null>(null);
-
-  const [
-    projectLoading,
-    setProjectLoading,
-  ] = useState(true);
-
-  const [
-    projectError,
-    setProjectError,
-  ] = useState("");
-
-  /* =======================================================
-     WORKSPACE
-  ======================================================= */
-
-  const [
-    prompt,
-    setPrompt,
-  ] = useState("");
-
-  const [
-    sidebarOpen,
-    setSidebarOpen,
-  ] = useState(true);
-
-  const [
-    activeTab,
-    setActiveTab,
-  ] = useState<WorkspaceTab>("preview");
-
-  const [
-    isFullscreen,
-    setIsFullscreen,
-  ] = useState(false);
-
-  const [
-    isRefreshing,
-    setIsRefreshing,
-  ] = useState(false);
-
-  const [developerDockOpen, setDeveloperDockOpen] = useState(false);
-  const [developerDockTab, setDeveloperDockTab] = useState<
-    "files" | "code" | "terminal" | "console"
-  >("files");
-  const [developerDockHeight, setDeveloperDockHeight] = useState(260);
-
-  /* =======================================================
-     ORCHESTRATOR
-  ======================================================= */
-
-  const [
-    activeRun,
-    setActiveRun,
-  ] = useState<OrchestratorRun | null>(null);
-
-  const [
-    runStage,
-    setRunStage,
-  ] = useState<RunStage>("idle");
-
-  const [
-    runError,
-    setRunError,
-  ] = useState("");
-
-  const [
-    runEvents,
-    setRunEvents,
-  ] = useState<OrchestratorRunEvent[]>([]);
-
-  const [
-    runSteps,
-    setRunSteps,
-  ] = useState<OrchestratorRunStep[]>([]);
-
-  const [
-    generatedFiles,
-    setGeneratedFiles,
-  ] = useState<GeneratedFile[]>([]);
-
-  const [
-    selectedFilePath,
-    setSelectedFilePath,
-  ] = useState("App.tsx");
-
-  const [
-    previewState,
-    setPreviewState,
-  ] = useState<PreviewState>({
+  // Orchestration & Run state
+  const [activeRun, setActiveRun] = useState<OrchestratorRun | null>(null);
+  const [runStage, setRunStage] = useState<RunStage>("idle");
+  const [runError, setRunError] = useState("");
+  const [runEvents, setRunEvents] = useState<OrchestratorRunEvent[]>([]);
+  const [runSteps, setRunSteps] = useState<OrchestratorRunStep[]>([]);
+  const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
+  const [selectedFilePath, setSelectedFilePath] = useState("src/App.tsx");
+  const [previewState, setPreviewState] = useState<PreviewState>({
     available: false,
     data: null,
-    error: null,
   });
+  const [isSending, setIsSending] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
-  const [
-    isSending,
-    setIsSending,
-  ] = useState(false);
+  const eventAbortRef = useRef<AbortController | null>(null);
 
-  const [
-    isCancelling,
-    setIsCancelling,
-  ] = useState(false);
-
-  const eventAbortRef =
-    useRef<AbortController | null>(null);
-
-  const messagesEndRef =
-    useRef<HTMLDivElement | null>(null);
-
-  /* =======================================================
-     CHAT
-  ======================================================= */
-
-  const [
-    messages,
-    setMessages,
-  ] = useState<Message[]>([
+  // Chat conversation state
+  const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
       role: "ai",
       content:
-        "Hi! I'm ICOGON AI. Tell me what you'd like to build or change in this project.",
+        "Welcome to the ICOGON AI Builder workspace. Tell me what application, component, or features you want to create or edit.",
     },
   ]);
 
-  /* =======================================================
-     THEME
-  ======================================================= */
-
-  const colors = isDark
-    ? {
-        page: "bg-[#080808] text-white",
-        panel: "bg-[#0d0d0d]",
-        panelSoft: "bg-[#111111]",
-        border: "border-[#242424]",
-        borderSoft: "border-[#1c1c1c]",
-        text: "text-white",
-        secondary: "text-[#b4b4b4]",
-        muted: "text-[#777777]",
-        faint: "text-[#555555]",
-        hover: "hover:bg-[#181818]",
-        input: "bg-[#0b0b0b]",
-        bubbleAI: "bg-[#161616] text-[#c0c0c0]",
-        bubbleUser: "bg-[#20282b] text-[#d8e0e2]",
-        active: "bg-[#202020] text-white",
-        preview: "bg-[#111111]",
-      }
-    : {
-        page: "bg-[#f7f8fa] text-[#172033]",
-        panel: "bg-white",
-        panelSoft: "bg-[#fafbfc]",
-        border: "border-[#e5e8ed]",
-        borderSoft: "border-[#edf0f3]",
-        text: "text-[#172033]",
-        secondary: "text-[#56657d]",
-        muted: "text-[#8290a5]",
-        faint: "text-[#a5afbd]",
-        hover: "hover:bg-[#f5f7fa]",
-        input: "bg-[#fafbfc]",
-        bubbleAI: "bg-[#f3f5f7] text-[#526078]",
-        bubbleUser: "bg-[#edf8fa] text-[#455b61]",
-        active: "bg-[#f0f2f5] text-[#172033]",
-        preview: "bg-[#f1f3f6]",
-      };
-
-  /* =======================================================
-     LOAD PROJECT
-  ======================================================= */
-
+  // Load Project on mount
   useEffect(() => {
+    let mounted = true;
+    eventAbortRef.current?.abort();
+
     if (!projectId) {
-      setProjectError("Project ID is missing.");
-      setProjectLoading(false);
-      return;
+      // A missing projectId is handled by the render path below; avoid
+      // synchronously triggering state updates during the effect body.
+      return () => {
+        mounted = false;
+      };
     }
 
-    let mounted = true;
+    const load = async () => {
+      // Yield before resetting state; effect bodies should not update state synchronously.
+      await Promise.resolve();
+      if (!mounted) return;
 
-    const loadProject = async () => {
+      setProjectLoading(true);
+      setProjectError("");
+      setProject(null);
+      setActiveRun(null);
+      setRunStage("idle");
+      setRunError("");
+      setRunEvents([]);
+      setRunSteps([]);
+      setGeneratedFiles([]);
+      setSelectedFilePath("src/App.tsx");
+      setPreviewState({ available: false, data: null });
+      setMessages([
+        {
+          id: "welcome",
+          role: "ai",
+          content:
+            "Welcome to the ICOGON AI Builder workspace. Tell me what application, component, or features you want to create or edit.",
+        },
+      ]);
+
       try {
-        setProjectLoading(true);
-        setProjectError("");
-
-        const data =
-          await getProjectApi(projectId);
-
+        const data = await getProjectApi(projectId);
         if (mounted) {
           setProject(data);
+          if (data.prompt) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: createId("init-prompt"),
+                role: "user",
+                content: data.prompt || "",
+              },
+            ]);
+          }
         }
-      } catch (error: any) {
-        console.error(
-          "PROJECT LOAD ERROR:",
-          error
-        );
-
+      } catch (err: unknown) {
+        console.error("PROJECT LOAD ERROR:", err);
         if (mounted) {
           setProjectError(
-            error?.response?.data?.detail ||
-              error?.response?.data?.message ||
-              error?.message ||
+            (err as { response?: { data?: { detail?: string; message?: string } } }).response?.data?.detail ||
+              (err as { response?: { data?: { message?: string } } }).response?.data?.message ||
+              (err as { message?: string }).message ||
               "Unable to load project."
           );
         }
       } finally {
-        if (mounted) {
-          setProjectLoading(false);
-        }
+        if (mounted) setProjectLoading(false);
       }
     };
 
-    loadProject();
+    load();
 
     return () => {
       mounted = false;
+      eventAbortRef.current?.abort();
     };
   }, [projectId]);
 
-  /* =======================================================
-     CLEANUP SSE
-  ======================================================= */
-
-  useEffect(() => {
-    return () => {
-      eventAbortRef.current?.abort();
-    };
-  }, []);
-
-  /* =======================================================
-     AUTO SCROLL CHAT
-  ======================================================= */
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
-  }, [messages, runEvents]);
-
-  /* =======================================================
-     APPLY RUN STATE
-  ======================================================= */
-
+  // Apply Run State
   const applyRunState = useCallback(
     (run: OrchestratorRun) => {
       setActiveRun(run);
-
       const stage = normalizeStage(run.status);
-
       setRunStage(stage);
 
       if (run.steps) {
@@ -535,755 +172,321 @@ const BuilderWorkspacePage: React.FC = () => {
       }
 
       const files = extractGeneratedFiles(run);
-
       if (files.length > 0) {
-        setGeneratedFiles(files);
+        // Apply the run's file operations to the single workspace file store.
+        // "delete" and "remove" are treated as removals; other operations
+        // update or create the corresponding path.
+        setGeneratedFiles((previous) => {
+          const next = new Map(previous.map((file) => [file.path, file]));
 
-        const selectedStillExists = files.some(
-          (file) =>
-            file.path === selectedFilePath
-        );
+          for (const file of files) {
+            const operation = (file.operation || "upsert").toLowerCase();
+            if (operation === "delete" || operation === "remove") {
+              next.delete(file.path);
+              continue;
+            }
 
-        if (!selectedStillExists) {
-          setSelectedFilePath(files[0].path);
-        }
+            next.set(file.path, {
+              ...next.get(file.path),
+              ...file,
+            });
+          }
+
+          return Array.from(next.values());
+        });
+
+        setSelectedFilePath((current) => {
+          const removedCurrent = files.some(
+            (file) =>
+              file.path === current &&
+              ["delete", "remove"].includes((file.operation || "").toLowerCase()),
+          );
+          if (!removedCurrent) return current;
+          const replacement = files.find(
+            (file) => !["delete", "remove"].includes((file.operation || "").toLowerCase()),
+          );
+          if (replacement) return replacement.path;
+
+          const remainingPrevious = generatedFiles.find(
+            (file) =>
+              !files.some(
+                (change) =>
+                  change.path === file.path &&
+                  ["delete", "remove"].includes((change.operation || "").toLowerCase()),
+              ),
+          );
+          return remainingPrevious?.path || "";
+        });
       }
 
-      if (stage === "failed") {
-        setRunError(
-          getPreviewMessage(stage, run)
-        );
-      }
-
-      if (stage === "completed") {
+      if (stage === "failed" && run.failure) {
+        const failureMsg =
+          typeof run.failure === "object" && "message" in run.failure
+            ? String((run.failure as { message: unknown }).message)
+            : "Generation failed.";
+        setRunError(failureMsg);
+      } else if (stage === "completed") {
         setRunError("");
       }
     },
-    [selectedFilePath]
+    [generatedFiles]
   );
 
-  /* =======================================================
-     PROCESS EVENT
-  ======================================================= */
+  // Fetch sandbox preview
+  const loadPreview = useCallback(async (runId: string) => {
+    try {
+      const preview = await getOrchestratorPreviewApi(runId);
+      const html =
+        typeof preview === "object" &&
+        preview !== null &&
+        "html" in preview &&
+        typeof preview.html === "string"
+          ? preview.html
+          : undefined;
 
-  const processRunEvent = useCallback(
-    (event: OrchestratorRunEvent) => {
-      setRunEvents((previous) => {
-        const exists = previous.some(
-          (item) =>
-            item.sequence === event.sequence
-        );
-
-        if (exists) {
-          return previous;
-        }
-
-        return [...previous, event];
+      setPreviewState({
+        available: Boolean(html?.trim()),
+        data: preview,
+        html,
+        warnings:
+          typeof preview === "object" && preview !== null && "warnings" in preview && Array.isArray(preview.warnings)
+            ? (preview.warnings as string[])
+            : undefined,
       });
+    } catch (err) {
+      console.error("PREVIEW LOAD ERROR:", err);
+      // Keep the last successful preview visible if refreshing a newer
+      // preview fails. The run error is reported separately by the caller.
+    }
+  }, []);
 
-      const payload =
-        event.payload || {};
+  // Process SSE events
+  const processRunEvent = useCallback((event: OrchestratorRunEvent) => {
+    setRunEvents((prev) => {
+      if (prev.some((e) => e.sequence === event.sequence)) return prev;
+      return [...prev, event];
+    });
 
-      if (
-        event.event_type ===
-        "run.status_changed"
-      ) {
-        const target =
-          typeof payload.to === "string"
-            ? payload.to
-            : undefined;
+    const payload = event.payload || {};
 
-        const stage =
-          normalizeStage(target);
+    if (event.event_type === "run.status_changed") {
+      const target = typeof payload.to === "string" ? payload.to : undefined;
+      setRunStage(normalizeStage(target));
+    } else if (event.event_type === "step.started") {
+      const stepId = typeof payload.step_id === "string" ? payload.step_id : createId("step");
+      const name = typeof payload.name === "string" ? payload.name : "processing";
+      setRunSteps((prev) => [...prev, { id: stepId, name, status: "running" }]);
+    } else if (event.event_type === "step.completed") {
+      const stepId = typeof payload.step_id === "string" ? payload.step_id : undefined;
+      setRunSteps((prev) =>
+        prev.map((step) =>
+          step.id === stepId
+            ? {
+                ...step,
+                status: "completed",
+                details: typeof payload.details === "object" ? (payload.details as Record<string, unknown>) : {},
+              }
+            : step
+        )
+      );
+    } else if (event.event_type === "step.failed") {
+      const stepId = typeof payload.step_id === "string" ? payload.step_id : undefined;
+      setRunSteps((prev) =>
+        prev.map((step) =>
+          step.id === stepId
+            ? {
+                ...step,
+                status: "failed",
+                error: typeof payload.error === "string" ? payload.error : undefined,
+              }
+            : step
+        )
+      );
+    } else if (event.event_type === "run.failed") {
+      const code = typeof payload.code === "string" ? payload.code : "error";
+      setRunStage("failed");
+      setRunError(`Generation failed (${code}).`);
+    }
+  }, []);
 
-        setRunStage(stage);
-      }
-
-      if (
-        event.event_type ===
-        "step.started"
-      ) {
-        const stepId =
-          typeof payload.step_id === "string"
-            ? payload.step_id
-            : createId("step");
-
-        const name =
-          typeof payload.name === "string"
-            ? payload.name
-            : "processing";
-
-        setRunSteps((previous) => [
-          ...previous,
-          {
-            id: stepId,
-            name,
-            status: "running",
-          },
-        ]);
-      }
-
-      if (
-        event.event_type ===
-        "step.completed"
-      ) {
-        const stepId =
-          typeof payload.step_id === "string"
-            ? payload.step_id
-            : undefined;
-
-        setRunSteps((previous) =>
-          previous.map((step) =>
-            step.id === stepId
-              ? {
-                  ...step,
-                  status: "completed",
-                  details:
-                    typeof payload.details ===
-                    "object"
-                      ? (payload.details as Record<
-                          string,
-                          unknown
-                        >)
-                      : {},
-                }
-              : step
-          )
-        );
-      }
-
-      if (
-        event.event_type ===
-        "step.failed"
-      ) {
-        const stepId =
-          typeof payload.step_id === "string"
-            ? payload.step_id
-            : undefined;
-
-        setRunSteps((previous) =>
-          previous.map((step) =>
-            step.id === stepId
-              ? {
-                  ...step,
-                  status: "failed",
-                  error:
-                    typeof payload.error ===
-                    "string"
-                      ? payload.error
-                      : undefined,
-                }
-              : step
-          )
-        );
-      }
-
-      if (
-        event.event_type ===
-        "run.failed"
-      ) {
-        const code =
-          typeof payload.code === "string"
-            ? payload.code
-            : "orchestration_error";
-
-        setRunStage("failed");
-        setRunError(
-          `Generation failed (${code}).`
-        );
-      }
-
-      if (
-        event.event_type ===
-        "run.recovered"
-      ) {
-        const checkpoint =
-          typeof payload.checkpoint ===
-          "string"
-            ? payload.checkpoint
-            : undefined;
-
-        setRunStage(
-          normalizeStage(checkpoint)
-        );
-      }
-    },
-    []
-  );
-
-  /* =======================================================
-     LOAD PREVIEW
-  ======================================================= */
-
-  const loadPreview = useCallback(
-    async (runId: string) => {
-      try {
-        const preview =
-          await getOrchestratorPreviewApi(
-            runId
-          );
-
-        setPreviewState({
-          available: true,
-          data: preview,
-          error: null,
-        });
-      } catch (error) {
-        console.error(
-          "PREVIEW LOAD ERROR:",
-          error
-        );
-
-        setPreviewState({
-          available: false,
-          data: null,
-          error:
-            error instanceof Error
-              ? error.message
-              : "Unable to prepare the preview.",
-        });
-      }
-    },
-    []
-  );
-
-  /* =======================================================
-     WATCH RUN
-  ======================================================= */
-
+  // Watch Run via SSE
   const watchRun = useCallback(
     async (runId: string) => {
       eventAbortRef.current?.abort();
-
-      const controller =
-        new AbortController();
-
-      eventAbortRef.current =
-        controller;
+      const controller = new AbortController();
+      eventAbortRef.current = controller;
 
       try {
         await streamOrchestratorEventsApi({
           runId,
           after: 0,
           signal: controller.signal,
-
-          onEvent: (event) => {
-            processRunEvent(event);
-          },
+          onEvent: processRunEvent,
         });
-      } catch (error: any) {
-        if (
-          error?.name ===
-          "AbortError"
-        ) {
-          return;
+      } catch (err: unknown) {
+        if ((err as { name?: string }).name !== "AbortError") {
+          console.error("STREAM ERROR:", err);
         }
-
-        console.error(
-          "ORCHESTRATOR STREAM ERROR:",
-          error
-        );
       }
 
-      if (controller.signal.aborted) {
-        return;
-      }
+      if (controller.signal.aborted) return;
 
       try {
-        const finalRun =
-          await getOrchestratorRunApi(
-            runId
-          );
-
+        const finalRun = await getOrchestratorRunApi(runId);
         applyRunState(finalRun);
-
-        const finalStage =
-          normalizeStage(
-            finalRun.status
-          );
-
-        if (
-          finalStage === "completed"
-        ) {
+        const finalStage = normalizeStage(finalRun.status);
+        if (finalStage === "completed") {
           await loadPreview(runId);
         }
-      } catch (error: any) {
-        console.error(
-          "FINAL RUN LOAD ERROR:",
-          error
-        );
-
-        setRunError(
-          error?.response?.data?.detail ||
-            error?.message ||
-            "Unable to load final run status."
-        );
+      } catch (err: unknown) {
+        console.error("FINAL RUN LOAD ERROR:", err);
+        setRunError((err as { response?: { data?: { detail?: string; message?: string } } }).response?.data?.detail || (err as { message?: string }).message || "Unable to load final run status.");
       } finally {
         setIsSending(false);
       }
     },
-    [
-      applyRunState,
-      loadPreview,
-      processRunEvent,
-    ]
+    [applyRunState, loadPreview, processRunEvent]
   );
 
-  /* =======================================================
-     SUBMIT PROMPT
-  ======================================================= */
-
+  // Send user prompt
   const handleSendPrompt = async () => {
-    const cleanPrompt =
-      prompt.trim();
-
-    if (
-      !cleanPrompt ||
-      isSending ||
-      !projectId
-    ) {
-      return;
-    }
+    const clean = prompt.trim();
+    if (!clean || isSending || !projectId) return;
 
     eventAbortRef.current?.abort();
-
     setRunError("");
     setRunEvents([]);
     setRunSteps([]);
-    setGeneratedFiles([]);
-    setPreviewState({
-      available: false,
-      data: null,
-      error: null,
-    });
+    // Keep the last successful files and preview visible while this run works.
+    // The new run replaces/updates them only when it returns file changes.
 
-    const userMessage: Message = {
+    const userMsg: ChatMessage = {
       id: createId("user"),
       role: "user",
-      content: cleanPrompt,
+      content: clean,
     };
-
-    setMessages((previous) => [
-      ...previous,
-      userMessage,
-    ]);
-
+    setMessages((prev) => [...prev, userMsg]);
     setPrompt("");
     setIsSending(true);
     setRunStage("queued");
 
     try {
-      const run =
-        await submitOrchestratorRunApi({
-          projectId,
-          prompt: cleanPrompt,
-          quality: "balanced",
-        });
+      const run = await submitOrchestratorRunApi({
+        projectId,
+        prompt: clean,
+        quality: "balanced",
+      });
 
       applyRunState(run);
 
-      setMessages((previous) => [
-        ...previous,
+      setMessages((prev) => [
+        ...prev,
         {
           id: createId("ai"),
           role: "ai",
-          content:
-            "Your request has been sent to the ICOGON AI orchestration pipeline. I'll show the generation progress here.",
+          content: "I've started building your application changes. Tracking progress in real time...",
         },
       ]);
 
-      const currentStage =
-        normalizeStage(run.status);
-
-      if (
-        currentStage === "completed"
-      ) {
+      const currentStage = normalizeStage(run.status);
+      if (currentStage === "completed") {
         await loadPreview(run.id);
         setIsSending(false);
-
-        setMessages((previous) => [
-          ...previous,
+        setMessages((prev) => [
+          ...prev,
           {
-            id: createId("ai"),
+            id: createId("ai-done"),
             role: "ai",
-            content:
-              getPreviewMessage(
-                "completed",
-                run
-              ),
+            content: "The build completed. The preview will update when compiled HTML is available.",
           },
         ]);
-
         return;
       }
 
-      if (
-        currentStage === "failed" ||
-        currentStage === "cancelled"
-      ) {
+      if (currentStage === "failed" || currentStage === "cancelled") {
         setIsSending(false);
-
-        setMessages((previous) => [
-          ...previous,
-          {
-            id: createId("ai"),
-            role: "ai",
-            content:
-              getPreviewMessage(
-                currentStage,
-                run
-              ),
-          },
-        ]);
-
         return;
       }
 
       await watchRun(run.id);
-    } catch (error: any) {
-      console.error(
-        "ORCHESTRATOR SUBMIT ERROR:",
-        error
-      );
-
-      const message =
-        error?.response?.data?.detail ||
-        error?.response?.data?.message ||
-        error?.message ||
-        "Unable to start AI generation.";
-
-      setRunError(message);
+    } catch (err: unknown) {
+      console.error("SUBMIT RUN ERROR:", err);
+      const msg = (err as { response?: { data?: { detail?: string; message?: string } } }).response?.data?.detail || (err as { message?: string }).message || "Unable to start AI generation.";
+      setRunError(msg);
       setRunStage("failed");
       setIsSending(false);
-
-      setMessages((previous) => [
-        ...previous,
+      setMessages((prev) => [
+        ...prev,
         {
-          id: createId("ai"),
+          id: createId("ai-err"),
           role: "ai",
-          content: `I couldn't start the generation: ${message}`,
+          content: `Could not proceed: ${msg}`,
         },
       ]);
     }
   };
 
-  /* =======================================================
-     CANCEL RUN
-  ======================================================= */
-
+  // Cancel running generation
   const handleCancelRun = async () => {
-    if (
-      !activeRun?.id ||
-      !isSending ||
-      isCancelling
-    ) {
-      return;
-    }
-
+    if (!activeRun?.id || !isSending || isCancelling) return;
     try {
       setIsCancelling(true);
-
       eventAbortRef.current?.abort();
-
-      const cancelled =
-        await cancelOrchestratorRunApi(
-          activeRun.id
-        );
-
+      const cancelled = await cancelOrchestratorRunApi(activeRun.id);
       applyRunState(cancelled);
-
       setRunStage("cancelled");
       setIsSending(false);
-
-      setMessages((previous) => [
-        ...previous,
+      setMessages((prev) => [
+        ...prev,
         {
-          id: createId("ai"),
+          id: createId("ai-cancel"),
           role: "ai",
-          content:
-            "The current AI generation has been cancelled.",
+          content: "Generation was cancelled.",
         },
       ]);
-    } catch (error: any) {
-      console.error(
-        "CANCEL RUN ERROR:",
-        error
-      );
-
-      setRunError(
-        error?.response?.data?.detail ||
-          error?.message ||
-          "Unable to cancel this run."
-      );
+    } catch (err: unknown) {
+      console.error("CANCEL ERROR:", err);
+      setRunError((err as { message?: string }).message || "Could not cancel generation.");
     } finally {
       setIsCancelling(false);
     }
   };
 
-  /* =======================================================
-     KEYBOARD
-  ======================================================= */
-
-  const handlePromptKeyDown = (
-    event: React.KeyboardEvent<HTMLTextAreaElement>
-  ) => {
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey
-    ) {
-      event.preventDefault();
-      void handleSendPrompt();
-    }
-  };
-
-  /* =======================================================
-     REFRESH PREVIEW
-  ======================================================= */
-
+  // Refresh sandbox preview
   const handleRefreshPreview = async () => {
-    if (!activeRun?.id) {
-      return;
-    }
-
+    if (!activeRun?.id) return;
     setIsRefreshing(true);
-
     try {
-      const run =
-        await getOrchestratorRunApi(
-          activeRun.id
-        );
-
+      const run = await getOrchestratorRunApi(activeRun.id);
       applyRunState(run);
-
-      if (
-        normalizeStage(run.status) ===
-        "completed"
-      ) {
+      if (normalizeStage(run.status) === "completed") {
         await loadPreview(run.id);
       }
-    } catch (error) {
-      console.error(
-        "REFRESH PREVIEW ERROR:",
-        error
-      );
+    } catch (err) {
+      console.error("REFRESH ERROR:", err);
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  /* =======================================================
-     GENERATED FILES
-  ======================================================= */
-
-  const selectedFile = useMemo(
-    () =>
-      generatedFiles.find(
-        (file) =>
-          file.path === selectedFilePath
-      ),
-    [
-      generatedFiles,
-      selectedFilePath,
-    ]
-  );
-
-  const generatedCode = useMemo(() => {
-    if (selectedFile) {
-      return getFileContent(
-        selectedFile
-      );
-    }
-
-    if (generatedFiles.length > 0) {
-      return getFileContent(
-        generatedFiles[0]
-      );
-    }
-
-    return `// ICOGON AI
-// Generated source will appear here after
-// the orchestration pipeline completes.
-
-export default function App() {
-  return (
-    <main className="min-h-screen">
-      <h1>Generating your application...</h1>
-    </main>
-  );
-}`;
-  }, [
-    generatedFiles,
-    selectedFile,
-  ]);
-
-  /* =======================================================
-     COPY CODE
-  ======================================================= */
-
-  const handleCopyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(
-        generatedCode
-      );
-    } catch (error) {
-      console.error(
-        "Unable to copy code:",
-        error
-      );
-    }
+  const handleSelectFile = (path: string) => {
+    setSelectedFilePath(path);
+    setActiveTab("code");
   };
 
-  /* =======================================================
-     LOADING
-  ======================================================= */
+  const displayedProjectError = projectError || (!projectId ? "Project ID is missing." : "");
 
-  if (projectLoading) {
+  if (displayedProjectError) {
     return (
-      <div
-        className={`
-          flex
-          h-screen
-          items-center
-          justify-center
-          ${colors.page}
-        `}
-      >
-        <div className="flex flex-col items-center gap-4">
-          <div
-            className="
-              flex
-              h-11
-              w-11
-              items-center
-              justify-center
-              rounded-2xl
-              bg-gradient-to-br
-              from-cyan-500
-              via-blue-500
-              to-violet-500
-              text-white
-              shadow-lg
-            "
-          >
-            <img src="/logo.png" alt="ICOGON" className="h-7 w-7 object-contain" />
-          </div>
-
-          <div className="text-center">
-            <p
-              className={`
-                text-sm
-                font-semibold
-                ${colors.text}
-              `}
-            >
-              Loading workspace
-            </p>
-
-            <p
-              className={`
-                mt-1
-                text-xs
-                ${colors.muted}
-              `}
-            >
-              Preparing your project...
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* =======================================================
-     ERROR
-  ======================================================= */
-
-  if (projectError || !project) {
-    return (
-      <div
-        className={`
-          flex
-          h-screen
-          items-center
-          justify-center
-          px-5
-          ${colors.page}
-        `}
-      >
-        <div
-          className={`
-            w-full
-            max-w-md
-            rounded-2xl
-            border
-            p-7
-            text-center
-            shadow-sm
-            ${colors.panel}
-            ${colors.border}
-          `}
-        >
-          <div
-            className="
-              mx-auto
-              flex
-              h-11
-              w-11
-              items-center
-              justify-center
-              rounded-xl
-              bg-red-500/10
-              text-red-500
-            "
-          >
-            !
-          </div>
-
-          <h2
-            className={`
-              mt-4
-              text-base
-              font-semibold
-              ${colors.text}
-            `}
-          >
-            Project unavailable
-          </h2>
-
-          <p
-            className={`
-              mt-2
-              text-xs
-              leading-5
-              ${colors.muted}
-            `}
-          >
-            {projectError ||
-              "This project could not be loaded."}
-          </p>
-
+      <div className="flex h-screen w-full items-center justify-center bg-[#090a0f] text-slate-300 p-4">
+        <div className="max-w-md text-center rounded-2xl border border-rose-900/50 bg-[#12141f] p-6 shadow-xl">
+          <h2 className="text-sm font-semibold text-rose-400">Project Not Found</h2>
+          <p className="mt-2 text-xs text-slate-400">{displayedProjectError}</p>
           <button
             type="button"
-            onClick={() =>
-              navigate("/dashboard")
-            }
-            className="
-              mt-5
-              inline-flex
-              items-center
-              gap-2
-              rounded-xl
-              bg-[#181818]
-              px-4
-              py-2.5
-              text-xs
-              font-semibold
-              text-white
-              transition
-              hover:bg-black
-            "
+            onClick={() => navigate("/dashboard")}
+            className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-medium text-white hover:bg-indigo-500 transition"
           >
-            <ArrowLeft size={14} />
             Back to Dashboard
           </button>
         </div>
@@ -1291,1337 +494,165 @@ export default function App() {
     );
   }
 
-  /* =======================================================
-     PIPELINE PROGRESS
-  ======================================================= */
-
-  const pipelineStages: RunStage[] = [
-    "analyzing",
-    "designing",
-    "planning",
-    "generating",
-    "reviewing",
-    "verifying",
-  ];
-
-  const isRunning =
-    isSending &&
-    runStage !== "completed" &&
-    runStage !== "failed" &&
-    runStage !== "cancelled";
-
-  const completedStepCount =
-    runSteps.filter(
-      (step) =>
-        step.status === "completed"
-    ).length;
-
-  const totalStepCount =
-    runSteps.length;
-
-  /* =======================================================
-     PAGE
-  ======================================================= */
+  if (projectLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#090a0f] text-slate-300">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={24} className="animate-spin text-indigo-400" />
+          <p className="text-xs font-medium tracking-wide text-slate-400">Loading ICOGON Workspace...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
-      className={`
-        icogon-builder-shell
-        flex
-        h-screen
-        w-full
-        overflow-hidden
-        ${colors.page}
-        ${
-          isFullscreen
-            ? "fixed inset-0 z-[9999]"
-            : ""
-        }
-      `}
+      className={`h-screen w-full overflow-hidden ${
+        isFullscreen ? "fixed inset-0 z-[9999]" : ""
+      }`}
     >
-      {/* ===================================================
-          AI SIDEBAR
-      =================================================== */}
-
-      <aside
-        className={`icogon-chat-rail
-
-          flex
-          shrink-0
-          flex-col
-          overflow-hidden
-          border-r
-          transition-all
-          duration-200
-          ${colors.panel}
-          ${colors.border}
-          ${
-            sidebarOpen && !isFullscreen
-              ? "w-[310px]"
-              : "w-0"
-          }
-          ${isFullscreen ? "hidden" : ""}
-        `}
-      >
-        {/* SIDEBAR HEADER */}
-
-        <div
-          className={`icogon-chat-header
-            flex
-            h-[58px]
-            shrink-0
-            items-center
-            justify-between
-            border-b
-            px-4
-            ${colors.border}
-          `}
-        >
-          <div className="flex items-center gap-2.5">
-            <div
-              className="
-                flex
-                h-8
-                w-8
-                items-center
-                justify-center
-                rounded-xl
-                bg-gradient-to-br
-                from-cyan-500
-                via-blue-500
-                to-violet-500
-                text-white
-                shadow-sm
-              "
-            >
-              <img src="/logo.png" alt="ICOGON" className="h-7 w-7 object-contain" />
-            </div>
-
-            <div>
-              <p
-                className={`
-                  text-sm
-                  font-semibold
-                  ${colors.text}
-                `}
-              >
-                ICOGON AI
-              </p>
-
-              <p
-                className={`
-                  text-[10px]
-                  ${colors.muted}
-                `}
-              >
-                Build with AI
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              setSidebarOpen(false)
+      <WorkspaceLayout
+        defaultNavigationOpen={true}
+        defaultChatOpen={true}
+        defaultDeveloperOpen={false}
+        navigation={
+          <WorkspaceNavigation
+            projectName={project?.name || "Current project"}
+            activePath={location.pathname}
+            onNavigate={navigate}
+          />
+        }
+        chat={
+          <WorkspaceSidebar
+            sidebarOpen={chatOpen}
+            setSidebarOpen={(open: boolean) =>
+              layoutControlsRef.current?.setChatOpen(open)
             }
-            aria-label="Close AI panel"
-            className={`
-              rounded-lg
-              p-1.5
-              transition
-              ${colors.muted}
-              ${colors.hover}
-            `}
-          >
-            <PanelLeftClose size={16} />
-          </button>
-        </div>
-
-        {/* PROJECT SELECTOR */}
-
-        <div
-          className={`icogon-project-switcher
-            border-b
-            px-4
-            py-3
-            ${colors.border}
-          `}
-        >
-          <button
-            type="button"
-            className={`
-              flex
-              w-full
-              items-center
-              justify-between
-              rounded-xl
-              border
-              px-3
-              py-2.5
-              text-left
-              transition
-              ${colors.border}
-              ${colors.hover}
-            `}
-          >
-            <div className="flex min-w-0 items-center gap-2.5">
-              <div
-                className="
-                  flex
-                  h-7
-                  w-7
-                  shrink-0
-                  items-center
-                  justify-center
-                  rounded-lg
-                  bg-cyan-500/10
-                  text-cyan-500
-                "
+            messages={messages}
+            prompt={prompt}
+            setPrompt={setPrompt}
+            onSendPrompt={handleSendPrompt}
+            onCancelRun={handleCancelRun}
+            isRunning={isSending}
+            isCancelling={isCancelling}
+            runStage={runStage}
+            runSteps={runSteps}
+            runError={runError}
+            generatedFiles={generatedFiles}
+            onSelectFile={handleSelectFile}
+          />
+        }
+        onLayoutChange={(layout) => setChatOpen(layout.chatOpen)}
+        topbar={(controls) => {
+          layoutControlsRef.current = controls;
+          return (
+            <div className="flex min-w-0 items-center gap-2 border-b border-[#1f222e] bg-[#0c0d12] pr-2">
+              <div className="min-w-0 flex-1">
+                <WorkspaceHeader
+                  project={project}
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  deviceMode={deviceMode}
+                  setDeviceMode={setDeviceMode}
+                  runStage={runStage}
+                  isRunning={isSending}
+                  isFullscreen={isFullscreen}
+                  setIsFullscreen={setIsFullscreen}
+                  isRefreshing={isRefreshing}
+                  onRefreshPreview={handleRefreshPreview}
+                  onTriggerRun={handleSendPrompt}
+                  fileCount={generatedFiles.length}
+                  onToggleNavigation={controls.toggleNavigation}
+                  navigationOpen={controls.navigationOpen}
+                  onToggleChat={controls.toggleChat}
+                  chatOpen={controls.chatOpen}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={controls.toggleDeveloper}
+                aria-pressed={controls.developerOpen}
+                title={controls.developerOpen ? "Hide developer workspace" : "Show developer workspace"}
+                className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition ${
+                  controls.developerOpen
+                    ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-300"
+                    : "border-[#232736] bg-[#141620] text-slate-400 hover:bg-[#1a1d2c] hover:text-white"
+                }`}
               >
-                <Folder size={14} />
-              </div>
-
-              <div className="min-w-0">
-                <p
-                  className={`
-                    truncate
-                    text-xs
-                    font-semibold
-                    ${colors.text}
-                  `}
-                >
-                  {project.name}
-                </p>
-
-                <p
-                  className={`
-                    mt-0.5
-                    truncate
-                    text-[10px]
-                    ${colors.muted}
-                  `}
-                >
-                  Project workspace
-                </p>
-              </div>
+                <PanelBottom size={14} />
+                <span className="hidden md:inline">Developer</span>
+              </button>
             </div>
-
-            <ChevronDown
-              size={14}
-              className={colors.muted}
+          );
+        }}
+        main={
+          activeTab === "preview" ? (
+            <WorkspacePreview
+              project={project}
+              previewState={previewState}
+              deviceMode={deviceMode}
+              setDeviceMode={setDeviceMode}
+              isRefreshing={isRefreshing}
+              onRefreshPreview={handleRefreshPreview}
+              isRunning={isSending}
+              files={generatedFiles}
+              onQuickPrompt={(text: string) => {
+                setPrompt(text);
+                layoutControlsRef.current?.setChatOpen(true);
+              }}
             />
-          </button>
-        </div>
-
-        {/* PIPELINE */}
-
-        {isRunning && (
-          <div
-            className={`
-              border-b
-              px-4
-              py-3
-              ${colors.border}
-            `}
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <span
-                className={`
-                  text-[10px]
-                  font-semibold
-                  ${colors.text}
-                `}
-              >
-                AI generation
-              </span>
-
-              <span className="text-[9px] text-cyan-500">
-                {stageLabel(runStage)}
-              </span>
-            </div>
-
-            <div className="space-y-1.5">
-              {pipelineStages.map(
-                (stage) => {
-                  const currentIndex =
-                    pipelineStages.indexOf(
-                      runStage
-                    );
-
-                  const stageIndex =
-                    pipelineStages.indexOf(
-                      stage
-                    );
-
-                  const done =
-                    currentIndex >= 0 &&
-                    stageIndex <
-                      currentIndex;
-
-                  const current =
-                    stage === runStage;
-
-                  return (
-                    <div
-                      key={stage}
-                      className="flex items-center gap-2"
+          ) : (
+            <WorkspaceCodeEditor
+              files={generatedFiles}
+              selectedFilePath={selectedFilePath}
+              onSelectFile={setSelectedFilePath}
+            />
+          )
+        }
+        developer={
+          <WorkspaceDeveloperPanel
+            files={
+              generatedFiles.length > 0 ? (
+                <div className="h-full overflow-auto bg-[#0c0e14] p-2 text-slate-300">
+                  {generatedFiles.map((file) => (
+                    <button
+                      key={file.path}
+                      type="button"
+                      onClick={() => handleSelectFile(file.path)}
+                      className={`flex w-full items-center rounded-md px-3 py-2 text-left text-xs transition ${
+                        selectedFilePath === file.path
+                          ? "bg-[#252b3b] text-white"
+                          : "text-slate-400 hover:bg-[#1b202c] hover:text-slate-200"
+                      }`}
                     >
-                      <div
-                        className={`
-                          flex
-                          h-4
-                          w-4
-                          items-center
-                          justify-center
-                          rounded-full
-                          ${
-                            done
-                              ? "bg-emerald-500 text-white"
-                              : current
-                              ? "bg-cyan-500 text-white"
-                              : isDark
-                              ? "bg-[#1b1b1b] text-[#555]"
-                              : "bg-[#edf0f3] text-[#a5afbd]"
-                          }
-                        `}
-                      >
-                        {done ? (
-                          <Check size={9} />
-                        ) : current ? (
-                          <Loader2
-                            size={9}
-                            className="animate-spin"
-                          />
-                        ) : (
-                          <span className="text-[8px]">
-                            {stageIndex + 1}
-                          </span>
-                        )}
-                      </div>
-
-                      <span
-                        className={`
-                          text-[9px]
-                          ${
-                            current
-                              ? "font-semibold text-cyan-500"
-                              : colors.muted
-                          }
-                        `}
-                      >
-                        {stageLabel(stage)}
-                      </span>
-                    </div>
-                  );
-                }
-              )}
-            </div>
-
-            {totalStepCount > 0 && (
-              <div
-                className={`
-                  mt-3
-                  border-t
-                  pt-2
-                  text-[9px]
-                  ${colors.faint}
-                  ${colors.border}
-                `}
-              >
-                {completedStepCount}/
-                {totalStepCount} pipeline steps
-                completed
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* CHAT */}
-
-        <div
-          className="icogon-chat-history
-            flex-1
-            overflow-y-auto
-            px-3
-            py-5
-          "
-        >
-          <div className="space-y-5">
-            {messages.map(
-              (message) => (
-                <div
-                  key={message.id}
-                  className={`
-                    flex
-                    gap-2.5
-                    ${
-                      message.role ===
-                      "user"
-                        ? "justify-end"
-                        : ""
-                    }
-                  `}
-                >
-                  {message.role ===
-                    "ai" && (
-                    <div
-                      className="
-                        mt-0.5
-                        flex
-                        h-6
-                        w-6
-                        shrink-0
-                        items-center
-                        justify-center
-                        rounded-lg
-                        bg-cyan-500/10
-                        text-cyan-500
-                      "
-                    >
-                      <Sparkles size={12} />
-                    </div>
-                  )}
-
-                  <div
-                    className={`
-                      max-w-[270px]
-                      rounded-2xl
-                      px-3.5
-                      py-2.5
-                      text-xs
-                      leading-5
-                      ${
-                        message.role ===
-                        "user"
-                          ? colors.bubbleUser
-                          : colors.bubbleAI
-                      }
-                    `}
-                  >
-                    {message.content}
-                  </div>
+                      <span className="truncate">{file.path}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center text-xs text-slate-500">
+                  Generated files will appear here after the first build.
                 </div>
               )
-            )}
-
-            {isRunning && (
-              <div className="flex gap-2.5">
-                <div
-                  className="
-                    flex
-                    h-6
-                    w-6
-                    shrink-0
-                    items-center
-                    justify-center
-                    rounded-lg
-                    bg-cyan-500/10
-                    text-cyan-500
-                  "
-                >
-                  <Sparkles size={12} />
-                </div>
-
-                <div
-                  className={`
-                    flex
-                    items-center
-                    gap-1
-                    rounded-2xl
-                    px-4
-                    py-3
-                    ${colors.bubbleAI}
-                  `}
-                >
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-40" />
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-60 [animation-delay:120ms]" />
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-80 [animation-delay:240ms]" />
-                </div>
-              </div>
-            )}
-
-            {runError && (
-              <div
-                className="
-                  flex
-                  gap-2
-                  rounded-xl
-                  border
-                  border-red-200
-                  bg-red-50
-                  p-3
-                  text-red-600
-                "
-              >
-                <CircleAlert
-                  size={14}
-                  className="mt-0.5 shrink-0"
-                />
-
-                <p className="text-[10px] leading-4">
-                  {runError}
-                </p>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
-
-        {/* PROMPT COMPOSER */}
-
-        <div
-          className={`icogon-chat-composer
-            shrink-0
-            border-t
-            p-3
-            ${colors.border}
-          `}
-        >
-          <div
-            className={`
-              overflow-hidden
-              rounded-2xl
-              border
-              transition
-              focus-within:border-cyan-400
-              focus-within:ring-2
-              focus-within:ring-cyan-400/10
-              ${colors.input}
-              ${colors.border}
-            `}
-          >
-            <textarea
-              value={prompt}
-              onChange={(event) =>
-                setPrompt(
-                  event.target.value
-                )
-              }
-              onKeyDown={
-                handlePromptKeyDown
-              }
-              placeholder={
-                isRunning
-                  ? "AI is working..."
-                  : "Ask ICOGON AI to make a change..."
-              }
-              rows={3}
-              disabled={isRunning}
-              className={`
-                w-full
-                resize-none
-                bg-transparent
-                px-3.5
-                py-3
-                text-xs
-                leading-5
-                outline-none
-                ${colors.text}
-                ${
-                  isDark
-                    ? "placeholder:text-[#555]"
-                    : "placeholder:text-[#9ca5b1]"
-                }
-              `}
-            />
-
-            <div
-              className="
-                flex
-                items-center
-                justify-between
-                px-2.5
-                pb-2.5
-              "
-            >
-              <button
-                type="button"
-                disabled
-                title="AI tools"
-                className={`
-                  rounded-lg
-                  p-1.5
-                  opacity-40
-                  ${colors.muted}
-                `}
-              >
-                <WandSparkles size={14} />
-              </button>
-
-              {isRunning ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void handleCancelRun()
-                  }
-                  disabled={isCancelling}
-                  aria-label="Stop generation"
-                  className="
-                    flex
-                    h-8
-                    w-8
-                    items-center
-                    justify-center
-                    rounded-xl
-                    bg-red-500
-                    text-white
-                    transition
-                    hover:bg-red-600
-                    disabled:opacity-40
-                  "
-                >
-                  {isCancelling ? (
-                    <Loader2
-                      size={13}
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <Square
-                      size={11}
-                      fill="currentColor"
-                    />
-                  )}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void handleSendPrompt()
-                  }
-                  disabled={
-                    !prompt.trim()
-                  }
-                  aria-label="Send prompt"
-                  className="
-                    flex
-                    h-8
-                    w-8
-                    items-center
-                    justify-center
-                    rounded-xl
-                    bg-[#181818]
-                    text-white
-                    transition
-                    hover:bg-black
-                    disabled:cursor-not-allowed
-                    disabled:opacity-25
-                  "
-                >
-                  <Send size={13} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <p
-            className={`
-              mt-2
-              text-center
-              text-[9px]
-              ${colors.faint}
-            `}
-          >
-            {isRunning
-              ? "ICOGON AI is processing your request"
-              : "Enter to send · Shift + Enter for new line"}
-          </p>
-        </div>
-      </aside>
-
-      {/* ===================================================
-          MAIN WORKSPACE
-      =================================================== */}
-
-      <section className="flex min-w-0 flex-1 flex-col">
-        {/* TOP HEADER */}
-
-        <header
-          className={`icogon-topbar
-            flex
-            h-[58px]
-            shrink-0
-            items-center
-            justify-between
-            border-b
-            px-3
-            sm:px-4
-            ${colors.panel}
-            ${colors.border}
-            ${isFullscreen ? "hidden" : ""}
-          `}
-        >
-          <div className="flex min-w-0 items-center gap-2">
-            {!sidebarOpen && (
-              <button
-                type="button"
-                onClick={() =>
-                  setSidebarOpen(true)
-                }
-                aria-label="Open AI panel"
-                className={`
-                  rounded-lg
-                  p-1.5
-                  ${colors.muted}
-                  ${colors.hover}
-                `}
-              >
-                <PanelLeftOpen size={16} />
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() =>
-                navigate("/dashboard")
-              }
-              className={`
-                flex
-                items-center
-                gap-1.5
-                rounded-lg
-                px-2
-                py-1.5
-                text-xs
-                font-medium
-                transition
-                ${colors.muted}
-                ${colors.hover}
-              `}
-            >
-              <ArrowLeft size={14} />
-
-              <span className="hidden sm:block">
-                Dashboard
-              </span>
-            </button>
-
-            <div
-              className={`
-                mx-1
-                h-4
-                w-px
-                ${
-                  isDark
-                    ? "bg-[#292929]"
-                    : "bg-[#dedede]"
-                }
-              `}
-            />
-
-            <div className="min-w-0">
-              <p
-                className={`
-                  max-w-[230px]
-                  truncate
-                  text-xs
-                  font-semibold
-                  ${colors.text}
-                `}
-                title={project.name}
-              >
-                {project.name}
-              </p>
-
-              <p
-                className={`
-                  hidden
-                  text-[9px]
-                  sm:block
-                  ${colors.muted}
-                `}
-              >
-                ICOGON AI Builder
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <div
-              className={`
-                hidden
-                items-center
-                rounded-xl
-                border
-                p-0.5
-                md:flex
-                ${colors.border}
-                ${
-                  isDark
-                    ? "bg-[#111111]"
-                    : "bg-[#f5f6f8]"
-                }
-              `}
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  setActiveTab("preview")
-                }
-                className={`
-                  flex
-                  items-center
-                  gap-1.5
-                  rounded-lg
-                  px-3
-                  py-1.5
-                  text-[11px]
-                  font-medium
-                  transition
-                  ${
-                    activeTab ===
-                    "preview"
-                      ? colors.active
-                      : colors.muted
-                  }
-                `}
-              >
-                <Eye size={13} />
-                Preview
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setActiveTab("code")
-                }
-                className={`
-                  flex
-                  items-center
-                  gap-1.5
-                  rounded-lg
-                  px-3
-                  py-1.5
-                  text-[11px]
-                  font-medium
-                  transition
-                  ${
-                    activeTab === "code"
-                      ? colors.active
-                      : colors.muted
-                  }
-                `}
-              >
-                <Code2 size={13} />
-                Code
-              </button>
-              <button type="button" onClick={() => setActiveTab("files")} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium ${activeTab === "files" ? colors.active : colors.muted}`}>
-                <Folder size={13} /> Files
-              </button>
-              <button type="button" onClick={() => setActiveTab("more")} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium ${activeTab === "more" ? colors.active : colors.muted}`}>
-                <MoreHorizontal size={13} /> More
-              </button>
-            </div>
-
-            <button
-              type="button"
-              disabled
-              title="Runtime execution is not connected yet"
-              className={`
-                hidden
-                items-center
-                gap-1.5
-                rounded-xl
-                border
-                px-3
-                py-1.5
-                text-[11px]
-                font-medium
-                opacity-40
-                sm:flex
-                ${colors.border}
-                ${colors.muted}
-              `}
-            >
-              <Rocket size={12} />
-              Run
-            </button>
-
-            <button
-              type="button"
-              disabled
-              title="Publishing is not connected yet"
-              className="
-                flex
-                cursor-not-allowed
-                items-center
-                gap-1.5
-                rounded-xl
-                bg-[#181818]
-                px-3
-                py-1.5
-                text-[11px]
-                font-semibold
-                text-white
-                opacity-35
-              "
-            >
-              <Rocket size={12} />
-
-              <span className="hidden sm:inline">
-                Publish
-              </span>
-            </button>
-
-            <button
-              type="button"
-              aria-label="More options"
-              className={`
-                rounded-lg
-                p-1.5
-                ${colors.muted}
-                ${colors.hover}
-              `}
-            >
-              <MoreHorizontal size={17} />
-            </button>
-          </div>
-        </header>
-
-        {/* MOBILE TABS */}
-
-        <div
-          className={`
-            flex
-            shrink-0
-            border-b
-            px-2
-            py-1.5
-            md:hidden
-            ${colors.panel}
-            ${colors.border}
-          `}
-        >
-          <button
-            type="button"
-            onClick={() =>
-              setActiveTab("preview")
             }
-            className={`
-              flex
-              flex-1
-              items-center
-              justify-center
-              gap-1.5
-              rounded-lg
-              px-3
-              py-1.5
-              text-[11px]
-              font-medium
-              ${
-                activeTab ===
-                "preview"
-                  ? colors.active
-                  : colors.muted
-              }
-            `}
-          >
-            <Eye size={13} />
-            Preview
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setActiveTab("code")
-            }
-            className={`
-              flex
-              flex-1
-              items-center
-              justify-center
-              gap-1.5
-              rounded-lg
-              px-3
-              py-1.5
-              text-[11px]
-              font-medium
-              ${
-                activeTab === "code"
-                  ? colors.active
-                  : colors.muted
-              }
-            `}
-          >
-            <Code2 size={13} />
-            Code
-          </button>
-          <button type="button" onClick={() => setActiveTab("files")} className={`flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] ${activeTab === "files" ? colors.active : colors.muted}`}><Folder size={13} />Files</button>
-          <button type="button" onClick={() => setActiveTab("more")} className={`flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] ${activeTab === "more" ? colors.active : colors.muted}`}><MoreHorizontal size={13} />More</button>
-        </div>
-
-        {/* WORKSPACE */}
-
-        <div
-          className={`icogon-workstage
-            relative
-            flex-1
-            overflow-hidden
-            ${colors.preview}
-            ${isFullscreen ? "fixed inset-0 z-[10000] h-screen w-screen" : ""}
-          `}
-        >
-          {activeTab === "preview" ? (
-            <div className={`h-full overflow-auto ${isFullscreen ? "p-0" : "p-3 sm:p-5"}`}>
-              <div
-                className={`
-                  mx-auto
-                  flex
-                  min-h-full
-                  w-full
-                  flex-col
-                  overflow-hidden
-                  border
-                  bg-white
-                  shadow-[0_15px_50px_rgba(15,23,42,0.08)]
-                  ${isFullscreen ? "h-full max-w-none border-0 shadow-none" : "max-w-[1500px]"}
-                  ${
-                    isFullscreen
-                      ? "rounded-none"
-                      : "rounded-2xl"
-                  }
-                  ${
-                    isDark
-                      ? "border-[#303030]"
-                      : "border-[#e1e5ea]"
-                  }
-                `}
-              >
-                <BuilderPreviewPanel
-                  projectName={project.name}
-                  preview={previewState.data}
-                  available={previewState.available}
-                  error={previewState.error ?? null}
-                  runStatus={runStage}
-                  isRefreshing={isRefreshing}
-                  isFullscreen={isFullscreen}
-                  onRefresh={
-                    activeRun?.id
-                      ? () => void handleRefreshPreview()
-                      : undefined
-                  }
-                  onToggleFullscreen={() =>
-                    setIsFullscreen((value) => !value)
-                  }
-                  onViewCode={() => {
-                    setActiveTab("code");
-                    setDeveloperDockTab("code");
-                    setDeveloperDockOpen(true);
-                  }}
-                />
-                <BuilderDeveloperDock
-                  open={developerDockOpen}
-                  onToggle={() => setDeveloperDockOpen((value) => !value)}
-                  activeTab={developerDockTab}
-                  onTabChange={setDeveloperDockTab}
-                  height={developerDockHeight}
-                  onHeightChange={setDeveloperDockHeight}
-                  files={generatedFiles}
-                  selectedFilePath={selectedFilePath}
-                  onSelectFile={(path) => {
-                    setSelectedFilePath(path);
-                    setDeveloperDockTab("code");
-                  }}
-                  code={generatedCode}
-                  previewError={previewState.error ?? null}
-                  previewWarnings={
-                    previewState.data &&
-                    typeof previewState.data === "object" &&
-                    Array.isArray(
-                      (previewState.data as { warnings?: unknown }).warnings
-                    )
-                      ? (previewState.data as { warnings: unknown[] }).warnings.filter(
-                          (item): item is string => typeof item === "string"
-                        )
-                      : []
-                  }
-                  runStatus={runStage}
-                />
-              </div>
-            </div>
-          ) : activeTab === "files" ? (
-            <section className="icogon-tool-view h-full overflow-auto p-5 sm:p-8">
-              <div className="mx-auto max-w-5xl">
-                <div className="mb-7 flex items-center justify-between gap-4"><div><p className="text-xs text-violet-400">PROJECT WORKSPACE</p><h2 className={`mt-1 text-2xl font-semibold ${colors.text}`}>Files</h2><p className={`mt-1 text-sm ${colors.muted}`}>Browse the files generated for this project.</p></div><span className={`rounded-full border px-3 py-1.5 text-xs ${colors.border} ${colors.muted}`}>{generatedFiles.length} files</span></div>
-                <div className={`overflow-hidden rounded-2xl border ${colors.border} ${colors.panel}`}>
-                  {generatedFiles.length ? generatedFiles.map((file) => <button key={file.path} type="button" onClick={() => { setSelectedFilePath(file.path); setActiveTab("code"); }} className={`flex w-full items-center gap-3 border-b px-4 py-3 text-left last:border-b-0 ${colors.border} ${colors.hover}`}><FileCode2 size={17} className="shrink-0 text-violet-400"/><span className={`min-w-0 flex-1 truncate text-sm ${colors.text}`}>{file.path}</span><span className={`text-xs ${colors.muted}`}>{file.operation || "generated"}</span><Code2 size={14} className={colors.muted}/></button>) : <div className="flex min-h-72 flex-col items-center justify-center px-6 text-center"><Folder size={30} className="mb-3 text-violet-400"/><h3 className={`text-base font-semibold ${colors.text}`}>No generated files yet</h3><p className={`mt-2 max-w-sm text-sm ${colors.muted}`}>Your project files will appear here after the first successful generation.</p><button type="button" onClick={() => setActiveTab("preview")} className="mt-5">Back to preview</button></div>}
-                </div>
-              </div>
-            </section>
-          ) : activeTab === "more" ? (
-            <section className="icogon-tool-view h-full overflow-auto p-5 sm:p-8"><div className="mx-auto max-w-5xl"><p className="text-xs text-violet-400">PROJECT WORKSPACE</p><h2 className={`mt-1 text-2xl font-semibold ${colors.text}`}>More tools</h2><p className={`mt-1 text-sm ${colors.muted}`}>Project services and workspace capabilities.</p><div className="mt-7 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{[
-              ["Analytics", "Understand project activity and usage."], ["Database", "Plan and manage application data."], ["Users", "User and access management."], ["Storage", "Project assets and uploaded files."], ["AI", "AI configuration and generation settings."], ["Payments", "Payment integration settings."], ["Emails", "Email delivery configuration."], ["Domains", "Custom domain configuration."], ["Connectors", "Connect external services."], ["Security", "Application security overview."], ["SEO & AI search", "Search visibility settings."], ["Settings", "Project preferences and configuration."]
-            ].map(([title, description]) => <article key={title} className={`flex items-start gap-3 rounded-2xl border p-4 ${colors.border} ${colors.panel}`}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-lg text-violet-400">✳</span><div><h3 className={`text-sm font-semibold ${colors.text}`}>{title}</h3><p className={`mt-1 text-xs leading-5 ${colors.muted}`}>{description}</p></div></article>)}</div><p className={`mt-5 text-xs ${colors.muted}`}>Individual service actions require their respective backend integrations.</p></div></section>
-          ) : (
-            /* =================================================
-               CODE
-            ================================================= */
-
-            <div className="h-full overflow-auto p-3 sm:p-5">
-              <div
-                className={`
-                  mx-auto
-                  max-w-[1500px]
-                  overflow-hidden
-                  rounded-2xl
-                  border
-                  ${colors.panel}
-                  ${colors.border}
-                `}
-              >
-                <div
-                  className={`
-                    flex
-                    h-12
-                    items-center
-                    justify-between
-                    border-b
-                    px-4
-                    ${colors.border}
-                  `}
-                >
-                  <div className="flex items-center gap-2">
-                    <FileCode2
-                      size={14}
-                      className="text-cyan-500"
-                    />
-
-                    <span
-                      className={`
-                        text-xs
-                        font-medium
-                        ${colors.text}
-                      `}
-                    >
-                      {selectedFilePath}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={
-                      handleCopyCode
-                    }
-                    className={`
-                      flex
-                      items-center
-                      gap-1.5
-                      rounded-lg
-                      px-2.5
-                      py-1.5
-                      text-[10px]
-                      transition
-                      ${colors.muted}
-                      ${colors.hover}
-                    `}
-                  >
-                    <Copy size={12} />
-                    Copy
-                  </button>
-                </div>
-
-                <div className="flex min-h-[calc(100vh-160px)]">
-                  <div
-                    className={`
-                      hidden
-                      w-56
-                      shrink-0
-                      border-r
-                      p-3
-                      sm:block
-                      ${colors.border}
-                    `}
-                  >
-                    <p
-                      className={`
-                        mb-3
-                        px-2
-                        text-[9px]
-                        font-semibold
-                        uppercase
-                        tracking-wider
-                        ${colors.faint}
-                      `}
-                    >
-                      Files
-                    </p>
-
-                    <div className="space-y-1">
-                      {generatedFiles.length >
-                      0 ? (
-                        generatedFiles.map(
-                          (file) => {
-                            const active =
-                              file.path ===
-                              selectedFilePath;
-
-                            return (
-                              <button
-                                type="button"
-                                key={
-                                  file.path
-                                }
-                                onClick={() =>
-                                  setSelectedFilePath(
-                                    file.path
-                                  )
-                                }
-                                className={`
-                                  flex
-                                  w-full
-                                  items-center
-                                  gap-2
-                                  rounded-lg
-                                  px-2.5
-                                  py-2
-                                  text-left
-                                  text-[10px]
-                                  transition
-                                  ${
-                                    active
-                                      ? colors.active
-                                      : colors.muted
-                                  }
-                                  ${
-                                    !active
-                                      ? colors.hover
-                                      : ""
-                                  }
-                                `}
-                              >
-                                <FileCode2
-                                  size={12}
-                                />
-
-                                <span className="truncate">
-                                  {
-                                    file.path
-                                  }
-                                </span>
-                              </button>
-                            );
-                          }
-                        )
-                      ) : (
-                        <>
-                          {[
-                            "App.tsx",
-                            "main.tsx",
-                            "index.css",
-                          ].map(
-                            (file) => (
-                              <div
-                                key={file}
-                                className={`
-                                  flex
-                                  items-center
-                                  gap-2
-                                  rounded-lg
-                                  px-2.5
-                                  py-2
-                                  text-[10px]
-                                  ${colors.muted}
-                                `}
-                              >
-                                <FileCode2
-                                  size={12}
-                                />
-                                {file}
-                              </div>
-                            )
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <pre
-                    className={`
-                      min-w-0
-                      flex-1
-                      overflow-auto
-                      p-5
-                      font-mono
-                      text-[11px]
-                      leading-6
-                      ${colors.secondary}
-                    `}
-                  >
-                    {generatedCode}
-                  </pre>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* STATUS BAR */}
-
-        <footer
-          className={`
-            flex
-            h-8
-            shrink-0
-            items-center
-            justify-between
-            border-t
-            px-3
-            text-[9px]
-            ${colors.panel}
-            ${colors.border}
-            ${colors.muted}
-          `}
-        >
-          <div className="flex items-center gap-2">
-            <span
-              className={`
-                h-1.5
-                w-1.5
-                rounded-full
-                ${
-                  runStage ===
-                  "failed"
-                    ? "bg-red-500"
-                    : runStage ===
-                      "cancelled"
-                    ? "bg-amber-500"
-                    : isRunning
-                    ? "animate-pulse bg-cyan-500"
-                    : "bg-emerald-500"
-                }
-              `}
-            />
-
-            <span>
-              {stageLabel(runStage)}
-            </span>
-          </div>
-
-          <div className="hidden items-center gap-3 sm:flex">
-            <span>
-              {activeRun
-                ? `Run ${activeRun.id.slice(
-                    0,
-                    8
-                  )}`
-                : "No active run"}
-            </span>
-
-            <span>
-              {generatedFiles.length >
-              0
-                ? `${generatedFiles.length} files`
-                : project.name}
-            </span>
-
-            {runEvents.length > 0 && (
-              <span>
-                {runEvents.length} events
-              </span>
-            )}
-          </div>
-        </footer>
-      </section>
+            defaultTab="files"
+            onClose={() => layoutControlsRef.current?.setDeveloperOpen(false)}
+            onTabChange={() => {
+              // File selection is handled by the file list; the main canvas
+              // remains the single place where the code editor is rendered.
+            }}
+          />
+        }
+        statusbar={
+          <WorkspaceStatusBar
+            runStage={runStage}
+            isRunning={isSending}
+            activeRun={activeRun}
+            fileCount={generatedFiles.length}
+            eventCount={runEvents.length}
+          />
+        }
+      />
     </div>
   );
 };

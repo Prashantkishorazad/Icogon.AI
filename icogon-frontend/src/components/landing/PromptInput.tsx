@@ -7,7 +7,6 @@ import {
 
 import {
   ArrowLeft,
-  ArrowUp,
   Check,
   ChevronDown,
   ChevronRight,
@@ -53,17 +52,8 @@ type BuildMode =
    DATA
 ========================================================= */
 
-const suggestions = [
-  "Build an AI SaaS dashboard",
-  "Create an E-commerce website",
-  "Build a social media app",
-];
-
 const animatedPrompts = [
-  "What do you want to build?",
-  "Build an AI SaaS dashboard...",
-  "Create an e-commerce website...",
-  "Build a social media application...",
+  "Ask ICOGON to build a web app that...",
 ];
 
 const skills = [
@@ -428,41 +418,14 @@ const PromptInput = () => {
     });
   };
 
-  /* =========================================================
-     ENHANCE
-  ========================================================= */
-
-  const handleEnhancePrompt =
-    () => {
-      if (!prompt.trim()) {
-        setPrompt(
-          "Build a modern, responsive and production-ready application with a beautiful UI, authentication and scalable architecture."
-        );
-
-        return;
-      }
-
-      setPrompt(
-        `${prompt.trim()}
-
-Make the design modern, responsive, professional and production-ready. Include a beautiful user interface and clean architecture.`
-      );
-    };
-
-  /* =========================================================
-     KEYBOARD
-  ========================================================= */
-
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>
   ) => {
     if (
       event.key === "Enter" &&
-      (event.metaKey ||
-        event.ctrlKey)
+      !event.shiftKey
     ) {
       event.preventDefault();
-
       handleGenerate();
     }
   };
@@ -1094,9 +1057,8 @@ Make the design modern, responsive, professional and production-ready. Include a
         delay: 0.2,
       }}
       className="
-        mt-10
         w-full
-        max-w-[700px]
+        max-w-[840px]
       "
     >
       {/* ===================================================
@@ -1107,10 +1069,12 @@ Make the design modern, responsive, professional and production-ready. Include a
         className={`
           relative
           overflow-visible
-          rounded-[24px]
+          rounded-[34px]
           border
-          transition-colors
+          transition-all
           duration-200
+          focus-within:border-white/25
+          focus-within:shadow-[0_0_0_3px_rgba(255,255,255,0.035)]
           ${theme.composer}
         `}
       >
@@ -1199,9 +1163,9 @@ Make the design modern, responsive, professional and production-ready. Include a
         <div
           className="
             relative
-            min-h-[105px]
+            min-h-[74px]
             px-6
-            pt-5
+            pt-4
           "
         >
           <textarea
@@ -1221,9 +1185,9 @@ Make the design modern, responsive, professional and production-ready. Include a
               resize-none
               bg-transparent
               px-6
-              pt-5
+              pt-4
               text-[18px]
-              leading-relaxed
+              leading-7
               outline-none
               md:text-[19px]
               ${theme.text}
@@ -1236,11 +1200,12 @@ Make the design modern, responsive, professional and production-ready. Include a
                 pointer-events-none
                 absolute
                 left-6
-                top-5
+                top-4
                 flex
                 items-center
                 whitespace-nowrap
                 text-[18px]
+                font-medium
                 tracking-tight
                 md:text-[19px]
                 ${theme.placeholder}
@@ -1262,7 +1227,7 @@ Make the design modern, responsive, professional and production-ready. Include a
                 }}
                 className={`
                   ml-[3px]
-                  h-[21px]
+                  h-[20px]
                   w-[2px]
                   ${theme.caret}
                 `}
@@ -1395,30 +1360,6 @@ Make the design modern, responsive, professional and production-ready. Include a
               </AnimatePresence>
             </div>
 
-            {/* ENHANCE */}
-
-            <button
-              type="button"
-              onClick={
-                handleEnhancePrompt
-              }
-              className={`
-                hidden
-                items-center
-                gap-1.5
-                rounded-full
-                px-2.5
-                py-1.5
-                text-[13px]
-                font-medium
-                transition
-                sm:flex
-                ${theme.button}
-              `}
-            >
-              <Sparkles size={15} />
-              Enhance
-            </button>
           </div>
 
           {/* RIGHT */}
@@ -1561,90 +1502,10 @@ Make the design modern, responsive, professional and production-ready. Include a
               />
             </button>
 
-            {/* GENERATE */}
-
-            <button
-              type="button"
-              onClick={
-                handleGenerate
-              }
-              disabled={
-                !prompt.trim() ||
-                isGenerating
-              }
-              className={`
-                flex
-                h-9
-                w-9
-                items-center
-                justify-center
-                rounded-full
-                shadow-sm
-                transition
-                disabled:cursor-not-allowed
-                disabled:opacity-30
-                ${theme.generate}
-              `}
-              aria-label="Generate"
-            >
-              {isGenerating ? (
-                <span
-                  className="
-                    h-4
-                    w-4
-                    animate-spin
-                    rounded-full
-                    border-2
-                    border-current/30
-                    border-t-current
-                  "
-                />
-              ) : (
-                <ArrowUp size={18} />
-              )}
-            </button>
           </div>
         </div>
       </div>
 
-      {/* =====================================================
-          SUGGESTIONS
-      ===================================================== */}
-
-      <div
-        className="
-          mt-4
-          flex
-          flex-wrap
-          justify-center
-          gap-2
-        "
-      >
-        {suggestions.map(
-          (item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => {
-                setPrompt(item);
-
-                promptRef.current?.focus();
-              }}
-              className={`
-                rounded-full
-                border
-                px-3.5
-                py-1.5
-                text-[13px]
-                transition
-                ${theme.suggestion}
-              `}
-            >
-              {item}
-            </button>
-          )
-        )}
-      </div>
     </motion.div>
   );
 };

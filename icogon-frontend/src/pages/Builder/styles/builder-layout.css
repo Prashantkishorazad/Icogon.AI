@@ -1,0 +1,113 @@
+/* ICOGON Builder — workspace shell and primary layout */
+:root {
+  --icogon-builder-bg: #0b0c11;
+  --icogon-builder-panel: #11131a;
+  --icogon-builder-panel-raised: #171923;
+  --icogon-builder-border: rgba(148, 163, 184, .16);
+  --icogon-builder-muted: #9298a8;
+  --icogon-builder-text: #f4f5fa;
+  --icogon-builder-accent: #9278ff;
+  --icogon-builder-accent-2: #55a9f7;
+}
+
+.icogon-builder-shell {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-width: 0;
+  height: 100dvh;
+  min-height: 560px;
+  overflow: hidden;
+  background: var(--icogon-builder-bg);
+  color: var(--icogon-builder-text);
+}
+
+.icogon-builder-shell,
+.icogon-builder-shell * { box-sizing: border-box; }
+
+.icogon-builder-shell button,
+.icogon-builder-shell a,
+.icogon-builder-shell input,
+.icogon-builder-shell textarea,
+.icogon-builder-shell select { -webkit-tap-highlight-color: transparent; }
+
+.icogon-builder-shell :focus-visible {
+  outline: 2px solid rgba(164, 143, 255, .95);
+  outline-offset: 2px;
+}
+
+.icogon-builder-shell > header {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  min-width: 0;
+  min-height: 58px;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--icogon-builder-border);
+  background: rgba(17, 19, 26, .94);
+  padding-inline: clamp(12px, 2vw, 26px);
+  backdrop-filter: blur(18px);
+}
+
+.icogon-builder-shell > aside {
+  min-width: 0;
+  background: var(--icogon-builder-panel);
+  border-color: var(--icogon-builder-border);
+}
+
+.icogon-builder-shell .icogon-chat-rail {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-width: min(390px, 42vw);
+  border-right: 1px solid var(--icogon-builder-border);
+  background: linear-gradient(180deg, #12141b 0%, #0f1117 100%);
+}
+
+.icogon-builder-shell .icogon-chat-header {
+  min-height: 58px;
+  border-color: var(--icogon-builder-border);
+}
+
+.icogon-builder-shell .icogon-workstage {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  background:
+    radial-gradient(ellipse at 72% 0%, rgba(113, 88, 206, .10), transparent 38%),
+    #0b0c11;
+}
+
+.icogon-builder-shell .builder-mobile-tabs {
+  border-color: var(--icogon-builder-border);
+  background: rgba(17, 19, 26, .97);
+}
+
+.icogon-builder-shell .builder-mode-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--icogon-builder-border);
+  border-radius: 999px;
+  background: #171923;
+  padding: 3px;
+}
+
+.icogon-builder-shell .builder-mode-tabs button[aria-selected="true"] {
+  color: white;
+  background: linear-gradient(110deg, #8068f6, #4598e9);
+  box-shadow: 0 3px 14px rgba(107, 91, 226, .25);
+}
+
+.icogon-builder-shell button { transition: color .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease; }
+.icogon-builder-shell button:active:not(:disabled) { transform: translateY(1px); }
+.icogon-builder-shell button:disabled { cursor: not-allowed; }
+
+@media (prefers-reduced-motion: reduce) {
+  .icogon-builder-shell *, .icogon-builder-shell *::before, .icogon-builder-shell *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

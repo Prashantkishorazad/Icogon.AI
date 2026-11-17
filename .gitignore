@@ -29,3 +29,34 @@ output/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Python virtual environments
+Icogon/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Node dependencies
+node_modules/
+dist/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Python virtual environment
+Icogon/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+
+# Generated architecture files
+icogon-frontend/project-structure.txt
+icogon-frontend/ICOGON_Architecture_Review.zip
+icogon-frontend/icogon-architecture-files.zip

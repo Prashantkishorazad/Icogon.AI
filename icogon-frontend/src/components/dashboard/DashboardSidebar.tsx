@@ -4,6 +4,8 @@ import React, {
   useState,
 } from "react";
 
+import { createPortal } from "react-dom";
+
 import {
   Home,
   Search,
@@ -23,6 +25,8 @@ import {
   Check,
   Palette,
   User,
+  LifeBuoy,
+  Bot
 } from "lucide-react";
 
 import {
@@ -50,6 +54,8 @@ interface DashboardSidebarProps {
   setCollapsed: React.Dispatch<
     React.SetStateAction<boolean>
   >;
+  mobileOpen: boolean;
+  setMobileOpen: React.Dispatch<React.SetStateAction<boolean>>;
   onMobileClose?: () => void;
 }
 
@@ -67,6 +73,8 @@ const DashboardSidebar: React.FC<
 > = ({
   collapsed,
   setCollapsed,
+  mobileOpen,
+  setMobileOpen,
   onMobileClose,
 }) => {
   const navigate = useNavigate();
@@ -332,6 +340,23 @@ const DashboardSidebar: React.FC<
   }, []);
 
   /* =======================================================
+     ESCAPE HANDLING
+  ======================================================= */
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setWorkspaceOpen(false);
+      setProfileOpen(false);
+      setAppearanceOpen(false);
+      setMobileOpen(false);
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, []);
+
+  /* =======================================================
      GLOBAL SEARCH SHORTCUT
   ======================================================= */
 
@@ -380,6 +405,7 @@ const DashboardSidebar: React.FC<
 
     // Clear Supabase session through auth store
     await logout();
+    setMobileOpen(false);
 
     // Go directly to landing page
     navigate("/", {
@@ -438,14 +464,19 @@ const DashboardSidebar: React.FC<
   ) => {
     return `
       group
+      relative
       flex
       w-full
       items-center
       rounded-xl
       transition-all
-      duration-150
+      duration-200
+      ease-out
+      focus-visible:outline-none
+      focus-visible:ring-2
+      focus-visible:ring-cyan-400/70
       ${
-        collapsed
+        (collapsed && !mobileOpen)
           ? "h-10 justify-center"
           : "h-10 gap-3 px-3"
       }
@@ -464,10 +495,22 @@ const DashboardSidebar: React.FC<
   const openRecentProject = (
     project: RecentProject
   ) => {
+    setMobileOpen(false);
+    onMobileClose?.();
     navigate(
       `/builder/${project.id}`
     );
   };
+
+  /* =======================================================
+     PROFILE ROUTE
+     Hide the dashboard sidebar only on the profile page.
+     Keep the component mounted on every other route.
+  ======================================================= */
+
+  const isProfileRoute =
+    location.pathname === "/profile" ||
+    location.pathname.startsWith("/profile/");
 
   /* =======================================================
      RENDER
@@ -477,19 +520,13 @@ const DashboardSidebar: React.FC<
     <>
       <aside
         className={`
-          relative
-          z-10
-          flex
-          h-full
-          w-full
-          min-h-0
-          flex-col
-          overflow-visible
-          border-r
-          transition-colors
-          duration-200
+          relative z-40 flex h-full min-h-0 w-full flex-col overflow-visible border-r-0
+          transition-[background-color,border-color]
+          duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]
+          ${isProfileRoute ? "hidden" : ""}
           ${colors.sidebar}
         `}
+        aria-label="Main navigation"
       >
         {/* =================================================
             BRAND HEADER
@@ -501,112 +538,87 @@ const DashboardSidebar: React.FC<
             h-[58px]
             shrink-0
             items-center
-            border-b
-            ${colors.border}
             ${
-              collapsed
-                ? "justify-center"
+              (collapsed && !mobileOpen)
+                ? "justify-center px-2"
                 : "justify-between px-4"
             }
           `}
         >
           <button
             type="button"
-            onClick={() =>
-              navigate("/dashboard")
-            }
-            className="
-              flex
-              items-center
-              gap-2.5
-              outline-none
-            "
-          >
-            <img
-              src="/logo.png"
-              alt="ICOGON"
-              className="
-                h-8
-                w-8
-                rounded-[9px]
-                object-cover
-              "
-            />
+            onClick={() => {
+              if (mobileOpen) {
+                setMobileOpen(false);
+                onMobileClose?.();
+                return;
+              }
 
-            {!collapsed && (
+              setCollapsed((current) => !current);
+            }}
+            className={`
+              group flex min-w-0 items-center gap-2.5 rounded-lg
+              cursor-pointer outline-none
+              transition-colors duration-200
+              focus-visible:ring-2 focus-visible:ring-cyan-400/70
+              ${colors.hover}
+              ${(collapsed && !mobileOpen) ? "justify-center p-1" : "px-1.5 py-1"}
+            `}
+            aria-label={
+              mobileOpen
+                ? "Close sidebar"
+                : collapsed
+                  ? "Expand sidebar"
+                  : "Collapse sidebar"
+            }
+            aria-expanded={!collapsed || mobileOpen}
+            title={
+              mobileOpen
+                ? "Close sidebar"
+                : collapsed
+                  ? "Open sidebar"
+                  : "Close sidebar"
+            }
+          >
+            <span className="relative flex h-8 w-8 shrink-0 items-center justify-center">
+              <img
+                src="/logo.png"
+                alt=""
+                aria-hidden="true"
+                className="
+                  absolute inset-0 h-8 w-8 rounded-[9px] object-cover
+                  opacity-100 transition-all duration-200 ease-out
+                  group-hover:scale-90 group-hover:opacity-0
+                "
+              />
+              <span
+                className="
+                  absolute inset-0 flex items-center justify-center rounded-lg
+                  text-current opacity-0 transition-all duration-200 ease-out
+                  group-hover:scale-100 group-hover:opacity-100
+                "
+              >
+                {collapsed && !mobileOpen ? (
+                  <PanelLeftOpen size={19} strokeWidth={1.9} />
+                ) : (
+                  <PanelLeftClose size={19} strokeWidth={1.9} />
+                )}
+              </span>
+            </span>
+
+            {(!collapsed || mobileOpen) && (
               <span
                 className={`
-                  text-[17px]
-                  font-bold
-                  tracking-[-0.45px]
-                  ${colors.text}
+                  whitespace-nowrap text-[17px] font-bold
+                  tracking-[-0.45px] ${colors.text}
+                  transition-colors duration-200
                 `}
               >
                 ICOGON
               </span>
             )}
           </button>
-
-          {!collapsed && (
-            <button
-              type="button"
-              onClick={() =>
-                setCollapsed(true)
-              }
-              className={`
-                flex
-                h-7
-                w-7
-                items-center
-                justify-center
-                rounded-lg
-                ${colors.muted}
-                ${colors.hover}
-                transition
-              `}
-              aria-label="Collapse sidebar"
-            >
-              <PanelLeftClose
-                size={16}
-                strokeWidth={1.8}
-              />
-            </button>
-          )}
         </div>
-
-        {/* =================================================
-            EXPAND BUTTON
-        ================================================= */}
-
-        {collapsed && (
-          <button
-            type="button"
-            onClick={() =>
-              setCollapsed(false)
-            }
-            className={`
-              absolute
-              right-[-11px]
-              top-[18px]
-              z-[100]
-              flex
-              h-6
-              w-6
-              items-center
-              justify-center
-              rounded-full
-              border
-              shadow-sm
-              ${colors.button}
-            `}
-            aria-label="Expand sidebar"
-          >
-            <PanelLeftOpen
-              size={13}
-              strokeWidth={1.8}
-            />
-          </button>
-        )}
 
         {/* =================================================
             WORKSPACE
@@ -624,23 +636,11 @@ const DashboardSidebar: React.FC<
           <button
             type="button"
             onClick={() => {
-              if (collapsed) {
-                setCollapsed(false);
-
-                setTimeout(() => {
-                  setWorkspaceOpen(true);
-                }, 150);
-
-                return;
-              }
-
               setProfileOpen(false);
               setAppearanceOpen(false);
-
-              setWorkspaceOpen(
-                (value) => !value
-              );
+              setWorkspaceOpen((value) => !value);
             }}
+            title={collapsed ? "ICOGON Workspace" : undefined}
             className={`
               flex
               w-full
@@ -649,7 +649,7 @@ const DashboardSidebar: React.FC<
               transition
               ${colors.hoverSoft}
               ${
-                collapsed
+                (collapsed && !mobileOpen)
                   ? "h-10 justify-center"
                   : "gap-2.5 px-1.5 py-1.5"
               }
@@ -675,7 +675,7 @@ const DashboardSidebar: React.FC<
               I
             </div>
 
-            {!collapsed && (
+            {(!collapsed || mobileOpen) && (
               <>
                 <div
                   className="
@@ -725,18 +725,19 @@ const DashboardSidebar: React.FC<
 
           {/* WORKSPACE POPUP */}
 
-          {workspaceOpen && !collapsed && (
+          {workspaceOpen && (
             <div
               className={`
                 absolute
-                left-3
-                right-3
-                top-[58px]
                 z-[200]
                 overflow-hidden
                 rounded-xl
                 border
                 shadow-xl
+                transition-all
+                duration-200
+                ease-out
+                ${collapsed ? "left-3 right-3 top-[58px] origin-top" : "left-3 right-3 top-[58px] origin-top"}
                 ${colors.popup}
               `}
             >
@@ -745,9 +746,9 @@ const DashboardSidebar: React.FC<
                   type="button"
                   onClick={() => {
                     setWorkspaceOpen(false);
-                    navigate(
-                      "/workspace/settings"
-                    );
+                    setMobileOpen(false);
+                    onMobileClose?.();
+                    navigate("/profile?tab=workspace");
                   }}
                   className={`
                     flex
@@ -773,9 +774,9 @@ const DashboardSidebar: React.FC<
                   type="button"
                   onClick={() => {
                     setWorkspaceOpen(false);
-                    navigate(
-                      "/workspace/new"
-                    );
+                    setMobileOpen(false);
+                    onMobileClose?.();
+                    navigate("/builder");
                   }}
                   className={`
                     flex
@@ -814,33 +815,19 @@ const DashboardSidebar: React.FC<
           "
         >
           <nav className="space-y-1">
-            {/* NEW PROJECT */}
-
-            {/* <button
-              type="button"
-              onClick={() => {
-                onMobileClose?.();
-                navigate("/builder");
-              }}
-              title={collapsed ? "New project" : undefined}
-              className={navClass(false)}
-            >
-              <Plus size={17} strokeWidth={1.8} className="shrink-0" />
-              {!collapsed && (
-                <span className="text-[13px] font-medium">
-                  New project
-                </span>
-              )}
-            </button> */}
+            {/* PRIMARY NAVIGATION */}
 
             {/* DASHBOARD */}
 
             <NavLink
               to="/dashboard"
               end
-              onClick={onMobileClose}
+              onClick={() => {
+                setMobileOpen(false);
+                onMobileClose?.();
+              }}
               title={
-                collapsed
+                (collapsed && !mobileOpen)
                   ? "Dashboard"
                   : undefined
               }
@@ -854,7 +841,7 @@ const DashboardSidebar: React.FC<
                 className="shrink-0"
               />
 
-              {!collapsed && (
+              {(!collapsed || mobileOpen) && (
                 <span className="text-[13px] font-medium">
                   Dashboard
                 </span>
@@ -866,15 +853,16 @@ const DashboardSidebar: React.FC<
             <button
               type="button"
               onClick={() => {
+                setMobileOpen(false);
                 onMobileClose?.();
                 openSearch();
               }}
               title={
-                collapsed
+                (collapsed && !mobileOpen)
                   ? "Search"
                   : "Search (⌘ K)"
               }
-              className={navClass(false)}
+              className={navClass(searchOpen)}
             >
               <Search
                 size={17}
@@ -882,7 +870,7 @@ const DashboardSidebar: React.FC<
                 className="shrink-0"
               />
 
-              {!collapsed && (
+              {(!collapsed || mobileOpen) && (
                 <>
                   <span className="text-[13px] font-medium">
                     Search
@@ -905,9 +893,12 @@ const DashboardSidebar: React.FC<
 
             <NavLink
               to="/dashboard?connectors="
-              onClick={onMobileClose}
+              onClick={() => {
+                setMobileOpen(false);
+                onMobileClose?.();
+              }}
               title={
-                collapsed
+                (collapsed && !mobileOpen)
                   ? "Connectors"
                   : undefined
               }
@@ -921,20 +912,38 @@ const DashboardSidebar: React.FC<
                 className="shrink-0"
               />
 
-              {!collapsed && (
+              {(!collapsed || mobileOpen) && (
                 <span className="text-[13px] font-medium">
                   Connectors
                 </span>
               )}
             </NavLink>
 
+            {/* AUTOMATIONS */}
+            <button
+              type="button"
+              onClick={() => {
+                setMobileOpen(false);
+                onMobileClose?.();
+                navigate("/dashboard?tab=automations");
+              }}
+              title={collapsed && !mobileOpen ? "Automations" : undefined}
+              className={navClass(location.pathname === "/dashboard" && new URLSearchParams(location.search).get("tab") === "automations")}
+            >
+              <Bot size={17} strokeWidth={1.8} className="shrink-0" />
+              {(!collapsed || mobileOpen) && <span className="text-[13px] font-medium">Automations</span>}
+            </button>
+
             {/* PROJECTS */}
 
             <NavLink
               to="/projects"
-              onClick={onMobileClose}
+              onClick={() => {
+                setMobileOpen(false);
+                onMobileClose?.();
+              }}
               title={
-                collapsed
+                (collapsed && !mobileOpen)
                   ? "Projects"
                   : undefined
               }
@@ -948,7 +957,7 @@ const DashboardSidebar: React.FC<
                 className="shrink-0"
               />
 
-              {!collapsed && (
+              {(!collapsed || mobileOpen) && (
                 <span className="text-[13px] font-medium">
                   Projects
                 </span>
@@ -960,7 +969,7 @@ const DashboardSidebar: React.FC<
               RECENTS
           ================================================= */}
 
-          {!collapsed && (
+          {(!collapsed || mobileOpen) && (
             <section className="mt-7">
               <div className="mb-2 flex items-center justify-between px-3">
                 <button
@@ -1122,6 +1131,39 @@ const DashboardSidebar: React.FC<
               )}
             </section>
           )}
+
+          {collapsed && recentProjects.length > 0 && (
+            <section className={`mt-4 space-y-1 border-t pt-3 ${colors.border}`}>
+              {recentProjects.slice(0, 5).map((project) => (
+                <button
+                  key={project.id}
+                  type="button"
+                  title={project.name}
+                  aria-label={`Open ${project.name}`}
+                  onClick={() => openRecentProject(project)}
+                  className={`
+                    flex h-10 w-full items-center justify-center rounded-xl
+                    transition-all duration-200
+                    ${colors.navInactive}
+                  `}
+                >
+                  <FolderKanban size={17} strokeWidth={1.8} />
+                </button>
+              ))}
+              <button
+                type="button"
+                title="View all projects"
+                aria-label="View all projects"
+                onClick={() => navigate("/projects")}
+                className={`
+                  flex h-9 w-full items-center justify-center rounded-xl
+                  text-[10px] transition-colors ${colors.navInactive}
+                `}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </section>
+          )}
         </div>
 
         {/* =================================================
@@ -1138,65 +1180,39 @@ const DashboardSidebar: React.FC<
         >
           {/* UPGRADE */}
 
-          {!collapsed && (
+          {collapsed ? (
             <button
               type="button"
-              onClick={() =>
-                navigate("/billing")
-              }
+              title="Upgrade to Pro"
+              aria-label="Upgrade to Pro"
+              onClick={() => navigate("/pricing")}
+              className="
+                mb-2 flex h-10 w-full items-center justify-center
+                rounded-xl bg-purple-500 text-white
+                transition-all duration-200 hover:scale-[1.04] hover:bg-purple-400
+              "
+            >
+              <Zap size={17} fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => navigate("/pricing")}
               className={`
-                mb-3
-                flex
-                w-full
-                items-center
-                gap-3
-                rounded-xl
-                bg-gradient-to-r
-                px-3
-                py-2.5
-                text-left
-                transition
-                hover:brightness-105
+                mb-3 flex w-full items-center gap-3 rounded-xl
+                bg-gradient-to-r px-3 py-2.5 text-left
+                transition-all duration-200 hover:brightness-105
                 ${colors.upgrade}
               `}
             >
-              <div
-                className="
-                  flex
-                  h-8
-                  w-8
-                  shrink-0
-                  items-center
-                  justify-center
-                  rounded-lg
-                  bg-purple-500
-                  text-white
-                "
-              >
-                <Zap
-                  size={15}
-                  fill="currentColor"
-                />
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-purple-500 text-white">
+                <Zap size={15} fill="currentColor" />
               </div>
-
               <div className="min-w-0">
-                <p
-                  className={`
-                    text-[11px]
-                    font-semibold
-                    ${colors.upgradeText}
-                  `}
-                >
+                <p className={`text-[11px] font-semibold ${colors.upgradeText}`}>
                   Upgrade to Pro
                 </p>
-
-                <p
-                  className={`
-                    truncate
-                    text-[9px]
-                    ${colors.upgradeSubtext}
-                  `}
-                >
+                <p className={`truncate text-[9px] ${colors.upgradeSubtext}`}>
                   Unlock more features
                 </p>
               </div>
@@ -1213,21 +1229,31 @@ const DashboardSidebar: React.FC<
           >
             {/* PROFILE POPUP */}
 
-            {profileOpen && !collapsed && (
-              <div
-                className={`
-                  absolute
-                  bottom-[58px]
-                  left-0
-                  z-[250]
-                  w-[280px]
-                  overflow-hidden
-                  rounded-xl
-                  border
-                  shadow-2xl
-                  ${colors.popup}
-                `}
-              >
+            <div
+              aria-hidden={!profileOpen}
+              className={`
+                absolute
+                z-[250]
+                ${collapsed && !mobileOpen
+                  ? "left-[calc(100%+10px)] right-auto w-[260px] max-w-[min(260px,calc(100vw-96px))]"
+                  : "left-0 right-0 w-auto max-w-full"}
+                max-h-[min(72vh,520px)]
+                overflow-y-auto
+                overflow-x-hidden
+                rounded-xl
+                border
+                shadow-2xl
+                transition-[opacity,transform,visibility]
+                duration-200
+                ease-out
+                bottom-[48px]
+                origin-bottom-left
+                ${profileOpen
+                  ? "visible translate-y-0 scale-100 opacity-100"
+                  : "invisible translate-y-2 scale-[0.98] opacity-0 pointer-events-none"}
+                ${colors.popup}
+              `}
+            >
                 {!appearanceOpen ? (
                   <>
                     {/* USER */}
@@ -1235,18 +1261,18 @@ const DashboardSidebar: React.FC<
                     <div
                       className={`
                         border-b
-                        p-3
+                        p-2
                         ${colors.border}
                       `}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         {avatar ? (
                           <img
                             src={avatar}
                             alt={fullName}
                             className="
-                              h-9
-                              w-9
+                              h-7
+                              w-7
                               rounded-full
                               object-cover
                             "
@@ -1255,8 +1281,8 @@ const DashboardSidebar: React.FC<
                           <div
                             className="
                               flex
-                              h-9
-                              w-9
+                              h-7
+                              w-7
                               items-center
                               justify-center
                               rounded-full
@@ -1278,7 +1304,7 @@ const DashboardSidebar: React.FC<
                           <p
                             className={`
                               truncate
-                              text-sm
+                              text-[12px]
                               font-semibold
                               ${colors.text}
                             `}
@@ -1289,7 +1315,7 @@ const DashboardSidebar: React.FC<
                           <p
                             className={`
                               truncate
-                              text-[10px]
+                              text-[9px]
                               ${colors.muted}
                             `}
                           >
@@ -1301,31 +1327,52 @@ const DashboardSidebar: React.FC<
 
                     {/* MENU */}
 
-                    <div className="p-1.5">
+                    <div className="p-1">
                       <button
                         type="button"
                         onClick={() => {
                           setProfileOpen(false);
+                          setMobileOpen(false);
+                          onMobileClose?.();
                           navigate("/profile");
                         }}
                         className={`
                           flex
                           w-full
                           items-center
-                          gap-3
+                          gap-2
                           rounded-lg
-                          px-3
-                          py-2.5
-                          text-sm
+                          px-2
+                          py-2
+                          text-[12px]
                           transition
                           ${colors.popupText}
                         `}
                       >
-                        <User size={16} />
+                        <User size={14} />
                         <span>
                           Profile
                         </span>
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setMobileOpen(false);
+                          onMobileClose?.();
+                          navigate("/dashboard?tab=inbox");
+                        }}
+                        className={`
+                          flex w-full items-center gap-2 rounded-lg px-2 py-2
+                          text-[12px] transition ${colors.popupText}
+                        `}
+                      >
+                        <LifeBuoy size={14} />
+                        <span>Inbox</span>
+                      </button>
+
+                      <div className={`my-1 border-t ${colors.border}`} />
 
                       <button
                         type="button"
@@ -1338,20 +1385,20 @@ const DashboardSidebar: React.FC<
                           items-center
                           justify-between
                           rounded-lg
-                          px-3
-                          py-2.5
-                          text-sm
+                          px-2
+                          py-2
+                          text-[12px]
                           transition
                           ${colors.popupText}
                         `}
                       >
-                        <span className="flex items-center gap-3">
-                          <Palette size={16} />
+                        <span className="flex items-center gap-2">
+                          <Palette size={14} />
                           Appearance
                         </span>
 
                         <ChevronRight
-                          size={15}
+                          size={13}
                           className={
                             colors.iconMuted
                           }
@@ -1362,26 +1409,105 @@ const DashboardSidebar: React.FC<
                         type="button"
                         onClick={() => {
                           setProfileOpen(false);
-                          navigate("/settings");
+                          setMobileOpen(false);
+                          onMobileClose?.();
+                          navigate("/profile?tab=settings");
                         }}
                         className={`
-                          flex
-                          w-full
-                          items-center
-                          gap-3
-                          rounded-lg
-                          px-3
-                          py-2.5
-                          text-sm
-                          transition
-                          ${colors.popupText}
+                          flex w-full items-center gap-2 rounded-lg px-2 py-2
+                          text-[12px] transition ${colors.popupText}
                         `}
                       >
-                        <Settings size={16} />
-                        <span>
-                          Settings
-                        </span>
+                        <Settings size={14} />
+                        <span>Account settings</span>
                       </button>
+
+                      <div className={`my-1 border-t ${colors.border}`} />
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setMobileOpen(false);
+                          onMobileClose?.();
+                          navigate("/docs");
+                        }}
+                        className={`
+                          flex w-full items-center gap-2 rounded-lg px-2 py-2
+                          text-[12px] transition ${colors.popupText}
+                        `}
+                      >
+                        <LifeBuoy size={14} />
+                        <span>Support</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setMobileOpen(false);
+                          onMobileClose?.();
+                          navigate("/docs");
+                        }}
+                        className={`
+                          flex w-full items-center gap-2 rounded-lg px-2 py-2
+                          text-[12px] transition ${colors.popupText}
+                        `}
+                      >
+                        <LifeBuoy size={14} />
+                        <span>Documentation</span>
+                      </button>
+
+                      {/* <button
+                        type="button"
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setMobileOpen(false);
+                          onMobileClose?.();
+                          navigate("/community");
+                        }}
+                        className={`
+                          flex w-full items-center gap-2 rounded-lg px-2 py-2
+                          text-[12px] transition ${colors.popupText}
+                        `}
+                      >
+                        <User size={14} />
+                        <span>Community</span>
+                      </button> */}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setMobileOpen(false);
+                          onMobileClose?.();
+                          navigate("/download");
+                        }}
+                        className={`
+                          flex w-full items-center gap-2 rounded-lg px-2 py-2
+                          text-[12px] transition ${colors.popupText}
+                        `}
+                      >
+                        <FolderKanban size={14} />
+                        <span>Download apps</span>
+                      </button>
+
+                      {/* <button
+                        type="button"
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setMobileOpen(false);
+                          onMobileClose?.();
+                          navigate("/");
+                        }}
+                        className={`
+                          flex w-full items-center gap-2 rounded-lg px-2 py-2
+                          text-[12px] transition ${colors.popupText}
+                        `}
+                      >
+                        <Home size={14} />
+                        <span>Homepage</span>
+                      </button> */}
                     </div>
 
                     {/* LOGOUT */}
@@ -1389,7 +1515,7 @@ const DashboardSidebar: React.FC<
                     <div
                       className={`
                         border-t
-                        p-1.5
+                        p-1
                         ${colors.border}
                       `}
                     >
@@ -1401,18 +1527,18 @@ const DashboardSidebar: React.FC<
                           flex
                           w-full
                           items-center
-                          gap-3
+                          gap-2
                           rounded-lg
-                          px-3
-                          py-2.5
-                          text-sm
+                          px-2
+                          py-2
+                          text-[12px]
                           text-red-500
                           transition
                           hover:bg-red-500/10
                           disabled:opacity-50
                         "
                       >
-                        <LogOut size={16} />
+                        <LogOut size={14} />
 
                         {loggingOut
                           ? "Logging out..."
@@ -1430,7 +1556,7 @@ const DashboardSidebar: React.FC<
                         items-center
                         gap-2
                         border-b
-                        p-3
+                        p-2
                         ${colors.border}
                       `}
                     >
@@ -1452,7 +1578,7 @@ const DashboardSidebar: React.FC<
                         aria-label="Back"
                       >
                         <ChevronRight
-                          size={15}
+                          size={13}
                           className="rotate-180"
                         />
                       </button>
@@ -1460,7 +1586,7 @@ const DashboardSidebar: React.FC<
                       <div>
                         <p
                           className={`
-                            text-sm
+                            text-[12px]
                             font-semibold
                             ${colors.text}
                           `}
@@ -1470,7 +1596,7 @@ const DashboardSidebar: React.FC<
 
                         <p
                           className={`
-                            text-[10px]
+                            text-[9px]
                             ${colors.muted}
                           `}
                         >
@@ -1481,7 +1607,7 @@ const DashboardSidebar: React.FC<
 
                     {/* THEME OPTIONS */}
 
-                    <div className="p-1.5">
+                    <div className="p-1">
                       {themeOptions.map(
                         (item) => {
                           const Icon =
@@ -1504,12 +1630,12 @@ const DashboardSidebar: React.FC<
                                 flex
                                 w-full
                                 items-center
-                                gap-3
+                                gap-2
                                 rounded-lg
-                                px-3
-                                py-2.5
+                                px-2
+                                py-2
                                 text-left
-                                text-sm
+                                text-[12px]
                                 transition
                                 ${
                                   active
@@ -1526,7 +1652,7 @@ const DashboardSidebar: React.FC<
 
                               {active && (
                                 <Check
-                                  size={16}
+                                  size={14}
                                   className="ml-auto"
                                 />
                               )}
@@ -1537,109 +1663,52 @@ const DashboardSidebar: React.FC<
                     </div>
                   </>
                 )}
-              </div>
-            )}
+            </div>
 
             {/* PROFILE BUTTON */}
 
             <button
               type="button"
+              title={collapsed ? `${fullName} — account menu` : undefined}
+              aria-label={`${fullName} account menu`}
+              aria-expanded={profileOpen}
               onClick={() => {
                 setWorkspaceOpen(false);
+                setAppearanceOpen(false);
 
-                setProfileOpen(
-                  (value) => {
-                    const next =
-                      !value;
-
-                    if (next) {
-                      setAppearanceOpen(false);
-                    }
-
-                    return next;
-                  }
-                );
+                // Opening the account menu must not expand the sidebar.
+                // In collapsed mode the menu is rendered as a flyout beside it.
+                setProfileOpen((value) => !value);
               }}
               className={`
-                flex
-                w-full
-                items-center
-                rounded-xl
-                transition
-                ${colors.hover}
+                group flex w-full items-center rounded-full bg-transparent
+                cursor-pointer transition-all duration-200
                 ${
-                  collapsed
-                    ? "justify-center p-1.5"
-                    : "gap-2.5 px-1.5 py-1.5"
+                  (collapsed && !mobileOpen)
+                    ? "justify-center p-0"
+                    : "justify-start px-0 py-1"
                 }
               `}
             >
-              {avatar ? (
-                <img
-                  src={avatar}
-                  alt={fullName}
-                  className="
-                    h-8
-                    w-8
-                    shrink-0
-                    rounded-full
-                    object-cover
-                  "
-                />
-              ) : (
-                <div
-                  className="
-                    flex
-                    h-8
-                    w-8
-                    shrink-0
-                    items-center
-                    justify-center
-                    rounded-full
-                    bg-gradient-to-br
-                    from-orange-500
-                    to-orange-600
-                    text-xs
-                    font-bold
-                    text-white
-                  "
-                >
-                  {fullName
-                    .charAt(0)
-                    .toUpperCase()}
-                </div>
-              )}
+              <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all duration-200 group-hover:ring-2 group-hover:ring-emerald-300/70 group-hover:ring-offset-2 group-hover:ring-offset-[#0b0b0b] group-hover:shadow-[0_0_16px_rgba(110,231,183,0.22)]">
+                {avatar ? (
+                  <img
+                    src={avatar}
+                    alt={fullName}
+                    className="h-8 w-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="
+                    flex h-8 w-8 items-center justify-center rounded-full
+                    bg-gradient-to-br from-orange-500 to-orange-600
+                    text-xs font-bold text-white
+                  ">
+                    {fullName.charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </span>
 
-              {!collapsed && (
-                <div
-                  className="
-                    min-w-0
-                    flex-1
-                    text-left
-                  "
-                >
-                  <p
-                    className={`
-                      truncate
-                      text-[11px]
-                      font-medium
-                      ${colors.text}
-                    `}
-                  >
-                    {fullName}
-                  </p>
 
-                  <p
-                    className={`
-                      truncate
-                      text-[9px]
-                      ${colors.iconMuted}
-                    `}
-                  >
-                    Personal account
-                  </p>
-                </div>
-              )}
             </button>
           </div>
         </div>
@@ -1649,12 +1718,14 @@ const DashboardSidebar: React.FC<
           GLOBAL SEARCH
       ===================================================== */}
 
-      <GlobalSearch
-        open={searchOpen}
-        onClose={() =>
-          setSearchOpen(false)
-        }
-      />
+      {typeof document !== "undefined" &&
+        createPortal(
+          <GlobalSearch
+            open={searchOpen}
+            onClose={() => setSearchOpen(false)}
+          />,
+          document.body,
+        )}
     </>
   );
 };

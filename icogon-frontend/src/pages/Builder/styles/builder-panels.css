@@ -1,0 +1,111 @@
+/* ICOGON Builder — preview, code and developer panel surfaces */
+.icogon-builder-shell .icogon-tool-view {
+  min-width: 0;
+  background:
+    radial-gradient(ellipse at 82% 0%, rgba(116, 91, 207, .09), transparent 36%),
+    #0d0f15;
+}
+
+.icogon-builder-shell .icogon-tool-view article,
+.icogon-builder-shell .icogon-tool-view [data-builder-card] {
+  border-color: var(--icogon-builder-border);
+  background: rgba(20, 22, 31, .78);
+  transition: border-color .18s ease, background-color .18s ease, transform .18s ease;
+}
+
+.icogon-builder-shell .icogon-tool-view article:hover,
+.icogon-builder-shell .icogon-tool-view [data-builder-card]:hover {
+  border-color: rgba(151, 126, 255, .42);
+  background: rgba(27, 28, 40, .92);
+}
+
+.icogon-preview-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f1f3f7;
+  color: #202637;
+}
+
+.icogon-preview-toolbar {
+  display: flex;
+  min-height: 48px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e5e8ef;
+  background: #fff;
+  padding: 0 14px;
+}
+
+.icogon-preview-project,
+.icogon-preview-actions { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.icogon-preview-project-name { max-width: min(34vw, 280px); overflow: hidden; color: #343b4a; font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.icogon-preview-window-dots { display: inline-flex; flex: 0 0 auto; gap: 4px; }
+.icogon-preview-window-dots i { width: 7px; height: 7px; border-radius: 50%; background: #f28b82; }
+.icogon-preview-window-dots i:nth-child(2) { background: #f6c66b; }
+.icogon-preview-window-dots i:nth-child(3) { background: #70c99a; }
+.icogon-preview-ready { display: inline-flex; align-items: center; gap: 4px; color: #23845a; font-size: 10px; white-space: nowrap; }
+.icogon-device-switcher { display: inline-flex; align-items: center; gap: 2px; border: 1px solid #e5e8ef; border-radius: 10px; background: #f7f8fa; padding: 3px; }
+.icogon-device-switcher button { display: grid; width: 29px; height: 28px; place-items: center; border-radius: 7px; color: #8992a3; }
+.icogon-device-switcher button.is-active { background: #fff; color: #745be8; box-shadow: 0 1px 4px rgba(18, 24, 40, .12); }
+
+.icogon-preview-empty {
+  display: flex;
+  min-height: 360px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 22px;
+  text-align: center;
+}
+.icogon-preview-empty-icon { display: grid; width: 54px; height: 54px; place-items: center; border: 1px solid #e7e2ff; border-radius: 17px; background: #f4f1ff; color: #795eea; }
+.icogon-preview-empty h2 { margin: 17px 0 0; color: #252c3b; font-size: 15px; font-weight: 700; }
+.icogon-preview-empty p { max-width: 420px; margin: 7px 0 0; color: #8490a2; font-size: 11px; line-height: 1.8; }
+.icogon-preview-empty button { margin-top: 16px; }
+.icogon-preview-warnings { max-height: 110px; overflow: auto; border-bottom: 1px solid #f0d9a4; background: #fff9e9; padding: 9px 14px; color: #76541a; font-size: 10px; }
+.icogon-preview-warnings summary { cursor: pointer; font-weight: 650; }
+.icogon-preview-panel iframe { display: block; width: 100%; min-height: 420px; flex: 1 1 auto; border: 0; background: white; }
+
+.icogon-dev-dock { min-width: 0; flex: 0 0 auto; border-top: 1px solid #e7eaf0; background: #fff; color: #394254; }
+.icogon-dev-dock.is-closed { min-height: 42px; }
+.icogon-dev-dock-bar { display: flex; min-height: 42px; align-items: center; gap: 10px; border-bottom: 1px solid #edf0f4; background: #fff; padding: 0 10px; }
+.icogon-dev-dock-toggle, .icogon-dev-dock-tabs button, .icogon-dev-dock-close { display: inline-flex; align-items: center; gap: 7px; }
+.icogon-dev-dock-toggle { color: #4b5565; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.icogon-dev-dock-count { border-radius: 99px; background: #f1f3f7; padding: 2px 7px; color: #818a9a; font-size: 9px; }
+.icogon-dev-dock-tabs { display: flex; min-width: 0; flex: 1; gap: 3px; }
+.icogon-dev-dock-tabs button { border-radius: 8px; padding: 7px 9px; color: #7b8494; font-size: 10px; }
+.icogon-dev-dock-tabs button:hover { background: #f5f6f9; }
+.icogon-dev-dock-tabs button.is-active { background: #f0edff; color: #6854d6; }
+.icogon-dev-dock-close { padding: 6px; color: #8b93a1; }
+.icogon-dev-dock-resize { display: flex; min-height: 27px; align-items: center; justify-content: flex-end; gap: 10px; border-bottom: 1px solid #edf0f4; background: #fafbfc; padding: 0 12px; }
+.icogon-dev-dock-resize label { color: #98a0ae; font-size: 9px; }
+.icogon-dev-dock-resize input { width: 110px; accent-color: #7662e8; }
+.icogon-dev-dock-content { min-height: 0; flex-shrink: 0; overflow: auto; background: #fbfcfe; }
+.icogon-dev-file-list { display: flex; height: 100%; flex-direction: column; overflow: auto; padding: 7px; }
+.icogon-dev-file-list button { display: flex; min-height: 31px; align-items: center; gap: 8px; border-radius: 6px; padding: 0 9px; color: #687387; text-align: left; }
+.icogon-dev-file-list button:hover { background: #f0f2f8; }
+.icogon-dev-file-list button.is-selected { background: #efedff; color: #5e4acb; }
+.icogon-dev-file-list button span { min-width: 0; flex: 1; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.icogon-dev-file-list small { color: #9ba3b1; font-size: 9px; }
+.icogon-dev-code, .icogon-dev-terminal { display: flex; height: 100%; flex-direction: column; overflow: hidden; background: #171923; color: #d5d9e6; }
+.icogon-dev-code-header, .icogon-dev-terminal-header { display: flex; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid #2c3040; padding: 0 12px; font-size: 10px; }
+.icogon-dev-code-header span, .icogon-dev-code-header button { display: inline-flex; align-items: center; gap: 7px; }
+.icogon-dev-code-header button { color: #bbc2d0; }
+.icogon-dev-code-header button:disabled { opacity: .4; }
+.icogon-dev-code pre { min-height: 0; flex: 1; overflow: auto; padding: 12px 15px; font: 10px/1.65 "SFMono-Regular", Consolas, monospace; white-space: pre; }
+.icogon-dev-terminal-header small { color: #e6b85b; }
+.icogon-dev-terminal-body { padding: 14px; font: 10px/1.8 "SFMono-Regular", Consolas, monospace; }
+.icogon-dev-terminal-body .muted { color: #8b94a7; }
+.icogon-dev-console { height: 100%; overflow: auto; padding: 10px 13px; font-size: 10px; }
+.icogon-dev-console-summary { display: flex; justify-content: space-between; color: #8791a2; }
+.icogon-dev-console .error { padding: 8px 0; color: #c74450; }
+.icogon-dev-console .warning { padding: 8px 0; color: #a87920; }
+.icogon-dev-empty { display: flex; min-height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 18px; color: #9aa3b2; text-align: center; }
+.icogon-dev-empty strong { color: #626e82; font-size: 10px; }
+.icogon-dev-empty span { font-size: 9px; }

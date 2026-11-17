@@ -146,7 +146,6 @@ const SearchResultList: React.FC<Props> = ({
                     item={item}
                     selected={index === selectedIndex}
                     activeTheme={activeTheme}
-                    resolvedTheme={isDark ? "dark" : "light"}
                     onMouseEnter={() => onHover(index)}
                     onClick={() => onSelect(item)}
                   />
@@ -202,7 +201,6 @@ const SearchResultList: React.FC<Props> = ({
                   item={item}
                   selected={index === selectedIndex}
                   activeTheme={activeTheme}
-                  resolvedTheme={isDark ? "dark" : "light"}
                   onMouseEnter={() => onHover(index)}
                   onClick={() => onSelect(item)}
                 />

@@ -38,3 +38,870 @@
 .icogon-dev-empty strong{font-size:10px;color:#626e82}
 .icogon-dev-empty span{font-size:9px}
 @media(max-width:640px){.icogon-dev-dock-bar{gap:5px;padding:0 6px}.icogon-dev-dock-toggle{font-size:9px}.icogon-dev-dock-count{display:none}.icogon-dev-dock-tabs{justify-content:flex-end;gap:0}.icogon-dev-dock-tabs button{gap:4px;padding:6px;font-size:9px}}
+/* ICOGON Builder — developer dock
+   Scoped to the dock so it can coexist with the workspace's Tailwind styles. */
+
+.icogon-dev-dock {
+  --dock-bg: #111319;
+  --dock-surface: #171a22;
+  --dock-border: #292d38;
+  --dock-text: #e7e9f0;
+  --dock-muted: #9299aa;
+  --dock-accent: #a995ff;
+  --dock-accent-soft: rgba(169, 149, 255, 0.13);
+
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-top: 1px solid var(--dock-border);
+  background: var(--dock-bg);
+  color: var(--dock-text);
+}
+
+.icogon-dev-dock *,
+.icogon-dev-dock *::before,
+.icogon-dev-dock *::after {
+  box-sizing: border-box;
+}
+
+.icogon-dev-dock.is-closed {
+  min-height: 43px;
+}
+
+.icogon-dev-dock-bar {
+  display: flex;
+  min-height: 43px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--dock-border);
+  background: var(--dock-surface);
+}
+
+.icogon-dev-dock-toggle,
+.icogon-dev-dock-tabs button,
+.icogon-dev-dock-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
+}
+
+.icogon-dev-dock-toggle {
+  flex: 0 0 auto;
+  padding: 7px 2px;
+  color: #d7d9e3;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.icogon-dev-dock-toggle:hover,
+.icogon-dev-dock-close:hover {
+  color: #fff;
+}
+
+.icogon-dev-dock-count {
+  border: 1px solid #343846;
+  border-radius: 999px;
+  background: #222631;
+  padding: 2px 7px;
+  color: #aeb4c3;
+  font-size: 9px;
+  font-weight: 550;
+  line-height: 1.4;
+}
+
+.icogon-dev-dock-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.icogon-dev-dock-tabs button {
+  min-height: 29px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 5px 9px;
+  color: var(--dock-muted);
+  font-size: 10px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.icogon-dev-dock-tabs button:hover {
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--dock-text);
+}
+
+.icogon-dev-dock-tabs button.is-active {
+  border-color: rgba(169, 149, 255, 0.2);
+  background: var(--dock-accent-soft);
+  color: #c7baff;
+}
+
+.icogon-dev-dock-close {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: var(--dock-muted);
+}
+
+.icogon-dev-dock-close:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.icogon-dev-dock button:focus-visible,
+.icogon-dev-dock input:focus-visible {
+  outline: 2px solid var(--dock-accent);
+  outline-offset: 2px;
+}
+
+.icogon-dev-dock-resize {
+  display: flex;
+  min-height: 31px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 13px;
+  border-bottom: 1px solid var(--dock-border);
+  background: #13161d;
+}
+
+.icogon-dev-dock-resize label {
+  color: #8e96a8;
+  font-size: 9px;
+}
+
+.icogon-dev-dock-resize input {
+  width: 112px;
+  height: 16px;
+  accent-color: #9c86ff;
+  cursor: ew-resize;
+}
+
+.icogon-dev-dock-content {
+  min-width: 0;
+  min-height: 0;
+  flex: 0 0 auto;
+  overflow: auto;
+  background: #101319;
+  overscroll-behavior: contain;
+  scrollbar-color: #3a4050 transparent;
+  scrollbar-width: thin;
+}
+
+.icogon-dev-dock-content::-webkit-scrollbar,
+.icogon-dev-file-list::-webkit-scrollbar,
+.icogon-dev-code pre::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.icogon-dev-dock-content::-webkit-scrollbar-thumb,
+.icogon-dev-file-list::-webkit-scrollbar-thumb,
+.icogon-dev-code pre::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #3a4050;
+  background-clip: padding-box;
+}
+
+.icogon-dev-file-list {
+  display: flex;
+  height: 100%;
+  min-height: 100%;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.icogon-dev-file-list button {
+  display: flex;
+  min-height: 33px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  padding: 0 9px;
+  color: #b5bdcd;
+  text-align: left;
+  cursor: pointer;
+}
+
+.icogon-dev-file-list button:hover {
+  background: rgba(255, 255, 255, 0.055);
+  color: #f0f1f6;
+}
+
+.icogon-dev-file-list button.is-selected {
+  border-color: rgba(169, 149, 255, 0.2);
+  background: var(--dock-accent-soft);
+  color: #c9bdff;
+}
+
+.icogon-dev-file-list button > svg {
+  flex: 0 0 auto;
+  color: #9f91e8;
+}
+
+.icogon-dev-file-list button span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icogon-dev-file-list small {
+  flex: 0 0 auto;
+  color: #7f8798;
+  font-size: 9px;
+}
+
+.icogon-dev-code,
+.icogon-dev-terminal {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: #11141b;
+  color: #d8dce7;
+}
+
+.icogon-dev-code-header,
+.icogon-dev-terminal-header {
+  display: flex;
+  min-height: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 13px;
+  border-bottom: 1px solid #292e3a;
+  color: #cbd0dc;
+  font-size: 10px;
+}
+
+.icogon-dev-code-header span,
+.icogon-dev-code-header button {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.icogon-dev-code-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icogon-dev-code-header button {
+  flex: 0 0 auto;
+  border: 1px solid #343a49;
+  border-radius: 6px;
+  background: #1c202a;
+  padding: 5px 8px;
+  color: #c4cad8;
+  font-size: 10px;
+}
+
+.icogon-dev-code-header button:hover:not(:disabled) {
+  border-color: #62558e;
+  background: #282437;
+  color: #fff;
+}
+
+.icogon-dev-code-header button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.icogon-dev-code pre {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 14px 16px;
+  color: #d3d9e7;
+  font: 11px/1.7 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.icogon-dev-code code {
+  font: inherit;
+}
+
+.icogon-dev-terminal-header {
+  justify-content: flex-start;
+}
+
+.icogon-dev-terminal-header small {
+  margin-left: auto;
+  border: 1px solid rgba(226, 184, 91, 0.22);
+  border-radius: 999px;
+  background: rgba(226, 184, 91, 0.08);
+  padding: 3px 7px;
+  color: #e6bd70;
+  font-size: 9px;
+}
+
+.icogon-dev-terminal-body {
+  padding: 14px 16px;
+  color: #cbd1df;
+  font: 11px/1.8 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.icogon-dev-terminal-body p {
+  margin: 0 0 7px;
+}
+
+.icogon-dev-terminal-body .muted {
+  max-width: 680px;
+  color: #8992a5;
+}
+
+.icogon-dev-console {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+  color: #cbd1df;
+  font-size: 10px;
+}
+
+.icogon-dev-console-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid #292e3a;
+  color: #929bad;
+}
+
+.icogon-dev-console-summary b {
+  color: #d8dcea;
+  font-weight: 600;
+}
+
+.icogon-dev-console .error,
+.icogon-dev-console .warning {
+  overflow-wrap: anywhere;
+  margin: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+  padding: 10px 2px;
+  line-height: 1.6;
+}
+
+.icogon-dev-console .error {
+  color: #ff9b9f;
+}
+
+.icogon-dev-console .warning {
+  color: #e8c17b;
+}
+
+.icogon-dev-empty {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 22px 18px;
+  color: #8b94a7;
+  text-align: center;
+}
+
+.icogon-dev-empty > svg {
+  color: #777f92;
+}
+
+.icogon-dev-empty strong {
+  color: #c7ccda;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.icogon-dev-empty span {
+  max-width: 300px;
+  color: #8992a5;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  .icogon-dev-dock-bar {
+    gap: 6px;
+    padding: 0 7px;
+  }
+
+  .icogon-dev-dock-toggle {
+    gap: 5px;
+    font-size: 10px;
+  }
+
+  .icogon-dev-dock-count {
+    display: none;
+  }
+
+  .icogon-dev-dock-tabs {
+    justify-content: flex-end;
+    gap: 1px;
+  }
+
+  .icogon-dev-dock-tabs button {
+    min-height: 28px;
+    gap: 4px;
+    padding: 5px 6px;
+    font-size: 9px;
+  }
+
+  .icogon-dev-dock-close {
+    width: 25px;
+  }
+
+  .icogon-dev-dock-resize {
+    min-height: 29px;
+    padding: 0 9px;
+  }
+
+  .icogon-dev-dock-resize input {
+    width: 90px;
+  }
+
+  .icogon-dev-file-list button {
+    min-height: 36px;
+  }
+
+  .icogon-dev-code-header,
+  .icogon-dev-terminal-header {
+    padding: 0 9px;
+  }
+
+  .icogon-dev-code pre {
+    padding: 12px;
+    font-size: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icogon-dev-dock *,
+  .icogon-dev-dock *::before,
+  .icogon-dev-dock *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+
+/* =========================================================
+   ICOGON Builder v2 — unified Developer Workspace styling
+   Complements workspace.css theme tokens and current dock markup.
+   ========================================================= */
+
+.icogon-dev-dock {
+  --dock-bg: var(--builder-panel, #ffffff);
+  --dock-surface: var(--builder-surface, #f8f9fc);
+  --dock-border: var(--builder-border, #e3e6ed);
+  --dock-text: var(--builder-text, #242938);
+  --dock-muted: var(--builder-muted, #737b8d);
+  --dock-hover: var(--builder-hover, #eef0f5);
+  --dock-accent: var(--builder-active-text, #3158b8);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  color: var(--dock-text);
+  background: var(--dock-bg);
+  border-color: var(--dock-border);
+}
+
+.icogon-dev-dock-bar {
+  display: flex;
+  min-height: 44px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: var(--dock-text);
+  background: var(--dock-bg);
+  border-bottom: 1px solid var(--dock-border);
+}
+
+.icogon-dev-dock-toggle {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 7px;
+  color: var(--dock-text);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.icogon-dev-dock-toggle:hover,
+.icogon-dev-dock-close:hover,
+.icogon-dev-dock-tabs button:hover {
+  color: var(--dock-text);
+  background: var(--dock-hover);
+}
+
+.icogon-dev-dock-count {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: var(--dock-muted);
+  background: var(--dock-surface);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.icogon-dev-dock-tabs {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.icogon-dev-dock-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.icogon-dev-dock-tabs button {
+  display: inline-flex;
+  min-height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--dock-muted);
+  font-size: 11px;
+  font-weight: 500;
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.icogon-dev-dock-tabs button.is-active {
+  color: var(--dock-accent);
+  background: var(--dock-surface);
+  box-shadow: inset 0 0 0 1px var(--dock-border);
+}
+
+.icogon-dev-dock-close {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--dock-muted);
+}
+
+.icogon-dev-dock-resize {
+  display: flex;
+  min-height: 27px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px;
+  color: var(--dock-muted);
+  background: var(--dock-bg);
+  border-bottom: 1px solid var(--dock-border);
+  font-size: 10px;
+}
+
+.icogon-dev-dock-resize input {
+  width: min(180px, 34vw);
+  accent-color: var(--dock-accent);
+  cursor: ew-resize;
+}
+
+.icogon-dev-dock-resize span {
+  font-variant-numeric: tabular-nums;
+}
+
+.icogon-dev-dock-content {
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--dock-bg);
+}
+
+.icogon-dev-file-list {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+}
+
+.icogon-dev-file-list button {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--dock-muted);
+  text-align: left;
+  font-size: 11px;
+}
+
+.icogon-dev-file-list button:hover {
+  color: var(--dock-text);
+  background: var(--dock-hover);
+}
+
+.icogon-dev-file-list button.is-selected {
+  color: var(--dock-text);
+  background: var(--dock-surface);
+  border-color: var(--dock-border);
+}
+
+.icogon-dev-file-list button span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icogon-dev-file-list button small {
+  flex: 0 0 auto;
+  color: var(--dock-muted);
+  font-size: 9px;
+}
+
+.icogon-dev-code,
+.icogon-dev-console,
+.icogon-dev-terminal {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--dock-text);
+  background: var(--dock-bg);
+}
+
+.icogon-dev-code-header,
+.icogon-dev-terminal-header,
+.icogon-dev-console-summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--dock-border);
+  color: var(--dock-muted);
+  font-size: 10px;
+}
+
+.icogon-dev-code-header > span,
+.icogon-dev-terminal-header > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icogon-dev-code-header button {
+  display: inline-flex;
+  min-height: 26px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid var(--dock-border);
+  border-radius: 7px;
+  color: var(--dock-muted);
+  font-size: 10px;
+}
+
+.icogon-dev-code-header button:hover:not(:disabled) {
+  color: var(--dock-text);
+  background: var(--dock-hover);
+}
+
+.icogon-dev-code-header button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.icogon-dev-code pre {
+  max-height: inherit;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  color: var(--dock-text);
+  background: var(--dock-surface);
+  font: 11px/1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.icogon-dev-code code {
+  overflow-wrap: normal;
+}
+
+.icogon-dev-copy-error {
+  padding: 5px 12px;
+  color: #dc5353;
+  font-size: 10px;
+}
+
+.icogon-dev-terminal-header small {
+  margin-left: auto;
+  color: var(--dock-muted);
+  font-size: 9px;
+}
+
+.icogon-dev-terminal-body {
+  min-height: 90px;
+  padding: 12px 14px;
+  color: var(--dock-text);
+  background: var(--dock-surface);
+  font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.icogon-dev-terminal-body .muted {
+  margin-top: 6px;
+  color: var(--dock-muted);
+  font-family: inherit;
+}
+
+.icogon-dev-console {
+  padding-bottom: 8px;
+}
+
+.icogon-dev-console-summary {
+  justify-content: flex-start;
+}
+
+.icogon-dev-console-summary b {
+  color: var(--dock-text);
+  font-weight: 600;
+}
+
+.icogon-dev-console p {
+  margin: 7px 12px;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.icogon-dev-console p.error {
+  color: #dc5353;
+}
+
+.icogon-dev-console p.warning {
+  color: #b7791f;
+}
+
+.icogon-dev-empty {
+  display: flex;
+  min-height: 100px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 18px;
+  color: var(--dock-muted);
+  text-align: center;
+}
+
+.icogon-dev-empty strong {
+  color: var(--dock-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.icogon-dev-empty span {
+  max-width: 320px;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.icogon-dev-dock :where(button, input):focus-visible {
+  outline: 2px solid var(--dock-accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  .icogon-dev-dock-bar {
+    flex-wrap: wrap;
+    gap: 5px;
+    padding-inline: 8px;
+  }
+
+  .icogon-dev-dock-toggle {
+    min-height: 30px;
+    font-size: 11px;
+  }
+
+  .icogon-dev-dock-tabs {
+    order: 3;
+    flex-basis: 100%;
+    padding-bottom: 4px;
+  }
+
+  .icogon-dev-dock-close {
+    margin-left: auto;
+  }
+
+  .icogon-dev-dock-resize {
+    display: grid;
+    grid-template-columns: auto auto minmax(45px, 1fr) auto;
+    gap: 6px;
+    padding-inline: 8px;
+  }
+
+  .icogon-dev-dock-resize input {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icogon-dev-dock *,
+  .icogon-dev-dock *::before,
+  .icogon-dev-dock *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

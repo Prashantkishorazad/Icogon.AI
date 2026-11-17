@@ -429,66 +429,157 @@
   color: #e2d0ee;
 }
 
-/* ICOGON Builder workspace refinement */
-.icogon-builder-shell {
-  height: 100dvh;
-  min-height: 620px;
-  background: #090a0f;
-  color: #f4f4f8;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+/* --------------------------------------------------------------------------
+   Responsive workspace polish
+   These rules are intentionally scoped to the legacy builder class names.
+   The newer WorkspaceLayout component owns its own layout primitives.
+   -------------------------------------------------------------------------- */
+
+.builder-workspace {
+  min-width: 0;
+  overflow: hidden;
 }
-.icogon-builder-shell > aside {
-  width: 310px;
-  min-width: 280px;
-  background: #101116;
-  border-color: #252630;
+
+.builder-header,
+.builder-toolbar,
+.builder-footer {
+  min-width: 0;
 }
-.icogon-builder-shell > header {
-  min-height: 58px;
-  background: #101116;
-  border-color: #252630;
+
+.builder-header > *,
+.builder-toolbar > * {
+  min-width: 0;
 }
-.icogon-builder-shell button {
-  transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
+
+.builder-conversation {
+  flex: 0 0 390px;
+  max-width: min(390px, 42vw);
+  min-height: 0;
 }
-.icogon-builder-shell button:active:not(:disabled) {
-  transform: translateY(1px);
+
+.builder-output {
+  min-height: 0;
 }
-.icogon-builder-shell .builder-mode-tabs {
-  border-color: #30313d;
-  background: #171820;
-  border-radius: 999px;
+
+.builder-preview,
+.builder-code,
+.builder-history {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
-.icogon-builder-shell .builder-mode-tabs button[aria-selected="true"] {
-  background: linear-gradient(110deg, #7864ff, #3f9af5);
-  color: #fff;
-  box-shadow: 0 2px 12px rgba(111, 100, 255, .22);
+
+.builder-preview iframe {
+  display: block;
+  min-width: 0;
 }
-.icogon-builder-shell .icogon-tool-view {
-  background:
-    radial-gradient(ellipse at 78% 0%, rgba(105, 77, 190, .11), transparent 38%),
-    #0c0d12;
+
+.builder-composer textarea {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
-.icogon-builder-shell .icogon-tool-view article,
-.icogon-builder-shell .icogon-tool-view > div > div > div {
-  transition: border-color .18s ease, background-color .18s ease;
+
+.builder-workspace button:focus-visible,
+.builder-workspace a:focus-visible,
+.builder-workspace textarea:focus-visible,
+.builder-workspace select:focus-visible,
+.builder-workspace summary:focus-visible {
+  outline: 2px solid #a78bfa;
+  outline-offset: 3px;
 }
-.icogon-builder-shell .icogon-tool-view article:hover {
-  border-color: #514477;
-  background-color: rgba(255,255,255,.025);
+
+.builder-workspace button:disabled {
+  pointer-events: none;
 }
-.icogon-builder-shell .builder-mobile-tabs {
-  background: #101116;
-  border-color: #252630;
+
+.builder-preview-warnings {
+  border: 1px solid #453653;
+  border-radius: 8px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
 }
-@media (max-width: 767px) {
-  .icogon-builder-shell {
-    min-height: 100dvh;
-    height: auto;
+
+@media (max-width: 800px) {
+  .builder-workspace {
+    overflow: auto;
   }
-  .icogon-builder-shell > aside {
-    width: 100%;
+
+  .builder-conversation {
+    flex: 0 0 auto;
+    max-width: none;
+    min-height: 0;
+  }
+
+  .builder-output {
     min-width: 0;
-    max-height: 58dvh;
+    min-height: 0;
+  }
+
+  .builder-preview,
+  .builder-code {
+    min-width: 0;
+  }
+
+  .builder-toolbar {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .builder-toolbar [role="tablist"] {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .builder-header {
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .builder-workspace h1 {
+    font-size: 20px;
+  }
+
+  .builder-history {
+    padding: 18px 14px;
+  }
+
+  .builder-composer {
+    padding: 12px;
+  }
+
+  .builder-composer-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .builder-composer-actions button {
+    width: 100%;
+  }
+
+  .builder-preview iframe {
+    min-height: 360px;
+    height: 65dvh;
+  }
+
+  .builder-code {
+    padding: 14px;
+  }
+
+  .builder-footer {
+    padding: 10px 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .builder-workspace *,
+  .builder-workspace *::before,
+  .builder-workspace *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

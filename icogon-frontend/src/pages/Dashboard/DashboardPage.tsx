@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -150,26 +151,18 @@ const DashboardPage: FC = () => {
   ];
 
   /* =======================================================
-     LOAD PROJECTS
+     INITIAL LOAD
   ======================================================= */
 
-  const loadProjects = async (): Promise<void> => {
+  const loadProjects = useCallback(async (): Promise<void> => {
+    setProjectsLoading(true);
+    setProjectsError("");
+
     try {
-      setProjectsLoading(true);
-      setProjectsError("");
-
       const data = await getProjectsApi();
-
-      if (Array.isArray(data)) {
-        setProjects(data);
-      } else {
-        setProjects([]);
-      }
+      setProjects(Array.isArray(data) ? data : []);
     } catch (error: unknown) {
-      console.error(
-        "Failed to load projects:",
-        error
-      );
+      console.error("Failed to load projects:", error);
 
       const message =
         error instanceof Error
@@ -181,15 +174,15 @@ const DashboardPage: FC = () => {
     } finally {
       setProjectsLoading(false);
     }
-  };
-
-  /* =======================================================
-     INITIAL LOAD
-  ======================================================= */
+  }, []);
 
   useEffect(() => {
-    void loadProjects();
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      void loadProjects();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loadProjects]);
 
   /* =======================================================
      TEMPLATE CLICK
@@ -398,68 +391,55 @@ const DashboardPage: FC = () => {
 
           <section
             className="
+              relative
               flex
+              min-h-[min(620px,calc(100svh-180px))]
               w-full
               flex-col
               items-center
+              justify-center
               px-4
-              pt-10
-              sm:pt-14
+              pb-12
+              pt-6
+              sm:pb-16
             "
           >
-            <div
-              className="
-                flex
-                w-full
-                max-w-4xl
-                flex-col
-                items-center
-                text-center
-              "
-            >
+            <div className="flex w-full max-w-3xl flex-col items-center text-center">
+              {/* Compact Lovable-style capability pill */}
+              <div
+                className={`
+                  mb-8 inline-flex items-center gap-2 rounded-full border
+                  px-3.5 py-2 text-[11px] font-medium shadow-sm
+                  transition-colors duration-200 sm:text-xs
+                  ${isDark
+                    ? "border-white/15 bg-[#242424]/90 text-[#e8e8e8] shadow-black/20"
+                    : "border-slate-200 bg-white/90 text-slate-700 shadow-slate-900/5"}
+                `}
+              >
+                <span className="flex -space-x-1.5">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[#242424] bg-gradient-to-br from-orange-400 to-rose-500 text-white">
+                    <Sparkles size={11} />
+                  </span>
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[#242424] bg-gradient-to-br from-cyan-400 to-blue-600 text-white">
+                    <Code2 size={11} />
+                  </span>
+                </span>
+                <span>Add AI to your apps</span>
+                <ArrowRight size={13} className="ml-1 opacity-70" />
+              </div>
+
               <h1
                 className={`
-                  max-w-3xl
-                  text-4xl
-                  font-semibold
-                  leading-[1.08]
-                  tracking-[-0.04em]
-                  sm:text-5xl
-                  md:text-6xl
+                  max-w-3xl text-[clamp(2rem,4.2vw,3.25rem)]
+                  font-semibold leading-[1.08] tracking-[-0.055em]
                   ${colors.heading}
                 `}
               >
-                What’s the plan,
-                {displayName}?
+                What’s the vision, {displayName}?
               </h1>
-
-              <p
-                className={`
-                  mt-5
-                  max-w-2xl
-                  text-sm
-                  leading-6
-                  sm:text-base
-                  ${colors.paragraph}
-                `}
-              >
-                Describe your idea and
-                let ICOGON AI turn it into
-                a production-ready website.
-              </p>
             </div>
 
-            <div
-              className="
-                mt-10
-                flex
-                w-full
-                max-w-[830px]
-                flex-col
-                items-center
-                sm:mt-12
-              "
-            >
+            <div className="mt-8 flex w-full max-w-[840px] flex-col items-center sm:mt-9">
               <PromptInput />
             </div>
           </section>
@@ -878,9 +858,7 @@ const DashboardPage: FC = () => {
 
                     <button
                       type="button"
-                      onClick={() =>
-                        void loadProjects()
-                      }
+                      onClick={() => void loadProjects()}
                       className="
                         mt-5
                         rounded-xl
