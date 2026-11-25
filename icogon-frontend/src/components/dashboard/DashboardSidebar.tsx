@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -9,7 +10,6 @@ import { createPortal } from "react-dom";
 import {
   Home,
   Search,
-  Plug,
   FolderKanban,
   ChevronDown,
   ChevronRight,
@@ -26,7 +26,8 @@ import {
   Palette,
   User,
   LifeBuoy,
-  Bot
+  UserPlus,
+  ArrowRight,
 } from "lucide-react";
 
 import {
@@ -40,7 +41,7 @@ import { useAuthStore } from "../../store/authStore";
 import {
   useTheme,
   type Theme,
-} from "../../context/ThemeContext";
+} from "../context/ThemeContext";
 
 import GlobalSearch from "../search/GlobalSearch";
 import { getProjectsApi } from "../../api/projectApi";
@@ -63,6 +64,33 @@ interface RecentProject {
   id: string;
   name: string;
 }
+
+interface SidebarTooltipState {
+  label: string;
+  shortcut?: string;
+  anchorRight: number;
+  anchorY: number;
+}
+
+// Compact inline icons, independent of additional icon packages.
+const ConnectorIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className="shrink-0">
+    <g transform="rotate(45 12 12)"><path d="M7 9V6a5 5 0 0 1 10 0v3H7Z"/><path d="M7 12h10v6a5 5 0 0 1-10 0v-6Z"/></g>
+  </svg>
+);
+const AutomationIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+    <circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 3"/>
+  </svg>
+);
+
+const TOOLTIP_DELAY = 180;
+
+const findTooltipTarget = (target: EventTarget | null): HTMLElement | null =>
+  target instanceof Element
+    ? target.closest<HTMLElement>("[data-sidebar-tooltip]")
+    : null;
+
 
 /* =========================================================
    COMPONENT
@@ -134,10 +162,119 @@ const DashboardSidebar: React.FC<
   const [
     projectsOpen,
     setProjectsOpen,
-  ] = useState(true);
+  ] = useState(false);
+  const projectTrigger = useRef<HTMLButtonElement>(null);
+  const projectMenu = useRef<HTMLDivElement>(null);
+  const projectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const workspaceMenu = useRef<HTMLDivElement>(null);
+  const workspaceTrigger = useRef<HTMLButtonElement>(null);
+  const compact = collapsed && !mobileOpen;
+  const [menuPosition, setMenuPosition] = useState({ left: 8, top: 8, width: 320 });
+  const [projectPosition, setProjectPosition] = useState({ left: 8, top: 8, width: 260 });
+
+  const cancelProjectClose = () => {
+    if (projectTimer.current !== null) clearTimeout(projectTimer.current);
+    projectTimer.current = null;
+  };
+  const scheduleProjectClose = () => {
+    cancelProjectClose();
+    projectTimer.current = setTimeout(() => setProjectsOpen(false), 240);
+  };
+  const openProjectsMenu = () => {
+    cancelProjectClose();
+    const rect = projectTrigger.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.min(270, window.innerWidth - 16);
+    setProjectPosition({ left: Math.max(8, Math.min(rect.right + 8, window.innerWidth - width - 8)), top: Math.max(8, Math.min(rect.top, window.innerHeight - 320)), width });
+    setWorkspaceOpen(false);
+    setProfileOpen(false);
+    setProjectsOpen(true);
+  };
+  useEffect(() => () => { if (projectTimer.current !== null) clearTimeout(projectTimer.current); }, []);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setProjectsOpen(false);
+      setWorkspaceOpen(false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [location.pathname, location.search, mobileOpen]);
+  useEffect(() => {
+    if (compact) return;
+    const frame = requestAnimationFrame(() => setProjectsOpen(false));
+    return () => cancelAnimationFrame(frame);
+  }, [compact]);
 
   const [recentProjects, setRecentProjects] =
     useState<RecentProject[]>([]);
+
+  /* Floating tooltips are rendered in a portal, outside the scrollable rail. */
+  const [tooltip, setTooltip] = useState<SidebarTooltipState | null>(null);
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tooltipTarget = useRef<HTMLElement | null>(null);
+
+  const hideTooltip = useCallback(() => {
+    if (tooltipTimer.current !== null) {
+      clearTimeout(tooltipTimer.current);
+      tooltipTimer.current = null;
+    }
+    tooltipTarget.current = null;
+    setTooltip(null);
+  }, []);
+
+  const showTooltip = useCallback((target: HTMLElement, immediate = false) => {
+    if (mobileOpen || target.matches(":disabled") || (!collapsed && !target.hasAttribute("data-sidebar-toggle"))) return;
+    const label = target.dataset.sidebarTooltip;
+    if (!label) return;
+    if (tooltipTarget.current === target) return;
+
+    hideTooltip();
+    tooltipTarget.current = target;
+
+    const reveal = () => {
+      tooltipTimer.current = null;
+      if (tooltipTarget.current !== target || !target.isConnected) return;
+      const rect = target.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      setTooltip({
+        label,
+        shortcut: target.dataset.sidebarShortcut,
+        anchorRight: rect.right,
+        anchorY: rect.top + rect.height / 2,
+      });
+    };
+
+    if (immediate) reveal();
+    else tooltipTimer.current = setTimeout(reveal, TOOLTIP_DELAY);
+  }, [hideTooltip, mobileOpen, collapsed]);
+
+  useEffect(() => {
+    // Dismiss stale tooltips when scrolling, changing viewport size, or
+    // using keyboard shortcuts. Native title bubbles are not used.
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" || (event.key.toLowerCase() === "k" && (event.ctrlKey || event.metaKey))) {
+        hideTooltip();
+      }
+    };
+    window.addEventListener("resize", hideTooltip);
+    window.addEventListener("scroll", hideTooltip, true);
+    window.addEventListener("blur", hideTooltip);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("resize", hideTooltip);
+      window.removeEventListener("scroll", hideTooltip, true);
+      window.removeEventListener("blur", hideTooltip);
+      document.removeEventListener("keydown", handleKey);
+      if (tooltipTimer.current !== null) clearTimeout(tooltipTimer.current);
+      tooltipTimer.current = null;
+      tooltipTarget.current = null;
+    };
+  }, [hideTooltip]);
+
+  const searchShortcut = typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+    ? "⌘ K"
+    : "Ctrl K";
+
 
   useEffect(() => {
     let active = true;
@@ -181,6 +318,10 @@ const DashboardSidebar: React.FC<
     user?.email?.split("@")[0] ||
     "User";
 
+  const firstName = fullName.trim().split(/\s+/)[0] || "User";
+  const workspaceName = `${firstName}'s Icogon`;
+  const workspaceInitial = firstName.slice(0, 1).toUpperCase() || "U";
+
   const email =
     user?.email || "";
 
@@ -196,7 +337,7 @@ const DashboardSidebar: React.FC<
   const colors = isDark
     ? {
         sidebar:
-          "border-[#242424] bg-[#0b0b0b] text-white",
+          "bg-[#171716] text-white",
 
         text:
           "text-white",
@@ -205,16 +346,16 @@ const DashboardSidebar: React.FC<
           "text-[#858585]",
 
         navInactive:
-          "text-[#a8a8a8] hover:bg-[#181818] hover:text-white",
+          "text-[#c5c5c5] hover:bg-[#222222] hover:text-white",
 
         navActive:
-          "bg-[#242424] text-white",
+          "bg-[#282827] text-white",
 
         hover:
-          "hover:bg-[#181818]",
+          "hover:bg-[#222222]",
 
         hoverSoft:
-          "hover:bg-[#151515]",
+          "hover:bg-[#222222]",
 
         border:
           "border-[#242424]",
@@ -248,7 +389,7 @@ const DashboardSidebar: React.FC<
       }
     : {
         sidebar:
-          "border-slate-200 bg-white text-slate-900",
+          "bg-white text-slate-900",
 
         text:
           "text-slate-900",
@@ -312,10 +453,13 @@ const DashboardSidebar: React.FC<
 
       if (
         workspaceRef.current &&
-        !workspaceRef.current.contains(target)
+        !workspaceRef.current.contains(target) &&
+        !workspaceMenu.current?.contains(target)
       ) {
         setWorkspaceOpen(false);
       }
+
+      if (!projectTrigger.current?.contains(target) && !projectMenu.current?.contains(target)) setProjectsOpen(false);
 
       if (
         profileRef.current &&
@@ -346,6 +490,7 @@ const DashboardSidebar: React.FC<
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      setProjectsOpen(false);
       setWorkspaceOpen(false);
       setProfileOpen(false);
       setAppearanceOpen(false);
@@ -370,6 +515,7 @@ const DashboardSidebar: React.FC<
       ) {
         event.preventDefault();
 
+        setProjectsOpen(false);
         setSearchOpen(true);
         setWorkspaceOpen(false);
         setProfileOpen(false);
@@ -426,6 +572,7 @@ const DashboardSidebar: React.FC<
     setWorkspaceOpen(false);
     setProfileOpen(false);
     setAppearanceOpen(false);
+    setProjectsOpen(false);
     setSearchOpen(true);
   };
 
@@ -512,6 +659,22 @@ const DashboardSidebar: React.FC<
     location.pathname === "/profile" ||
     location.pathname.startsWith("/profile/");
 
+  useEffect(() => {
+    const toggle = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== "[" || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || mobileOpen || searchOpen || isProfileRoute) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select, [role="textbox"], [contenteditable="true"], .monaco-editor, .cm-editor'))) return;
+      event.preventDefault();
+      hideTooltip();
+      setWorkspaceOpen(false);
+      setProjectsOpen(false);
+      setProfileOpen(false);
+      setCollapsed(value => !value);
+    };
+    document.addEventListener("keydown", toggle);
+    return () => document.removeEventListener("keydown", toggle);
+  }, [hideTooltip, isProfileRoute, mobileOpen, searchOpen, setCollapsed]);
+
   /* =======================================================
      RENDER
   ======================================================= */
@@ -521,12 +684,33 @@ const DashboardSidebar: React.FC<
       <aside
         className={`
           relative z-40 flex h-full min-h-0 w-full flex-col overflow-visible border-r-0
+          [&_button:not(:disabled)]:cursor-pointer [&_a]:cursor-pointer
           transition-[background-color,border-color]
           duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]
           ${isProfileRoute ? "hidden" : ""}
           ${colors.sidebar}
         `}
         aria-label="Main navigation"
+        onPointerOver={(event) => {
+          if (event.pointerType !== "mouse" && event.pointerType !== "pen") return;
+          const target = findTooltipTarget(event.target);
+          if (!target || !event.currentTarget.contains(target)) return;
+          if (findTooltipTarget(event.relatedTarget) === target) return;
+          showTooltip(target);
+        }}
+        onPointerOut={(event) => {
+          const target = findTooltipTarget(event.target);
+          if (target && target === tooltipTarget.current && findTooltipTarget(event.relatedTarget) !== target) {
+            hideTooltip();
+          }
+        }}
+        onPointerLeave={hideTooltip}
+        onPointerDownCapture={hideTooltip}
+        onFocusCapture={(event) => {
+          const target = findTooltipTarget(event.target);
+          if (target?.matches(":focus-visible")) showTooltip(target, true);
+        }}
+        onBlurCapture={hideTooltip}
       >
         {/* =================================================
             BRAND HEADER
@@ -572,13 +756,10 @@ const DashboardSidebar: React.FC<
                   : "Collapse sidebar"
             }
             aria-expanded={!collapsed || mobileOpen}
-            title={
-              mobileOpen
-                ? "Close sidebar"
-                : collapsed
-                  ? "Open sidebar"
-                  : "Close sidebar"
-            }
+            data-sidebar-toggle
+            data-sidebar-tooltip={mobileOpen || !collapsed ? "Close sidebar" : "Open sidebar"}
+            data-sidebar-shortcut="["
+            aria-keyshortcuts="["
           >
             <span className="relative flex h-8 w-8 shrink-0 items-center justify-center">
               <img
@@ -634,172 +815,29 @@ const DashboardSidebar: React.FC<
           "
         >
           <button
+            ref={workspaceTrigger}
             type="button"
+            aria-label={workspaceName}
+            aria-expanded={workspaceOpen}
             onClick={() => {
+              const rect = workspaceTrigger.current?.getBoundingClientRect();
+              if (!rect) return;
+              const width = Math.min(320, window.innerWidth - 16);
+              setMenuPosition({ left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)), top: Math.min(rect.bottom + 6, window.innerHeight - 100), width });
               setProfileOpen(false);
               setAppearanceOpen(false);
-              setWorkspaceOpen((value) => !value);
+              setProjectsOpen(false);
+              hideTooltip();
+              setWorkspaceOpen(value => !value);
             }}
-            title={collapsed ? "ICOGON Workspace" : undefined}
-            className={`
-              flex
-              w-full
-              items-center
-              rounded-xl
-              transition
-              ${colors.hoverSoft}
-              ${
-                (collapsed && !mobileOpen)
-                  ? "h-10 justify-center"
-                  : "gap-2.5 px-1.5 py-1.5"
-              }
-            `}
+            className={`flex items-center border rounded-[13px] cursor-pointer transition-colors duration-150
+              ${compact ? "mx-auto h-11 w-11 justify-center" : "w-full gap-2.5 px-2 py-2"}
+              ${isDark ? "border-[#4b4b4b] hover:bg-[#303030]" : "border-slate-300 hover:bg-slate-100"}
+              ${workspaceOpen ? (isDark ? "bg-[#303030]" : "bg-slate-100") : ""}`}
           >
-            <div
-              className="
-                flex
-                h-8
-                w-8
-                shrink-0
-                items-center
-                justify-center
-                rounded-[9px]
-                bg-gradient-to-br
-                from-orange-500
-                to-orange-600
-                text-xs
-                font-bold
-                text-white
-              "
-            >
-              I
-            </div>
-
-            {(!collapsed || mobileOpen) && (
-              <>
-                <div
-                  className="
-                    min-w-0
-                    flex-1
-                    text-left
-                  "
-                >
-                  <p
-                    className={`
-                      truncate
-                      text-[12px]
-                      font-semibold
-                      ${colors.text}
-                    `}
-                  >
-                    ICOGON Workspace
-                  </p>
-
-                  <p
-                    className={`
-                      truncate
-                      text-[10px]
-                      ${colors.muted}
-                    `}
-                  >
-                    Personal workspace
-                  </p>
-                </div>
-
-                <ChevronDown
-                  size={14}
-                  className={`
-                    shrink-0
-                    ${colors.muted}
-                    transition-transform
-                    ${
-                      workspaceOpen
-                        ? "rotate-180"
-                        : ""
-                    }
-                  `}
-                />
-              </>
-            )}
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] border border-orange-400/60 bg-[#c94700] text-sm font-semibold text-white">{workspaceInitial}</span>
+            {!compact && <><span className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold">{workspaceName}</span><ChevronDown size={15} className={`shrink-0 ${colors.muted} ${workspaceOpen ? "rotate-180" : ""}`} /></>}
           </button>
-
-          {/* WORKSPACE POPUP */}
-
-          {workspaceOpen && (
-            <div
-              className={`
-                absolute
-                z-[200]
-                overflow-hidden
-                rounded-xl
-                border
-                shadow-xl
-                transition-all
-                duration-200
-                ease-out
-                ${collapsed ? "left-3 right-3 top-[58px] origin-top" : "left-3 right-3 top-[58px] origin-top"}
-                ${colors.popup}
-              `}
-            >
-              <div className="p-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setWorkspaceOpen(false);
-                    setMobileOpen(false);
-                    onMobileClose?.();
-                    navigate("/profile?tab=workspace");
-                  }}
-                  className={`
-                    flex
-                    w-full
-                    items-center
-                    gap-3
-                    rounded-lg
-                    px-3
-                    py-2.5
-                    text-left
-                    text-sm
-                    transition
-                    ${colors.popupText}
-                  `}
-                >
-                  <Settings size={16} />
-                  <span>
-                    Workspace settings
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setWorkspaceOpen(false);
-                    setMobileOpen(false);
-                    onMobileClose?.();
-                    navigate("/builder");
-                  }}
-                  className={`
-                    flex
-                    w-full
-                    items-center
-                    gap-3
-                    rounded-lg
-                    px-3
-                    py-2.5
-                    text-left
-                    text-sm
-                    transition
-                    ${colors.popupText}
-                  `}
-                >
-                  <Plus size={16} />
-                  <span>
-                    New workspace
-                  </span>
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* =================================================
@@ -811,6 +849,9 @@ const DashboardSidebar: React.FC<
             min-h-0
             flex-1
             overflow-y-auto
+            overflow-x-hidden
+            [scrollbar-width:thin]
+            [scrollbar-color:rgba(128,128,128,0.35)_transparent]
             px-3
           "
         >
@@ -826,11 +867,8 @@ const DashboardSidebar: React.FC<
                 setMobileOpen(false);
                 onMobileClose?.();
               }}
-              title={
-                (collapsed && !mobileOpen)
-                  ? "Dashboard"
-                  : undefined
-              }
+              aria-label="Dashboard"
+              data-sidebar-tooltip="Dashboard"
               className={({ isActive }) =>
                 navClass(isActive)
               }
@@ -857,11 +895,10 @@ const DashboardSidebar: React.FC<
                 onMobileClose?.();
                 openSearch();
               }}
-              title={
-                (collapsed && !mobileOpen)
-                  ? "Search"
-                  : "Search (⌘ K)"
-              }
+              aria-label="Search"
+              aria-keyshortcuts="Control+K Meta+K"
+              data-sidebar-tooltip="Search"
+              data-sidebar-shortcut={searchShortcut}
               className={navClass(searchOpen)}
             >
               <Search
@@ -883,7 +920,7 @@ const DashboardSidebar: React.FC<
                       ${colors.iconMuted}
                     `}
                   >
-                    ⌘ K
+                    {searchShortcut}
                   </span>
                 </>
               )}
@@ -897,20 +934,13 @@ const DashboardSidebar: React.FC<
                 setMobileOpen(false);
                 onMobileClose?.();
               }}
-              title={
-                (collapsed && !mobileOpen)
-                  ? "Connectors"
-                  : undefined
-              }
+              aria-label="Connectors"
+              data-sidebar-tooltip="Connectors"
               className={() =>
                 navClass(location.pathname === "/dashboard" && new URLSearchParams(location.search).has("connectors"))
               }
             >
-              <Plug
-                size={17}
-                strokeWidth={1.8}
-                className="shrink-0"
-              />
+              <ConnectorIcon />
 
               {(!collapsed || mobileOpen) && (
                 <span className="text-[13px] font-medium">
@@ -920,250 +950,37 @@ const DashboardSidebar: React.FC<
             </NavLink>
 
             {/* AUTOMATIONS */}
-            <button
-              type="button"
+            <NavLink
+              to="/automations"
               onClick={() => {
                 setMobileOpen(false);
                 onMobileClose?.();
-                navigate("/dashboard?tab=automations");
               }}
-              title={collapsed && !mobileOpen ? "Automations" : undefined}
-              className={navClass(location.pathname === "/dashboard" && new URLSearchParams(location.search).get("tab") === "automations")}
+              aria-label="Automations"
+              data-sidebar-tooltip="Automations"
+              className={({ isActive }) => navClass(isActive)}
             >
-              <Bot size={17} strokeWidth={1.8} className="shrink-0" />
+              <AutomationIcon />
               {(!collapsed || mobileOpen) && <span className="text-[13px] font-medium">Automations</span>}
-            </button>
+            </NavLink>
 
             {/* PROJECTS */}
-
-            <NavLink
-              to="/projects"
-              onClick={() => {
-                setMobileOpen(false);
-                onMobileClose?.();
-              }}
-              title={
-                (collapsed && !mobileOpen)
-                  ? "Projects"
-                  : undefined
-              }
-              className={({ isActive }) =>
-                navClass(isActive)
-              }
-            >
-              <FolderKanban
-                size={17}
-                strokeWidth={1.8}
-                className="shrink-0"
-              />
-
-              {(!collapsed || mobileOpen) && (
-                <span className="text-[13px] font-medium">
-                  Projects
-                </span>
-              )}
-            </NavLink>
-          </nav>
-
-          {/* =================================================
-              RECENTS
-          ================================================= */}
-
-          {(!collapsed || mobileOpen) && (
-            <section className="mt-7">
-              <div className="mb-2 flex items-center justify-between px-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setProjectsOpen(
-                      (value) => !value
-                    )
-                  }
-                  className={`
-                    flex
-                    items-center
-                    gap-1
-                    text-[10px]
-                    font-semibold
-                    uppercase
-                    tracking-[0.09em]
-                    ${colors.iconMuted}
-                  `}
-                >
-                  <span>
-                    Recents
-                  </span>
-
-                  <ChevronDown
-                    size={12}
-                    className={`
-                      transition-transform
-                      ${
-                        projectsOpen
-                          ? ""
-                          : "-rotate-90"
-                      }
-                    `}
-                  />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate("/projects")
-                  }
-                  className={`
-                    text-[10px]
-                    transition
-                    ${colors.iconMuted}
-                    ${
-                      isDark
-                        ? "hover:text-white"
-                        : "hover:text-slate-900"
-                    }
-                  `}
-                >
-                  View all
-                </button>
-              </div>
-
-              {projectsOpen && (
-                <div className="space-y-0.5">
-                  {recentProjects.length > 0 ? (
-                    recentProjects.map(
-                      (project) => (
-                        <button
-                          key={project.id}
-                          type="button"
-                          onClick={() =>
-                            openRecentProject(
-                              project
-                            )
-                          }
-                          className={`
-                            flex
-                            w-full
-                            items-center
-                            gap-2.5
-                            rounded-lg
-                            px-3
-                            py-2
-                            text-left
-                            transition
-                            ${colors.navInactive}
-                          `}
-                        >
-                          <div
-                            className={`
-                              flex
-                              h-6
-                              w-6
-                              shrink-0
-                              items-center
-                              justify-center
-                              rounded-md
-                              border
-                              ${
-                                isDark
-                                  ? "border-[#333]"
-                                  : "border-slate-200"
-                              }
-                              text-[10px]
-                            `}
-                          >
-                            <FolderKanban
-                              size={13}
-                            />
-                          </div>
-
-                          <span className="truncate text-[12px]">
-                            {project.name}
-                          </span>
-                        </button>
-                      )
-                    )
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        navigate("/projects")
-                      }
-                      className={`
-                        flex
-                        w-full
-                        items-center
-                        gap-2.5
-                        rounded-lg
-                        px-3
-                        py-2
-                        text-left
-                        transition
-                        ${colors.navInactive}
-                      `}
-                    >
-                      <div
-                        className={`
-                          flex
-                          h-6
-                          w-6
-                          shrink-0
-                          items-center
-                          justify-center
-                          rounded-md
-                          border
-                          border-dashed
-                          ${
-                            isDark
-                              ? "border-[#444]"
-                              : "border-slate-300"
-                          }
-                        `}
-                      >
-                        <Plus size={13} />
-                      </div>
-
-                      <span className="text-[12px]">
-                        Create your first project
-                      </span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </section>
-          )}
-
-          {collapsed && recentProjects.length > 0 && (
-            <section className={`mt-4 space-y-1 border-t pt-3 ${colors.border}`}>
-              {recentProjects.slice(0, 5).map((project) => (
-                <button
-                  key={project.id}
-                  type="button"
-                  title={project.name}
-                  aria-label={`Open ${project.name}`}
-                  onClick={() => openRecentProject(project)}
-                  className={`
-                    flex h-10 w-full items-center justify-center rounded-xl
-                    transition-all duration-200
-                    ${colors.navInactive}
-                  `}
-                >
-                  <FolderKanban size={17} strokeWidth={1.8} />
-                </button>
-              ))}
-              <button
-                type="button"
-                title="View all projects"
-                aria-label="View all projects"
-                onClick={() => navigate("/projects")}
-                className={`
-                  flex h-9 w-full items-center justify-center rounded-xl
-                  text-[10px] transition-colors ${colors.navInactive}
-                `}
-              >
-                <ChevronRight size={16} />
+            {compact ? (
+              <button ref={projectTrigger} type="button" aria-label="Projects" aria-expanded={projectsOpen}
+                onPointerEnter={(event) => { if (event.pointerType === "mouse") openProjectsMenu(); }}
+                onPointerLeave={scheduleProjectClose}
+                onClick={() => { if (!projectsOpen) openProjectsMenu(); else navigate("/projects"); }}
+                className={navClass(projectsOpen || location.pathname.startsWith("/projects"))}>
+                <FolderKanban size={17} strokeWidth={1.8} />
               </button>
-            </section>
-          )}
+            ) : (
+              <NavLink to="/projects" onClick={() => { setMobileOpen(false); onMobileClose?.(); }}
+                aria-label="Projects" className={({isActive}) => navClass(isActive)}>
+                <FolderKanban size={17} strokeWidth={1.8} className="shrink-0" />
+                <span className="text-[13px] font-medium">Projects</span>
+              </NavLink>
+            )}
+          </nav>
         </div>
 
         {/* =================================================
@@ -1173,17 +990,15 @@ const DashboardSidebar: React.FC<
         <div
           className={`
             shrink-0
-            border-t
             p-3
-            ${colors.border}
           `}
         >
           {/* UPGRADE */}
 
-          {collapsed ? (
+          {!compact ? (
             <button
               type="button"
-              title="Upgrade to Pro"
+              data-sidebar-tooltip="Upgrade to Pro"
               aria-label="Upgrade to Pro"
               onClick={() => navigate("/pricing")}
               className="
@@ -1194,30 +1009,7 @@ const DashboardSidebar: React.FC<
             >
               <Zap size={17} fill="currentColor" />
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => navigate("/pricing")}
-              className={`
-                mb-3 flex w-full items-center gap-3 rounded-xl
-                bg-gradient-to-r px-3 py-2.5 text-left
-                transition-all duration-200 hover:brightness-105
-                ${colors.upgrade}
-              `}
-            >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-purple-500 text-white">
-                <Zap size={15} fill="currentColor" />
-              </div>
-              <div className="min-w-0">
-                <p className={`text-[11px] font-semibold ${colors.upgradeText}`}>
-                  Upgrade to Pro
-                </p>
-                <p className={`truncate text-[9px] ${colors.upgradeSubtext}`}>
-                  Unlock more features
-                </p>
-              </div>
-            </button>
-          )}
+          ) : null}
 
           {/* =================================================
               PROFILE
@@ -1669,7 +1461,7 @@ const DashboardSidebar: React.FC<
 
             <button
               type="button"
-              title={collapsed ? `${fullName} — account menu` : undefined}
+              data-sidebar-tooltip={profileOpen ? undefined : `${fullName} — account menu`}
               aria-label={`${fullName} account menu`}
               aria-expanded={profileOpen}
               onClick={() => {
@@ -1690,17 +1482,17 @@ const DashboardSidebar: React.FC<
                 }
               `}
             >
-              <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all duration-200 group-hover:ring-2 group-hover:ring-emerald-300/70 group-hover:ring-offset-2 group-hover:ring-offset-[#0b0b0b] group-hover:shadow-[0_0_16px_rgba(110,231,183,0.22)]">
+              <span style={{ "--avatar-gap": isDark ? "#171716" : "#ffffff" } as React.CSSProperties} className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all duration-200 before:absolute before:-inset-3px before:rounded-full before:bg-linear-30 before:from-[#22d3ee] before:via-[#0ea5e9] before:to-[#2563eb] before:opacity-0 before:transition-opacity group-hover:before:opacity-100 group-focus-visible:before:opacity-100 group-hover:shadow-[0_0_14px_rgba(14,165,233,0.28)] after:absolute after:inset-[1px after:rounded-full after:bg-[var(--avatar-gap)">
                 {avatar ? (
                   <img
                     src={avatar}
                     alt={fullName}
-                    className="h-8 w-8 rounded-full object-cover"
+                    className="relative z-10 h-8 w-8 rounded-full object-cover"
                   />
                 ) : (
                   <span className="
-                    flex h-8 w-8 items-center justify-center rounded-full
-                    bg-gradient-to-br from-orange-500 to-orange-600
+                    relative z-10 flex h-8 w-8 items-center justify-center rounded-full
+                    bg-linear-30 from-cyan-500 to-blue-600
                     text-xs font-bold text-white
                   ">
                     {fullName.charAt(0).toUpperCase()}
@@ -1713,6 +1505,89 @@ const DashboardSidebar: React.FC<
           </div>
         </div>
       </aside>
+
+      {workspaceOpen && !isProfileRoute && createPortal(
+        <div ref={workspaceMenu} role="region" aria-label="Workspace menu"
+          className={`fixed z-[1100] overflow-hidden rounded-[16px] border shadow-2xl ${isDark ? "border-[#484848] bg-[#1d1d1c] text-white" : "border-slate-200 bg-white text-slate-900"}`}
+          style={{ ...menuPosition, maxHeight: window.innerHeight - menuPosition.top - 8 }}>
+          <div className={`overflow-y-auto rounded-b-[14px] border-b p-3 ${isDark ? "border-[#484848] bg-[#262625]" : "border-slate-200 bg-slate-50"}`} style={{maxHeight: Math.max(40, window.innerHeight - menuPosition.top - 66)}}>
+            <div className="mb-3 flex items-center gap-3">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-orange-400/60 bg-[#c94700] text-xl font-medium text-white">{workspaceInitial}</span>
+              <div className="min-w-0"><p className="truncate text-sm font-semibold">{workspaceName}</p><p className={`text-xs ${colors.muted}`}>Personal workspace</p></div>
+            </div>
+            <button type="button" disabled title="Member invitations are not connected yet" className={`mb-2 flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm opacity-60 cursor-not-allowed ${isDark ? "border-[#555] bg-[#353534]" : "border-slate-300 bg-white"}`}><UserPlus size={16}/> Invite members</button>
+            <button type="button" onClick={() => {setWorkspaceOpen(false); setMobileOpen(false); onMobileClose?.(); navigate("/profile?tab=workspace");}} className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm ${isDark ? "border-[#555] bg-[#353534] hover:bg-[#434342]" : "border-slate-300 bg-white hover:bg-slate-100"}`}><Settings size={16}/> Workspace settings</button>
+            <div className="mt-6 flex items-center justify-between text-sm font-semibold"><span>Credits</span><span className={colors.muted}>Unavailable</span></div>
+            <div className={`mt-3 h-2.5 rounded-full ${isDark ? "bg-[#414140]" : "bg-slate-200"}`} />
+            <p className={`mt-3 text-xs ${colors.muted}`}>Credit balance is not connected yet.</p>
+            <button type="button" disabled title="Workspace creation is not connected yet" className={`mt-4 flex w-full items-center gap-3 border-t px-2 pt-3 text-left text-sm opacity-60 cursor-not-allowed ${colors.border}`}><Plus size={16}/> New workspace</button>
+          </div>
+          <button type="button" onClick={() => {setWorkspaceOpen(false); navigate("/pricing");}} className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-sm font-semibold"><Zap size={18} fill="currentColor"/> Turn Pro <span className="ml-auto rounded-lg bg-[#35264b] px-3 py-2 text-[#c6a1ff]">Upgrade</span></button>
+        </div>, document.body)}
+
+      {projectsOpen && compact && !isProfileRoute && createPortal(
+        <div ref={projectMenu} role="region" aria-label="Recent projects" onPointerEnter={cancelProjectClose} onPointerLeave={scheduleProjectClose}
+          className={`fixed z-[1100] overflow-y-auto rounded-[15px] border p-1.5 shadow-2xl ${isDark ? "border-[#484848] bg-[#262625] text-white" : "border-slate-200 bg-white text-slate-900"}`}
+          style={{...projectPosition, maxHeight: window.innerHeight - projectPosition.top - 8}}>
+          <button type="button" onClick={() => {setProjectsOpen(false); navigate("/dashboard");}} className={`flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-3 text-sm font-medium ${colors.hover}`}><span>New project</span><Plus size={18}/></button>
+          <div className={`my-1 border-t ${colors.border}`}/>
+          {recentProjects.map(project => <button key={project.id} type="button" onClick={() => {setProjectsOpen(false); openRecentProject(project);}} className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${colors.hover}`}><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${isDark ? "border-[#666] bg-[#383837]" : "border-slate-300 bg-slate-100"}`}>{project.name.charAt(0).toUpperCase()}</span><span className="truncate">{project.name}</span></button>)}
+          <button type="button" onClick={() => {setProjectsOpen(false); navigate("/projects");}} className={`flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-3 text-sm font-medium ${colors.hover}`}>All projects <ArrowRight size={17}/></button>
+        </div>, document.body)}
+
+      {/* Custom floating tooltips, never clipped by the sidebar's scrolling region. */}
+      {tooltip && !mobileOpen && !searchOpen && !workspaceOpen && !projectsOpen && !profileOpen && !isProfileRoute &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            role="tooltip"
+            aria-hidden="true"
+            className="icogon-sidebar-tooltip"
+            style={{
+              position: "fixed",
+              zIndex: 1000,
+              pointerEvents: "none",
+              left: Math.min(tooltip.anchorRight + 8, Math.max(8, window.innerWidth - 180)),
+              top: Math.max(22, Math.min(tooltip.anchorY, window.innerHeight - 22)),
+              transform: "translateY(-50%)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: "max-content",
+              maxWidth: Math.min(320, window.innerWidth - Math.min(tooltip.anchorRight + 8, Math.max(8, window.innerWidth - 180)) - 8),
+              padding: "8px 12px",
+              borderRadius: 11,
+              border: `1px solid ${isDark ? "#484848" : "#d4d4d4"}`,
+              background: isDark ? "#262625" : "#ffffff",
+              color: isDark ? "#f5f5f5" : "#202020",
+              boxShadow: isDark ? "0 3px 12px rgba(0,0,0,.32)" : "0 3px 12px rgba(0,0,0,.12)",
+              fontSize: 13,
+              fontWeight: 500,
+              lineHeight: "18px",
+            }}
+          >
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+              {tooltip.label}
+            </span>
+            {tooltip.shortcut && (
+              <kbd style={{
+                flexShrink: 0,
+                padding: "2px 6px",
+                borderRadius: 6,
+                border: `1px solid ${isDark ? "#515151" : "#dedede"}`,
+                background: isDark ? "#353534" : "#f3f3f3",
+                color: isDark ? "#d4d4d4" : "#525252",
+                fontFamily: "inherit",
+                fontSize: 12,
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+              }}>
+                {tooltip.shortcut}
+              </kbd>
+            )}
+          </div>,
+          document.body,
+        )}
 
       {/* =====================================================
           GLOBAL SEARCH

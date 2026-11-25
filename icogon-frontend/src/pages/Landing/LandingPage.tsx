@@ -16,16 +16,12 @@ import Workflow from "../../components/landing/Workflow";
 import Stats from "../../components/landing/Stats";
 import AuthSection from "../../components/landing/AuthSection";
 import Footer from "../../components/landing/Footer";
-import LoginModal from "../../components/auth/LoginModal";
-import SignupModal from "../../components/auth/SignupModal";
 
 const LandingPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [authModal, setAuthModal] = useState<
-    "login" | "signup" | null
-  >(null);
+
 
   const [showBackToTop, setShowBackToTop] =
     useState(false);
@@ -38,7 +34,7 @@ const LandingPage = () => {
 
   /*
    * ============================================================
-   * OPEN LOGIN MODAL AFTER LOGOUT
+   * OPEN LOGIN PAGE AFTER LOGOUT
    * ============================================================
    *
    * DashboardSidebar navigates to:
@@ -52,10 +48,10 @@ const LandingPage = () => {
    * }
    *
    * When LandingPage receives that state,
-   * it automatically opens LoginModal.
+   * it routes to the standalone login page.
    */
   /*
- * Open login modal after logout
+ * Open login page after logout
  */
 useEffect(() => {
   const state = location.state as
@@ -63,15 +59,8 @@ useEffect(() => {
     | null;
 
   if (state?.openLogin) {
-    // Open the login modal
-    setAuthModal("login");
-
-    // Remove the navigation state so that
-    // refreshing the page does not open the modal again.
-    navigate("/", {
-      replace: true,
-      state: null,
-    });
+    // Route to the compact, standalone login page.
+    navigate("/login", { replace: true, state: null });
   }
 }, [location, navigate]);
 
@@ -196,11 +185,9 @@ useEffect(() => {
       ========================== */}
 
       <Navbar
-        onLogin={() =>
-          setAuthModal("login")
-        }
+        onLogin={() => navigate("/login")}
         onSignup={() =>
-          setAuthModal("signup")
+          navigate("/signup")
         }
       />
 
@@ -288,7 +275,7 @@ useEffect(() => {
             <button
               type="button"
               onClick={() =>
-                setAuthModal("signup")
+                navigate("/signup")
               }
               className="
                 flex
@@ -404,30 +391,10 @@ useEffect(() => {
       )}
 
       {/* =========================
-          LOGIN MODAL
-      ========================== */}
-
-      <LoginModal
-        isOpen={authModal === "login"}
-        onClose={() =>
-          setAuthModal(null)
-        }
-      />
-
-      {/* =========================
           SIGNUP MODAL
       ========================== */}
 
-      {authModal === "signup" && (
-        <SignupModal
-          onClose={() =>
-            setAuthModal(null)
-          }
-          onLogin={() =>
-            setAuthModal("login")
-          }
-        />
-      )}
+
     </main>
   );
 };

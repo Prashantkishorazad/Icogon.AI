@@ -23,7 +23,7 @@ import {
   Monitor,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useTheme } from "../../../context/ThemeContext";
+import { useTheme } from "../../../components/context/ThemeContext";
 import type {
   DeviceMode,
   ProjectResponse,

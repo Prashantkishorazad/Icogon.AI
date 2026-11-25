@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Navbar from "../../components/landing/Navbar";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../../components/context/ThemeContext";
 
 interface PricingPlan {
   name: string;

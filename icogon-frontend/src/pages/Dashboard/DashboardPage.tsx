@@ -1,1481 +1,771 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ElementType,
-  type FC,
-} from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 
-import {
-  ArrowRight,
-  ChevronRight,
-  Clock3,
-  Code2,
-  Globe,
-  Grid2X2,
-  Plus,
-  Rocket,
-  Search,
-  Sparkles,
-  Store,
-  User,
-  Wand2,
-} from "lucide-react";
+import { ArrowRight, ArrowUpRight, FolderOpen, LayoutTemplate, Search, X, Clock, RefreshCw, Plus, ImageOff, Code2, Sparkles } from "lucide-react";
 
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import PromptInput from "../../components/landing/PromptInput";
 
-import {
-  getProjectsApi,
-  type ProjectResponse,
-} from "../../api/projectApi";
+import { getProjectsApi, type ProjectResponse } from "../../api/projectApi";
 
-import { useTheme } from "../../context/ThemeContext";
 import { useAuthStore } from "../../store/authStore";
 
-/* =========================================================
-   TEMPLATE TYPE
-========================================================= */
+// Reuse the same browser-local screenshot as Projects and Global Search.
 
-interface Template {
-  title: string;
-  description: string;
-  icon: ElementType;
-  prompt: string;
-}
+import { useProjectThumbnail } from "../../utils/projectThumbnails";
 
-/* =========================================================
-   EXPLORE TAB
-========================================================= */
+// Observe the existing ThemeProvider's root attributes without importing its module.
 
-type ExploreTab =
-  | "search"
-  | "projects"
-  | "recent"
-  | "templates";
+function useDashboardDarkMode() {
 
-/* =========================================================
-   DASHBOARD PAGE
-========================================================= */
+  const read = () => typeof document !== "undefined" && (document.documentElement.getAttribute("data-theme") === "dark" || document.documentElement.classList.contains("dark"));
 
-const DashboardPage: FC = () => {
-  const navigate = useNavigate();
-  const user = useAuthStore((state) => state.user);
-  const displayName =
-    user?.user_metadata?.full_name ||
-    user?.user_metadata?.name ||
-    user?.email?.split("@")[0] ||
-    "there";
-
-  /* =======================================================
-     THEME
-  ======================================================= */
-
-  const { resolvedTheme } = useTheme();
-
-  const isDark = resolvedTheme === "dark";
-
-  /* =======================================================
-     PROJECTS
-  ======================================================= */
-
-  const [projects, setProjects] = useState<ProjectResponse[]>([]);
-
-  const [projectsLoading, setProjectsLoading] = useState(true);
-
-  const [projectsError, setProjectsError] = useState("");
-
-  /* =======================================================
-     EXPLORE
-  ======================================================= */
-
-  const [activeTab, setActiveTab] =
-    useState<ExploreTab>("projects");
-
-  const [searchQuery, setSearchQuery] = useState("");
-
-  /* =======================================================
-     TEMPLATES
-  ======================================================= */
-
-  const templates: Template[] = [
-    {
-      title: "Business Website",
-      description:
-        "Create a professional business website",
-      icon: Globe,
-      prompt:
-        "Build a modern professional business website with a hero section, services, about section, testimonials, pricing and contact form.",
-    },
-    {
-      title: "SaaS Landing Page",
-      description:
-        "Launch a modern SaaS website",
-      icon: Rocket,
-      prompt:
-        "Build a modern SaaS landing page with a navbar, hero section, features, pricing, testimonials, FAQ and call to action.",
-    },
-    {
-      title: "Portfolio",
-      description:
-        "Showcase your work",
-      icon: User,
-      prompt:
-        "Build a premium developer portfolio website with hero section, about, skills, projects, experience, testimonials and contact section.",
-    },
-    {
-      title: "E-commerce",
-      description:
-        "Build an online store",
-      icon: Store,
-      prompt:
-        "Build a modern e-commerce website with product listing, categories, product details, cart, checkout and responsive navigation.",
-    },
-    {
-      title: "AI Application",
-      description:
-        "Create an AI-powered app",
-      icon: Sparkles,
-      prompt:
-        "Build a modern AI application dashboard with a prompt interface, sidebar navigation, recent projects, usage statistics and settings.",
-    },
-    {
-      title: "Custom Website",
-      description:
-        "Start from your own idea",
-      icon: Wand2,
-      prompt: "",
-    },
-  ];
-
-  /* =======================================================
-     INITIAL LOAD
-  ======================================================= */
-
-  const loadProjects = useCallback(async (): Promise<void> => {
-    setProjectsLoading(true);
-    setProjectsError("");
-
-    try {
-      const data = await getProjectsApi();
-      setProjects(Array.isArray(data) ? data : []);
-    } catch (error: unknown) {
-      console.error("Failed to load projects:", error);
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to load projects";
-
-      setProjectsError(message);
-      setProjects([]);
-    } finally {
-      setProjectsLoading(false);
-    }
-  }, []);
+  const [dark, setDark] = useState(read);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void loadProjects();
-    }, 0);
 
-    return () => window.clearTimeout(timeoutId);
-  }, [loadProjects]);
+    const observer = new MutationObserver(() => setDark(read()));
 
-  /* =======================================================
-     TEMPLATE CLICK
-  ======================================================= */
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme"] });
 
-  const handleTemplateClick = (
-    templatePrompt: string
-  ): void => {
-    const cleanPrompt =
-      templatePrompt.trim();
+    return () => observer.disconnect();
 
-    if (!cleanPrompt) {
-      document
-        .getElementById("project-prompt")
-        ?.focus();
+  }, []);
 
-      return;
-    }
+  return dark;
 
-    navigate(
-      `/builder?prompt=${encodeURIComponent(
-        cleanPrompt
-      )}`
-    );
-  };
+}
 
-  /* =======================================================
-     OPEN PROJECT
-  ======================================================= */
+// Self-contained gallery: no dependency on the older placeholder or optional discovery files.
 
-  const handleOpenProject = (
-    projectId: string
-  ): void => {
-    navigate(`/builder/${projectId}`);
-  };
+export type DiscoveryTab = "projects" | "recent" | "templates";
 
-  /* =======================================================
-     FORMAT DATE
-  ======================================================= */
+export interface DiscoveryProject extends ProjectResponse {
 
-  const formatProjectDate = (
-    project: ProjectResponse
-  ): string => {
-    const dateValue =
-      project.updated_at ||
-      project.created_at;
+  screenshot_url?: string | null;
 
-    if (!dateValue) {
-      return "Recently";
-    }
+  thumbnail_url?: string | null;
 
-    const date = new Date(dateValue);
+  preview_image_url?: string | null;
 
-    if (Number.isNaN(date.getTime())) {
-      return "Recently";
-    }
+  owner_name?: string | null;
 
-    return date.toLocaleDateString(
-      undefined,
-      {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }
-    );
-  };
+  owner_avatar_url?: string | null;
 
-  /* =======================================================
-     PROJECT INITIAL
-  ======================================================= */
+  last_opened_at?: string | null;
 
-  const getProjectInitial = (
-    name: string
-  ): string => {
-    return (
-      name
-        ?.trim()
-        ?.charAt(0)
-        ?.toUpperCase() || "P"
-    );
-  };
+  last_opened?: string | null;
 
-  /* =======================================================
-     FILTER PROJECTS
-  ======================================================= */
+}
 
-  const filteredProjects = useMemo(() => {
-    const query = searchQuery
-      .trim()
-      .toLowerCase();
+type TemplateCategory = "saas" | "dashboard" | "portfolio" | "ecommerce" | "ai-app" | "productivity" | "business" | "crm" | "landing-page" | "internal-tool" | "finance" | "education";
 
-    if (!query) {
-      return projects;
-    }
+export interface DiscoveryTemplate {
 
-    return projects.filter(
-      (project) =>
-        project.name
-          ?.toLowerCase()
-          .includes(query) ||
-        project.description
-          ?.toLowerCase()
-          .includes(query)
-    );
-  }, [projects, searchQuery]);
+  id: string;
 
-  /* =======================================================
-     THEME COLORS
-  ======================================================= */
+  name: string;
 
-  const colors = isDark
-    ? {
-        page:
-          "bg-[#050505] text-white",
+  category: TemplateCategory;
 
-        heading:
-          "text-[#f5f5f5]",
+  description: string;
 
-        paragraph:
-          "text-[#858585]",
+  prompt: string;
 
-        card:
-          "border-[#202020] bg-[#0b0b0b] text-white",
+  tags: string[];
 
-        projectCard:
-          "border-[#202020] bg-[#0b0b0b]",
+}
 
-        projectDivider:
-          "border-[#1c1c1c] text-[#777]",
+export interface ProjectDiscoveryProps {
 
-        subtle:
-          "text-[#666]",
+  isDark: boolean;
 
-        empty:
-          "border-[#202020] bg-[#090909]",
+  onOpenProject: (project: DiscoveryProject) => void;
 
-        tab:
-          "border-[#252525] bg-[#0b0b0b] text-[#858585]",
+  onSelectTemplate: (template: DiscoveryTemplate) => void;
 
-        activeTab:
-          "border-[#303030] bg-[#161616] text-white",
-      }
-    : {
-        page:
-          "bg-[#f8fafc] text-slate-900",
+  onCreateProject: () => void;
 
-        heading:
-          "text-slate-900",
+  onBrowseAll: (tab: DiscoveryTab) => void;
 
-        paragraph:
-          "text-slate-500",
+  className?: string;
 
-        card:
-          "border-slate-200 bg-white text-slate-900",
+}
 
-        projectCard:
-          "border-slate-200 bg-white",
+type History = Record<string, { projectId: string; viewedAt: string }>;
 
-        projectDivider:
-          "border-slate-100 text-slate-400",
+const HISTORY_PREFIX = "icogon:project-history:v1";
 
-        subtle:
-          "text-slate-400",
+const TABS: { id: DiscoveryTab; label: string }[] = [
 
-        empty:
-          "border-slate-300 bg-white",
+  { id: "projects", label: "My projects" },
 
-        tab:
-          "border-slate-200 bg-white text-slate-500",
+  { id: "recent", label: "Recently viewed" },
 
-        activeTab:
-          "border-slate-200 bg-white text-slate-900 shadow-sm",
-      };
+  { id: "templates", label: "Icogon templates" },
 
-  /* =======================================================
-     MAIN
-  ======================================================= */
+];
+
+const TEMPLATE_ROWS: [TemplateCategory, string, string, string, string][] = [
+
+  ["saas", "saas-starter", "SaaS Starter", "Product launch and subscription workspace", "Build a premium SaaS app with a responsive landing page, pricing, onboarding, account settings and a dashboard. Clearly label demo billing and authentication."],
+
+  ["ai-app", "ai-workspace", "AI Workspace", "AI assistant and conversation history", "Build a responsive AI assistant with conversation history, model selection, Markdown chat and file attachments. Keep provider credentials on the backend and label simulated responses."],
+
+  ["dashboard", "analytics-studio", "Analytics Studio", "Business metrics and visual reports", "Build an analytics dashboard with interactive charts, KPI cards, date filters, data tables and CSV export. Use clearly labeled sample data."],
+
+  ["ecommerce", "modern-store", "Modern Store", "Product catalog and shopping experience", "Build a responsive online store with collections, product filtering, details, cart and checkout validation. Label demo payments."],
+
+  ["portfolio", "creative-portfolio", "Creative Portfolio", "Case studies and personal website", "Build an editorial portfolio with case studies, about page, project gallery, contact form and accessible animations."],
+
+  ["business", "agency-pro", "Agency Pro", "Services and agency case studies", "Build a premium agency website with services, team, work gallery, case studies and inquiry form. Use labeled example content."],
+
+  ["crm", "crm-workspace", "CRM Workspace", "Sales pipeline and customer management", "Build a CRM with contacts, lead management, a Kanban pipeline, search, filters, activity history and sales metrics."],
+
+  ["productivity", "taskflow", "TaskFlow", "Tasks, boards and project planning", "Build a task management app with Kanban boards, calendar, status, priorities, editing and search."],
+
+  ["landing-page", "launchpad", "Launchpad", "Conversion-focused product landing page", "Build a responsive startup landing page with hero, features, pricing, FAQ, validated waitlist form and SEO metadata."],
+
+  ["internal-tool", "admin-control-center", "Admin Control Center", "Users, permissions and system reporting", "Build an admin dashboard with user management, roles, audit logs, tables and settings. Mark demo permissions and enforce real authorization server-side."],
+
+  ["finance", "finance-tracker", "Finance Tracker", "Budgets and expense analytics", "Build a finance tracker with budgets, transactions, savings goals, category filters, accurate calculations and labeled demo data."],
+
+  ["education", "learning-hub", "Learning Hub", "Courses and student progress", "Build a learning platform with a course catalog, lessons, quizzes, student progress and original demonstration content."],
+
+];
+
+const TEMPLATES: DiscoveryTemplate[] = TEMPLATE_ROWS.map(([category, id, name, description, prompt]) => ({ category, id, name, description, prompt, tags: [category] }));
+
+const PALETTES = [
+
+  ["#152035", "#60a5fa"], ["#132c24", "#6ee7b7"], ["#e9eef6", "#3168d9"],
+
+  ["#eadfce", "#936640"], ["#2b203c", "#d8b4fe"], ["#222222", "#e5e5e5"],
+
+  ["#eae5f5", "#8055c9"], ["#1a2e48", "#93c5fd"], ["#1e1e40", "#a78bfa"],
+
+  ["#24313d", "#38bdf8"], ["#18382a", "#86efac"], ["#f3e8db", "#aa7144"],
+
+];
+
+function textValue(value: unknown): string {
+
+  return typeof value === "string" ? value.trim() : "";
+
+}
+
+function stamp(value: unknown): number {
+
+  const result = Date.parse(textValue(value));
+
+  return Number.isFinite(result) ? result : 0;
+
+}
+
+function ago(value: unknown): string {
+
+  const date = stamp(value);
+
+  if (!date) return "";
+
+  const minutes = Math.max(0, Math.floor((Date.now() - date) / 60000));
+
+  if (minutes < 1) return "just now";
+
+  const amount = minutes < 60 ? minutes : minutes < 1440 ? Math.floor(minutes / 60) : Math.floor(minutes / 1440);
+
+  const unit = minutes < 60 ? "minute" : minutes < 1440 ? "hour" : "day";
+
+  if (amount >= 30 && unit === "day") return new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+  return `${amount} ${unit}${amount === 1 ? "" : "s"} ago`;
+
+}
+
+function readHistory(key: string): History {
+
+  if (!key) return {};
+
+  try {
+
+    const raw: unknown = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+
+    return Object.fromEntries(Object.entries(raw).filter(([id, entry]) => entry && typeof entry === "object" && entry.projectId === id && stamp(entry.viewedAt) > 0));
+
+  } catch { return {}; }
+
+}
+
+function imageSource(value: unknown): string {
+
+  const url = textValue(value);
+
+  if (!url) return "";
+
+  if (/^data:image\/(?:png|jpe?g|webp|gif|avif);base64,/i.test(url)) return url;
+
+  if (url.startsWith("/") && !url.startsWith("//")) return url;
+
+  try {
+
+    const candidate = new URL(url);
+
+    return candidate.protocol === "https:" || candidate.protocol === "http:" ? url : "";
+
+  } catch {
+
+    return "";
+
+  }
+
+}
+
+function ProjectPreview({ project, isDark, userId }: { project: DiscoveryProject; isDark: boolean; userId?: string }) {
+
+  // Uses the existing key: icogon:project-thumbnail:v1:<userId>:<projectId>.
+
+  // The hook subscribes to changes in this tab and other browser tabs.
+
+  const uploadedImage = useProjectThumbnail(project, userId);
+
+  // The user's uploaded image is preferred over backend screenshot metadata.
+
+  const sources = [...new Set([uploadedImage, project.screenshot_url, project.thumbnail_url, project.preview_image_url].map(imageSource).filter(Boolean))];
+
+  // A changed image list remounts PreviewImage and resets its fallback index.
+
+  return <PreviewImage key={JSON.stringify(sources)} sources={sources} name={project.name} isDark={isDark} />;
+
+}
+
+function PreviewImage({ sources, name, isDark }: { sources: string[]; name: string; isDark: boolean }) {
+
+  const [index, setIndex] = useState(0);
 
   return (
-    <div
-      className={`
-        min-h-full
-        w-full
-        overflow-x-hidden
-        transition-colors
-        duration-300
-        ${colors.page}
-      `}
-    >
-      {/* Dashboard content */}
-        <main
-          className="
-            mx-auto
-            w-full
-            max-w-[1440px]
-            px-5
-            pb-20
-            pt-8
-            sm:px-8
-            lg:px-10
-          "
-        >
-          {/* =================================================
-              HERO
-          ================================================= */}
 
-          <section
-            className="
-              relative
-              flex
-              min-h-[min(620px,calc(100svh-180px))]
-              w-full
-              flex-col
-              items-center
-              justify-center
-              px-4
-              pb-12
-              pt-6
-              sm:pb-16
-            "
-          >
-            <div className="flex w-full max-w-3xl flex-col items-center text-center">
-              {/* Compact Lovable-style capability pill */}
-              <div
-                className={`
-                  mb-8 inline-flex items-center gap-2 rounded-full border
-                  px-3.5 py-2 text-[11px] font-medium shadow-sm
-                  transition-colors duration-200 sm:text-xs
-                  ${isDark
-                    ? "border-white/15 bg-[#242424]/90 text-[#e8e8e8] shadow-black/20"
-                    : "border-slate-200 bg-white/90 text-slate-700 shadow-slate-900/5"}
-                `}
-              >
-                <span className="flex -space-x-1.5">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[#242424] bg-gradient-to-br from-orange-400 to-rose-500 text-white">
-                    <Sparkles size={11} />
-                  </span>
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[#242424] bg-gradient-to-br from-cyan-400 to-blue-600 text-white">
-                    <Code2 size={11} />
-                  </span>
-                </span>
-                <span>Add AI to your apps</span>
-                <ArrowRight size={13} className="ml-1 opacity-70" />
-              </div>
+    <div className={`relative aspect-video w-full overflow-hidden rounded-[12px] border ${isDark ? "border-white/10 bg-[#2b2b2b]" : "border-black/[0.06] bg-[#ececef]"}`}>
 
-              <h1
-                className={`
-                  max-w-3xl text-[clamp(2rem,4.2vw,3.25rem)]
-                  font-semibold leading-[1.08] tracking-[-0.055em]
-                  ${colors.heading}
-                `}
-              >
-                What’s the vision, {displayName}?
-              </h1>
-            </div>
+      {sources[index] ? (
 
-            <div className="mt-8 flex w-full max-w-[840px] flex-col items-center sm:mt-9">
-              <PromptInput />
-            </div>
-          </section>
+        <img key={sources[index]} src={sources[index]} alt={`${name} preview`} loading="lazy" decoding="async" onError={() => setIndex(i => i + 1)} className="h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none" />
 
+      ) : (
 
-          {/* =================================================
-              PROJECT DISCOVERY
-          ================================================= */}
+        <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
 
-          <section
-            className="
-              relative
-              mt-16
-              -mx-5
-              overflow-hidden
-              px-5
-              py-20
-              sm:-mx-8
-              sm:px-8
-              lg:-mx-10
-              lg:px-10
-            "
-          >
-            {/* =================================================
-                GRADIENT BACKGROUND
-            ================================================= */}
+          <div className={`grid h-12 w-12 place-items-center rounded-xl ${isDark ? "bg-white/10 text-neutral-300" : "bg-white text-neutral-600"}`}><ImageOff size={23} strokeWidth={1.5} /></div>
 
-            <div
-              className="
-                pointer-events-none
-                absolute
-                inset-0
-                bg-gradient-to-br
-                from-blue-500
-                via-fuchsia-500
-                to-orange-400
-              "
-            />
+          <span className="max-w-full truncate text-sm font-medium">{name}</span><span className="text-xs opacity-60">Preview not available</span>
 
-            <div
-              className="
-                pointer-events-none
-                absolute
-                inset-0
-                bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.9),transparent_42%)]
-              "
-            />
+        </div>
 
-            <div
-              className="
-                pointer-events-none
-                absolute
-                left-1/2
-                top-0
-                h-[300px]
-                w-[600px]
-                -translate-x-1/2
-                rounded-full
-                bg-white/40
-                blur-[100px]
-              "
-            />
+      )}
 
-            {/* =================================================
-                WHITE PROJECT CONTAINER
-            ================================================= */}
-
-            <div
-              className="
-                relative
-                mx-auto
-                max-w-[1380px]
-                rounded-[30px]
-                bg-white
-                p-5
-                shadow-[0_30px_100px_rgba(15,23,42,0.20)]
-                sm:p-7
-                lg:p-8
-              "
-            >
-              {/* =================================================
-                  TOP BAR
-              ================================================= */}
-
-              <div
-                className="
-                  flex
-                  flex-col
-                  gap-4
-                  xl:flex-row
-                  xl:items-center
-                  xl:justify-between
-                "
-              >
-                {/* TABS */}
-
-                <div
-                  className="
-                    flex
-                    w-fit
-                    flex-wrap
-                    items-center
-                    gap-1
-                    rounded-2xl
-                    border
-                    border-slate-200
-                    bg-slate-50
-                    p-1
-                  "
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setActiveTab("search")
-                    }
-                    className={`
-                      flex
-                      h-9
-                      items-center
-                      gap-2
-                      rounded-xl
-                      px-3
-                      text-[13px]
-                      font-medium
-                      transition
-                      ${
-                        activeTab ===
-                        "search"
-                          ? "bg-white text-slate-900 shadow-sm"
-                          : "text-slate-500 hover:text-slate-900"
-                      }
-                    `}
-                  >
-                    <Search size={15} />
-                    Search
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setActiveTab("projects")
-                    }
-                    className={`
-                      flex
-                      h-9
-                      items-center
-                      gap-2
-                      rounded-xl
-                      px-3
-                      text-[13px]
-                      font-medium
-                      transition
-                      ${
-                        activeTab ===
-                        "projects"
-                          ? "bg-white text-slate-900 shadow-sm"
-                          : "text-slate-500 hover:text-slate-900"
-                      }
-                    `}
-                  >
-                    <Grid2X2 size={15} />
-                    My Projects
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setActiveTab("recent")
-                    }
-                    className={`
-                      flex
-                      h-9
-                      items-center
-                      gap-2
-                      rounded-xl
-                      px-3
-                      text-[13px]
-                      font-medium
-                      transition
-                      ${
-                        activeTab ===
-                        "recent"
-                          ? "bg-white text-slate-900 shadow-sm"
-                          : "text-slate-500 hover:text-slate-900"
-                      }
-                    `}
-                  >
-                    <Clock3 size={15} />
-                    Recently viewed
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setActiveTab("templates")
-                    }
-                    className={`
-                      flex
-                      h-9
-                      items-center
-                      gap-2
-                      rounded-xl
-                      px-3
-                      text-[13px]
-                      font-medium
-                      transition
-                      ${
-                        activeTab ===
-                        "templates"
-                          ? "bg-white text-slate-900 shadow-sm"
-                          : "text-slate-500 hover:text-slate-900"
-                      }
-                    `}
-                  >
-                    <Sparkles size={15} />
-                    ICOGON templates
-                  </button>
-                </div>
-
-                {/* BROWSE ALL */}
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate("/projects")
-                  }
-                  className="
-                    group
-                    flex
-                    w-fit
-                    items-center
-                    gap-1.5
-                    text-[13px]
-                    font-semibold
-                    text-slate-900
-                    transition
-                    hover:text-cyan-500
-                  "
-                >
-                  Browse all
-
-                  <ArrowRight
-                    size={15}
-                    className="
-                      transition-transform
-                      duration-200
-                      group-hover:translate-x-1
-                    "
-                  />
-                </button>
-              </div>
-
-              {/* =================================================
-                  SEARCH
-              ================================================= */}
-
-              {activeTab === "search" && (
-                <div className="mt-5">
-                  <div
-                    className="
-                      flex
-                      h-12
-                      items-center
-                      gap-3
-                      rounded-xl
-                      border
-                      border-slate-200
-                      bg-slate-50
-                      px-4
-                    "
-                  >
-                    <Search
-                      size={17}
-                      className="text-slate-400"
-                    />
-
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(event) =>
-                        setSearchQuery(
-                          event.target.value
-                        )
-                      }
-                      placeholder="Search your projects..."
-                      autoFocus
-                      className="
-                        w-full
-                        bg-transparent
-                        text-sm
-                        text-slate-900
-                        outline-none
-                        placeholder:text-slate-400
-                      "
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* =================================================
-                  LOADING
-              ================================================= */}
-
-              {(activeTab === "projects" ||
-                activeTab === "search" ||
-                activeTab === "recent") &&
-                projectsLoading && (
-                  <div
-                    className="
-                      mt-7
-                      grid
-                      grid-cols-1
-                      gap-7
-                      sm:grid-cols-2
-                    "
-                  >
-                    {[1, 2].map(
-                      (item) => (
-                        <div
-                          key={item}
-                          className="
-                            animate-pulse
-                          "
-                        >
-                          <div
-                            className="
-                              h-[240px]
-                              rounded-2xl
-                              bg-slate-100
-                            "
-                          />
-
-                          <div className="mt-4 flex gap-3">
-                            <div
-                              className="
-                                h-10
-                                w-10
-                                rounded-full
-                                bg-slate-100
-                              "
-                            />
-
-                            <div className="flex-1">
-                              <div
-                                className="
-                                  h-4
-                                  w-2/3
-                                  rounded
-                                  bg-slate-100
-                                "
-                              />
-
-                              <div
-                                className="
-                                  mt-2
-                                  h-3
-                                  w-1/3
-                                  rounded
-                                  bg-slate-100
-                                "
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                )}
-
-              {/* =================================================
-                  ERROR
-              ================================================= */}
-
-              {(activeTab === "projects" ||
-                activeTab === "search" ||
-                activeTab === "recent") &&
-                !projectsLoading &&
-                projectsError && (
-                  <div
-                    className="
-                      mt-7
-                      flex
-                      min-h-[250px]
-                      flex-col
-                      items-center
-                      justify-center
-                      rounded-2xl
-                      border
-                      border-red-200
-                      bg-red-50
-                      p-8
-                      text-center
-                    "
-                  >
-                    <h3
-                      className="
-                        text-[15px]
-                        font-semibold
-                        text-slate-900
-                      "
-                    >
-                      Unable to load projects
-                    </h3>
-
-                    <p
-                      className="
-                        mt-2
-                        max-w-md
-                        text-[13px]
-                        leading-5
-                        text-slate-500
-                      "
-                    >
-                      {projectsError}
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={() => void loadProjects()}
-                      className="
-                        mt-5
-                        rounded-xl
-                        bg-slate-900
-                        px-4
-                        py-2.5
-                        text-[13px]
-                        font-semibold
-                        text-white
-                        transition
-                        hover:bg-slate-800
-                      "
-                    >
-                      Try again
-                    </button>
-                  </div>
-                )}
-
-              {/* =================================================
-                  EMPTY
-              ================================================= */}
-
-              {(activeTab === "projects" ||
-                activeTab === "search" ||
-                activeTab === "recent") &&
-                !projectsLoading &&
-                !projectsError &&
-                filteredProjects.length ===
-                  0 && (
-                  <div
-                    className="
-                      mt-7
-                      flex
-                      min-h-[320px]
-                      flex-col
-                      items-center
-                      justify-center
-                      rounded-2xl
-                      border
-                      border-dashed
-                      border-slate-300
-                      bg-white
-                      p-8
-                      text-center
-                    "
-                  >
-                    <div
-                      className="
-                        flex
-                        h-[68px]
-                        w-[68px]
-                        items-center
-                        justify-center
-                        rounded-2xl
-                        border
-                        border-cyan-200
-                        bg-cyan-50
-                        text-cyan-500
-                      "
-                    >
-                      <Code2
-                        size={28}
-                        strokeWidth={1.7}
-                      />
-                    </div>
-
-                    <h3
-                      className="
-                        mt-6
-                        text-lg
-                        font-semibold
-                        tracking-tight
-                        text-slate-900
-                      "
-                    >
-                      {activeTab ===
-                      "search"
-                        ? "No matching projects"
-                        : "No projects yet"}
-                    </h3>
-
-                    <p
-                      className="
-                        mt-2
-                        max-w-[500px]
-                        text-sm
-                        leading-6
-                        text-slate-500
-                      "
-                    >
-                      {activeTab ===
-                      "search"
-                        ? "Try another search term."
-                        : "Create your first project by describing what you want ICOGON AI to build."}
-                    </p>
-
-                    {activeTab !==
-                      "search" && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          document
-                            .getElementById(
-                              "project-prompt"
-                            )
-                            ?.focus()
-                        }
-                        className="
-                          mt-6
-                          flex
-                          items-center
-                          gap-2
-                          rounded-xl
-                          border
-                          border-cyan-200
-                          bg-cyan-50
-                          px-5
-                          py-3
-                          text-[13px]
-                          font-semibold
-                          text-cyan-600
-                          transition
-                          hover:bg-cyan-100
-                        "
-                      >
-                        <Plus size={16} />
-                        Create your first project
-                      </button>
-                    )}
-                  </div>
-                )}
-
-              {/* =================================================
-                  PROJECT CARDS
-              ================================================= */}
-
-              {(activeTab === "projects" ||
-                activeTab === "search" ||
-                activeTab === "recent") &&
-                !projectsLoading &&
-                !projectsError &&
-                filteredProjects.length >
-                  0 && (
-                  <div
-                    className="
-                      mt-7
-                      grid
-                      grid-cols-1
-                      gap-x-7
-                      gap-y-8
-                      sm:grid-cols-2
-                    "
-                  >
-                    {filteredProjects
-                      .slice(0, 6)
-                      .map(
-                        (project) => (
-                          <button
-                            key={project.id}
-                            type="button"
-                            onClick={() =>
-                              handleOpenProject(
-                                project.id
-                              )
-                            }
-                            className="
-                              group
-                              text-left
-                            "
-                          >
-                            {/* PREVIEW */}
-
-                            <div
-                              className="
-                                relative
-                                h-[240px]
-                                overflow-hidden
-                                rounded-2xl
-                                border
-                                border-slate-200
-                                bg-slate-100
-                                transition-all
-                                duration-300
-                                group-hover:-translate-y-1
-                                group-hover:border-slate-300
-                                group-hover:shadow-[0_18px_45px_rgba(15,23,42,0.12)]
-                              "
-                            >
-                              {/* Browser bar */}
-
-                              <div
-                                className="
-                                  absolute
-                                  left-0
-                                  right-0
-                                  top-0
-                                  z-10
-                                  flex
-                                  h-8
-                                  items-center
-                                  border-b
-                                  border-slate-200
-                                  bg-white
-                                  px-3
-                                "
-                              >
-                                <div className="flex gap-1.5">
-                                  <span className="h-2 w-2 rounded-full bg-slate-200" />
-                                  <span className="h-2 w-2 rounded-full bg-slate-200" />
-                                  <span className="h-2 w-2 rounded-full bg-slate-200" />
-                                </div>
-
-                                <div
-                                  className="
-                                    mx-auto
-                                    h-3
-                                    w-1/3
-                                    rounded-full
-                                    bg-slate-100
-                                  "
-                                />
-                              </div>
-
-                              {/* Website mockup */}
-
-                              <div
-                                className="
-                                  absolute
-                                  inset-x-8
-                                  top-14
-                                  bottom-6
-                                  overflow-hidden
-                                  rounded-xl
-                                  border
-                                  border-slate-200
-                                  bg-white
-                                  shadow-sm
-                                "
-                              >
-                                <div
-                                  className="
-                                    flex
-                                    h-7
-                                    items-center
-                                    justify-between
-                                    border-b
-                                    border-slate-100
-                                    px-3
-                                  "
-                                >
-                                  <div
-                                    className="
-                                      h-2
-                                      w-14
-                                      rounded-full
-                                      bg-slate-800
-                                    "
-                                  />
-
-                                  <div className="flex gap-2">
-                                    <span className="h-1.5 w-5 rounded-full bg-slate-200" />
-                                    <span className="h-1.5 w-5 rounded-full bg-slate-200" />
-                                    <span className="h-1.5 w-5 rounded-full bg-slate-200" />
-                                  </div>
-                                </div>
-
-                                <div className="p-4">
-                                  <div
-                                    className="
-                                      h-4
-                                      w-3/5
-                                      rounded-full
-                                      bg-slate-800
-                                    "
-                                  />
-
-                                  <div
-                                    className="
-                                      mt-2
-                                      h-2
-                                      w-4/5
-                                      rounded-full
-                                      bg-slate-200
-                                    "
-                                  />
-
-                                  <div
-                                    className="
-                                      mt-1.5
-                                      h-2
-                                      w-3/5
-                                      rounded-full
-                                      bg-slate-200
-                                    "
-                                  />
-
-                                  <div
-                                    className="
-                                      mt-5
-                                      h-16
-                                      rounded-xl
-                                      bg-gradient-to-br
-                                      from-blue-100
-                                      via-purple-100
-                                      to-pink-100
-                                    "
-                                  />
-
-                                  <div className="mt-4 grid grid-cols-3 gap-2">
-                                    <div className="h-8 rounded-lg bg-slate-100" />
-                                    <div className="h-8 rounded-lg bg-slate-100" />
-                                    <div className="h-8 rounded-lg bg-slate-100" />
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Hover overlay */}
-
-                              <div
-                                className="
-                                  absolute
-                                  inset-0
-                                  flex
-                                  items-center
-                                  justify-center
-                                  bg-slate-900/0
-                                  transition
-                                  duration-300
-                                  group-hover:bg-slate-900/5
-                                "
-                              >
-                                <span
-                                  className="
-                                    translate-y-2
-                                    rounded-xl
-                                    bg-white
-                                    px-4
-                                    py-2
-                                    text-xs
-                                    font-semibold
-                                    text-slate-900
-                                    opacity-0
-                                    shadow-lg
-                                    transition-all
-                                    duration-300
-                                    group-hover:translate-y-0
-                                    group-hover:opacity-100
-                                  "
-                                >
-                                  Open project
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* PROJECT INFO */}
-
-                            <div
-                              className="
-                                mt-3
-                                flex
-                                items-center
-                                gap-3
-                              "
-                            >
-                              <div
-                                className="
-                                  flex
-                                  h-10
-                                  w-10
-                                  shrink-0
-                                  items-center
-                                  justify-center
-                                  rounded-full
-                                  border
-                                  border-slate-200
-                                  bg-slate-100
-                                  text-xs
-                                  font-bold
-                                  text-slate-600
-                                "
-                              >
-                                {getProjectInitial(
-                                  project.name
-                                )}
-                              </div>
-
-                              <div className="min-w-0 flex-1">
-                                <h3
-                                  className="
-                                    truncate
-                                    text-[14px]
-                                    font-semibold
-                                    text-slate-900
-                                  "
-                                >
-                                  {project.name}
-                                </h3>
-
-                                <div
-                                  className="
-                                    mt-0.5
-                                    flex
-                                    items-center
-                                    gap-1
-                                    text-[12px]
-                                    text-slate-500
-                                  "
-                                >
-                                  <span>
-                                    Edited
-                                  </span>
-
-                                  <span>
-                                    {formatProjectDate(
-                                      project
-                                    )}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <ChevronRight
-                                size={16}
-                                className="
-                                  text-slate-300
-                                  transition-all
-                                  group-hover:translate-x-1
-                                  group-hover:text-slate-600
-                                "
-                              />
-                            </div>
-                          </button>
-                        )
-                      )}
-                  </div>
-                )}
-
-              {/* =================================================
-                  TEMPLATES
-              ================================================= */}
-
-              {activeTab ===
-                "templates" && (
-                <div
-                  className="
-                    mt-7
-                    grid
-                    grid-cols-1
-                    gap-7
-                    sm:grid-cols-2
-                  "
-                >
-                  {templates.map(
-                    (template) => {
-                      const Icon =
-                        template.icon;
-
-                      return (
-                        <button
-                          key={template.title}
-                          type="button"
-                          onClick={() =>
-                            handleTemplateClick(
-                              template.prompt
-                            )
-                          }
-                          className="
-                            group
-                            overflow-hidden
-                            rounded-2xl
-                            border
-                            border-slate-200
-                            bg-white
-                            text-left
-                            transition-all
-                            duration-300
-                            hover:-translate-y-1
-                            hover:border-slate-300
-                            hover:shadow-[0_18px_45px_rgba(15,23,42,0.10)]
-                          "
-                        >
-                          <div
-                            className="
-                              relative
-                              h-[240px]
-                              overflow-hidden
-                              bg-gradient-to-br
-                              from-blue-50
-                              via-purple-50
-                              to-pink-50
-                            "
-                          >
-                            <div
-                              className="
-                                absolute
-                                left-8
-                                right-8
-                                top-8
-                                overflow-hidden
-                                rounded-xl
-                                border
-                                border-white
-                                bg-white
-                                shadow-lg
-                              "
-                            >
-                              <div
-                                className="
-                                  flex
-                                  h-7
-                                  items-center
-                                  gap-1.5
-                                  border-b
-                                  border-slate-100
-                                  px-3
-                                "
-                              >
-                                <span className="h-2 w-2 rounded-full bg-slate-200" />
-                                <span className="h-2 w-2 rounded-full bg-slate-200" />
-                                <span className="h-2 w-2 rounded-full bg-slate-200" />
-                              </div>
-
-                              <div className="p-5">
-                                <div
-                                  className="
-                                    flex
-                                    h-10
-                                    w-10
-                                    items-center
-                                    justify-center
-                                    rounded-xl
-                                    bg-cyan-50
-                                    text-cyan-500
-                                  "
-                                >
-                                  <Icon size={19} />
-                                </div>
-
-                                <div
-                                  className="
-                                    mt-4
-                                    h-3
-                                    w-2/3
-                                    rounded-full
-                                    bg-slate-800
-                                  "
-                                />
-
-                                <div
-                                  className="
-                                    mt-2
-                                    h-2
-                                    w-4/5
-                                    rounded-full
-                                    bg-slate-200
-                                  "
-                                />
-
-                                <div
-                                  className="
-                                    mt-5
-                                    h-8
-                                    w-24
-                                    rounded-lg
-                                    bg-slate-900
-                                  "
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="p-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <h3
-                                className="
-                                  text-[14px]
-                                  font-semibold
-                                  text-slate-900
-                                "
-                              >
-                                {template.title}
-                              </h3>
-
-                              <ChevronRight
-                                size={15}
-                                className="
-                                  text-slate-400
-                                  transition-transform
-                                  group-hover:translate-x-1
-                                  group-hover:text-cyan-500
-                                "
-                              />
-                            </div>
-
-                            <p
-                              className="
-                                mt-1.5
-                                text-[12px]
-                                leading-5
-                                text-slate-500
-                              "
-                            >
-                              {template.description}
-                            </p>
-                          </div>
-                        </button>
-                      );
-                    }
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
-
-          <div className="h-10" />
-      </main>
     </div>
+
   );
+
+}
+
+function Avatar({ name, source }: { name: string; source: string }) {
+
+  const [failed, setFailed] = useState(false);
+
+  return <span title={name} aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[#bd460a] text-xs font-semibold text-white">{source && !failed ? <img src={source} alt="" onError={() => setFailed(true)} className="h-full w-full object-cover" /> : (Array.from(name)[0] ?? "?").toUpperCase()}</span>;
+
+}
+
+function TemplateArtwork({ template }: { template: DiscoveryTemplate }) {
+
+  const index = Math.max(0, TEMPLATES.findIndex(t => t.id === template.id));
+
+  const [bg, accent] = PALETTES[index % PALETTES.length]!;
+
+  const dashboard = ["dashboard", "finance", "internal-tool", "crm", "productivity", "ai-app"].includes(template.category);
+
+  return (
+
+    <div className="relative aspect-video overflow-hidden rounded-[12px]" style={{ backgroundColor: bg }}>
+
+      <svg viewBox="0 0 320 180" className="h-full w-full transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none" aria-hidden="true">
+
+        <rect x="13" y="12" width="294" height="156" rx="8" fill={accent} opacity=".10" />
+
+        <circle cx="25" cy="24" r="4" fill={accent} /><rect x="34" y="21" width="35" height="5" rx="2" fill={accent} opacity=".8" />
+
+        <rect x="264" y="19" width="32" height="10" rx="3" fill={accent} />
+
+        {dashboard ? <>
+
+          <rect x="19" y="38" width="53" height="123" rx="4" fill={accent} opacity=".18" />
+
+          {[50, 63, 76, 89].map(y => <rect key={y} x="26" y={y} width="34" height="4" rx="2" fill={accent} opacity=".55" />)}
+
+          {[80, 154, 228].map(x => <g key={x}><rect x={x} y="38" width="68" height="37" rx="5" fill={accent} opacity=".18" /><rect x={x+9} y="49" width="31" height="5" rx="2" fill={accent} /><rect x={x+9} y="60" width="43" height="4" rx="2" fill={accent} opacity=".5" /></g>)}
+
+          <rect x="80" y="83" width="216" height="78" rx="5" fill={accent} opacity=".13" /><polyline points="91,146 120,128 148,137 176,109 207,119 244,94 284,105" stroke={accent} strokeWidth="3" fill="none" strokeLinejoin="round" />
+
+        </> : <>
+
+          <text x="160" y="72" textAnchor="middle" fontSize="19" fontWeight="700" fill={accent}>{template.name}</text>
+
+          <rect x="85" y="85" width="150" height="4" rx="2" fill={accent} opacity=".5" /><rect x="125" y="101" width="70" height="17" rx="5" fill={accent} />
+
+          {[20, 115, 210].map(x => <g key={x}><rect x={x} y="130" width="90" height="30" rx="5" fill={accent} opacity=".18" /><rect x={x+9} y="139" width="30" height="4" rx="2" fill={accent} /><rect x={x+9} y="150" width="62" height="3" rx="1.5" fill={accent} opacity=".5" /></g>)}
+
+        </>}
+
+      </svg>
+
+      <span className="absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-[10px] font-medium text-white">Design concept</span>
+
+    </div>
+
+  );
+
+}
+
+interface RequestState { key: string; projects: DiscoveryProject[]; error: boolean }
+
+// The named export is intentional: DashboardPage will fail compilation if it
+
+// accidentally resolves the older placeholder rather than this implementation.
+
+export function DashboardProjectDiscovery(props: ProjectDiscoveryProps) {
+
+  const user = useAuthStore(state => state.user);
+
+  const authLoading = useAuthStore(state => state.isLoading);
+
+  return <DiscoveryContent key={user?.id ?? "guest"} {...props} userId={user?.id} authLoading={authLoading} ownerName={textValue(user?.user_metadata?.full_name) || textValue(user?.user_metadata?.name) || user?.email?.split("@")[0] || "You"} ownerAvatar={imageSource(user?.user_metadata?.avatar_url) || imageSource(user?.user_metadata?.picture)} />;
+
+}
+
+function DiscoveryContent({ isDark, onOpenProject, onSelectTemplate, onCreateProject, onBrowseAll, className = "", userId, ownerName, ownerAvatar, authLoading }: ProjectDiscoveryProps & { userId?: string; ownerName: string; ownerAvatar: string; authLoading: boolean }) {
+
+  const [tab, setTab] = useState<DiscoveryTab>("projects");
+
+  const [searching, setSearching] = useState(false);
+
+  const [query, setQuery] = useState("");
+
+  const [retry, setRetry] = useState(0);
+
+  const [request, setRequest] = useState<RequestState | null>(null);
+
+  const searchButton = useRef<HTMLButtonElement>(null);
+
+  const searchInput = useRef<HTMLInputElement>(null);
+
+  const returnFocus = useRef(false);
+
+  const key = userId ? `${HISTORY_PREFIX}:${encodeURIComponent(userId)}` : "";
+
+  const [history, setHistory] = useState<History>(() => readHistory(key));
+
+  const requestKey = JSON.stringify([userId ?? null, retry]);
+
+  const current = request?.key === requestKey ? request : null;
+
+  const loading = authLoading || (Boolean(userId) && !current);
+
+  useEffect(() => {
+
+    if (!userId) return;
+
+    let cancelled = false;
+
+    void getProjectsApi().then(data => {
+
+      if (cancelled) return;
+
+      if (!Array.isArray(data)) throw new Error("Invalid projects response");
+
+      const projects = [...new Map(data.filter(p => p && typeof p.id === "string" && typeof p.name === "string").map(p => [p.id, p])).values()];
+
+      setRequest({ key: requestKey, projects, error: false });
+
+    }).catch(() => { if (!cancelled) setRequest({ key: requestKey, projects: [], error: true }); });
+
+    return () => { cancelled = true; };
+
+  }, [userId, requestKey]);
+
+  useEffect(() => {
+
+    if (searching) searchInput.current?.focus({ preventScroll: true });
+
+    else if (returnFocus.current) { returnFocus.current = false; searchButton.current?.focus({ preventScroll: true }); }
+
+  }, [searching]);
+
+  useEffect(() => {
+
+    const sync = (event: StorageEvent) => { if (event.key === key || event.key === null) setHistory(readHistory(key)); };
+
+    window.addEventListener("storage", sync);
+
+    return () => window.removeEventListener("storage", sync);
+
+  }, [key]);
+
+  const viewedAt = (p: DiscoveryProject) => [history[p.id]?.viewedAt, p.last_opened_at, p.last_opened].sort((a,b) => stamp(b)-stamp(a))[0];
+
+  const matches = (...values: unknown[]) => query.trim().toLowerCase().split(/\s+/).every(word => values.map(textValue).join(" ").toLowerCase().includes(word));
+
+  const visibleProjects = (current?.projects ?? []).filter(p => {
+
+    if (tab === "projects" && p.user_id && p.user_id !== userId) return false;
+
+    if (tab === "recent" && !stamp(viewedAt(p))) return false;
+
+    return matches(p.name, p.description, p.prompt);
+
+  }).sort((a,b) => tab === "recent" ? stamp(viewedAt(b))-stamp(viewedAt(a)) : (stamp(b.updated_at) || stamp(b.created_at))-(stamp(a.updated_at) || stamp(a.created_at)));
+
+  const visibleTemplates = TEMPLATES.filter(t => matches(t.name, t.description, t.category));
+
+  const open = (project: DiscoveryProject) => {
+
+    if (key) {
+
+      const next = { ...history, ...readHistory(key), [project.id]: { projectId: project.id, viewedAt: new Date().toISOString() } };
+
+      const limited = Object.fromEntries(Object.entries(next).sort((a,b) => stamp(b[1].viewedAt)-stamp(a[1].viewedAt)).slice(0,50));
+
+      setHistory(limited);
+
+      try { localStorage.setItem(key, JSON.stringify(limited)); } catch { /* still works during this session */ }
+
+    }
+
+    onOpenProject(project);
+
+  };
+
+  const closeSearch = () => { returnFocus.current = true; setSearching(false); setQuery(""); };
+
+  const muted = isDark ? "text-[#a3a3a3]" : "text-[#676767]";
+
+  const border = isDark ? "border-[#464646]" : "border-[#d4d4d4]";
+
+  const capsule = isDark ? "bg-[#262626]" : "bg-[#f1f1f1]";
+
+  const focus = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent";
+
+  const action = `inline-flex shrink-0 items-center justify-center gap-2 rounded-full px-3 py-2 text-[13px] font-medium transition-colors ${focus} ${isDark ? "hover:bg-white/10" : "hover:bg-black/[0.05]"}`;
+
+  const empty = (title: string, description: string, label: string, callback: () => void, Icon = FolderOpen) => (
+
+    <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+
+      <Icon size={30} strokeWidth={1.5} className={muted} aria-hidden="true" />
+
+      <h3 className="text-[15px] font-semibold">{title}</h3><p className={`max-w-sm text-[13px] ${muted}`}>{description}</p>
+
+      <button type="button" onClick={callback} className={`${action} rounded-lg border ${border}`}>{label}</button>
+
+    </div>
+
+  );
+
+  return (
+
+    <section data-icogon-discovery="gallery-v3" aria-label="Project discovery" className={`relative w-full min-w-0 rounded-[24px] px-4 pb-7 pt-5 sm:px-6 sm:pt-6 sm:pb-8 ${isDark ? "bg-[#212121] text-neutral-100" : "bg-[#f7f7f7] text-[#171717]"} ${className}`} style={{ containerType: "inline-size", containerName: "icogon-discovery-v2" }}>
+
+      <style>{`
+
+        .icogon-discovery-v2-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:24px 20px; }
+
+        @container icogon-discovery-v2 (min-width: 520px) { .icogon-discovery-v2-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+        @container icogon-discovery-v2 (min-width: 850px) { .icogon-discovery-v2-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+
+      `}</style>
+
+      <div className="mb-6 flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
+
+        {searching ? (
+
+          <div className={`flex w-full min-w-0 items-center gap-2 rounded-full border px-3 py-1 ${border} ${capsule}`}>
+
+            <Search size={16} className={muted} aria-hidden="true" />
+
+            <input ref={searchInput} type="search" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === "Escape" && !e.nativeEvent.isComposing) closeSearch(); }} placeholder={`Search ${tab === "templates" ? "templates" : "projects"}...`} aria-label="Search discovery" className="h-9 min-w-0 flex-1 border-0 bg-transparent text-[14px] outline-none" />
+
+            {query && <button type="button" onClick={() => { setQuery(""); searchInput.current?.focus(); }} className={action} aria-label="Clear search">Clear</button>}
+
+            <button type="button" onClick={closeSearch} className={action} aria-label="Close search"><X size={17} /></button>
+
+          </div>
+
+        ) : <>
+
+          <div role="group" aria-label="Discovery navigation" className={`flex max-w-full min-w-0 items-center gap-0.5 overflow-x-auto rounded-full border p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${border} ${capsule}`}>
+
+            <button ref={searchButton} type="button" onClick={() => setSearching(true)} aria-label="Search projects and templates" className={`${action} ${muted}`}><Search size={16} strokeWidth={1.7} /><span className="hidden sm:inline">Search</span></button>
+
+            {TABS.map(t => <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => { setTab(t.id); setQuery(""); }} className={`${action} whitespace-nowrap border ${tab === t.id ? isDark ? "border-[#565656] bg-[#414141] text-white shadow-sm" : "border-[#c6c6c6] bg-[#fafafa] text-[#111] shadow-sm" : `border-transparent ${muted}`}`}>{t.label}</button>)}
+
+          </div>
+
+          <button type="button" className={`${action} ml-auto`} onClick={() => onBrowseAll(tab)}>Browse all<ArrowRight size={15} strokeWidth={1.7} /></button>
+
+        </>}
+
+      </div>
+
+      {tab === "templates" ? (
+
+        <section aria-label="Icogon template gallery">
+
+          {visibleTemplates.length ? <div className="icogon-discovery-v2-grid">{visibleTemplates.map(template => <button key={template.id} type="button" onClick={() => onSelectTemplate(template)} className={`group min-w-0 rounded-xl text-left ${focus}`}><TemplateArtwork template={template} /><span className="mt-3 flex items-center justify-between gap-2 px-1 text-[14px] font-medium">{template.name}<ArrowUpRight size={16} className={muted} /></span><span className={`mt-1 block px-1 text-[12px] ${muted}`}>{template.description}</span></button>)}</div> : empty("No matching templates", "Try a different search term.", "Clear search", () => setQuery(""), LayoutTemplate)}
+
+        </section>
+
+      ) : loading ? (
+
+        <div role="status" aria-label="Loading projects" className="icogon-discovery-v2-grid">{[0,1,2].map(i => <div key={i} className="motion-safe:animate-pulse"><div className={`aspect-video rounded-xl ${isDark ? "bg-white/5" : "bg-black/[0.06]"}`} /><div className={`mt-3 h-4 w-1/2 rounded ${isDark ? "bg-white/5" : "bg-black/[0.06]"}`} /></div>)}</div>
+
+      ) : current?.error ? empty("Could not load projects", "Your gallery is ready. Check the API connection and try again.", "Try again", () => setRetry(n => n + 1), RefreshCw) : visibleProjects.length ? (
+
+        <div className="icogon-discovery-v2-grid">
+
+          {visibleProjects.map(project => {
+
+            const own = !project.user_id || project.user_id === userId;
+
+            const name = textValue(project.owner_name) || (own ? ownerName : "Unknown owner");
+
+            const avatar = imageSource(project.owner_avatar_url) || (own ? ownerAvatar : "");
+
+            const date = tab === "recent" ? viewedAt(project) : stamp(project.updated_at) ? project.updated_at : project.created_at;
+
+            const activity = tab === "recent" ? "Viewed" : stamp(project.updated_at) ? "Edited" : "Created";
+
+            return <button key={project.id} type="button" onClick={() => open(project)} aria-label={`Open project ${project.name}`} className={`group min-w-0 rounded-xl text-left ${focus}`}>
+
+              <ProjectPreview project={project} isDark={isDark} userId={userId} />
+
+              <span className="mt-3 flex min-w-0 items-center gap-2.5 px-1">
+
+                <Avatar key={`${name}:${avatar}`} name={name} source={avatar} />
+
+                <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-medium">{project.name}</span><span className={`mt-0.5 block truncate text-[12px] ${muted}`}>{name}{ago(date) ? ` · ${activity} ${ago(date)}` : ""}</span></span>
+
+              </span>
+
+            </button>;
+
+          })}
+
+        </div>
+
+      ) : query.trim() ? empty("No matching projects", "Try another search term.", "Clear search", () => setQuery(""), Search) : tab === "recent" ? empty("No recently viewed projects", "Open a project to find it here next time.", "My projects", () => setTab("projects"), Clock) : empty("No projects yet", "Start with an idea and build your first project.", "Create a project", onCreateProject, Plus)}
+
+    </section>
+
+  );
+
+}
+
+const scrollBehavior = (): ScrollBehavior =>
+
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+    ? "auto"
+
+    : "smooth";
+
+const DashboardPage: FC = () => {
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  // React Router state is supplied by AutomationsPage, never by an untrusted URL.
+  const routeState = location.state as
+    | { intent?: unknown; initialPrompt?: unknown; initialMode?: unknown }
+    | null;
+  const schedulingIntent = routeState?.intent === "schedule_automation";
+  const initialAutomationPrompt = schedulingIntent && typeof routeState?.initialPrompt === "string"
+    ? routeState.initialPrompt
+    : "";
+  const [automationDraft, setAutomationDraft] = useState<string | null>(null);
+  const isDark = useDashboardDarkMode();
+
+  const user = useAuthStore((state) => state.user);
+
+  const promptRef = useRef<HTMLDivElement>(null);
+
+  const discoveryRef = useRef<HTMLDivElement>(null);
+
+  const displayName = [
+
+    user?.user_metadata?.full_name,
+
+    user?.user_metadata?.name,
+
+    user?.email?.split("@")[0],
+
+  ].find((value): value is string => typeof value === "string" && Boolean(value.trim()))?.trim() || "there";
+
+  useEffect(() => {
+    if (!schedulingIntent) return;
+    const frame = window.requestAnimationFrame(() => {
+      promptRef.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [schedulingIntent, location.key]);
+
+  const handleAutomationDraft = (value: string) => {
+    // This is intentionally a draft, NOT a task created by the scheduler.
+    setAutomationDraft(value);
+  };
+
+  const handleCreateProject = () => {
+
+    promptRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: "center" });
+
+    promptRef.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
+
+  };
+
+  const handleOpenProject = (project: DiscoveryProject) => {
+
+    if (!project.id.trim()) return;
+
+    navigate(`/builder/${encodeURIComponent(project.id)}`);
+
+  };
+
+  const handleSelectTemplate = (template: DiscoveryTemplate) => {
+
+    const prompt = template.prompt.trim();
+
+    if (!prompt) {
+
+      handleCreateProject();
+
+      return;
+
+    }
+
+    navigate(`/builder?${new URLSearchParams({ prompt }).toString()}`, {
+
+      state: { source: "dashboard-template", templateId: template.id, templateName: template.name },
+
+    });
+
+  };
+
+  const handleBrowseAll = (tab: DiscoveryTab) => {
+
+    if (tab === "templates") {
+
+      const gallery = discoveryRef.current?.querySelector<HTMLElement>('section[aria-label="Icogon template gallery"]');
+
+      gallery?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+
+      gallery?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+
+      return;
+
+    }
+
+    navigate("/projects");
+
+  };
+
+  return (
+
+    <div data-icogon-home="gallery-v4" className={`relative isolate min-h-full w-full min-w-0 ${isDark ? "text-white" : "text-[#151515]"}`}>
+
+      <section
+
+        aria-label="Start a new project"
+
+        className="relative flex w-full min-w-0 flex-col items-center justify-center px-4 pb-8 pt-28 sm:px-6 sm:pb-10 sm:pt-32"
+
+        style={{ minHeight: "max(580px, calc(100svh - 112px))" }}
+
+      >
+
+        <div className={`mb-6 inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-medium ${isDark ? "border-white/15 bg-[#242424]/90 text-white" : "border-slate-200 bg-white text-slate-700"}`}>
+
+          <span aria-hidden="true" className="flex -space-x-1.5">
+
+            <span className="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-br from-orange-400 to-rose-500 text-white"><Sparkles size={11} /></span>
+
+            <span className="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-white"><Code2 size={11} /></span>
+
+          </span>
+
+          <span>Add AI to your apps</span>
+
+          <ArrowRight size={13} aria-hidden="true" className="opacity-70" />
+
+        </div>
+
+        <h1 className="max-w-full break-words text-center text-[clamp(1.75rem,3vw,2.25rem)] font-semibold leading-[1.08] tracking-[-0.035em]" style={{ caretColor: "transparent" }}>
+
+          What’s the vision, {displayName}?
+
+        </h1>
+
+        <div ref={promptRef} className="relative z-20 mx-auto mt-6 w-full min-w-0 sm:mt-8" style={{ maxWidth: 760 }}>
+
+          <PromptInput
+            key={schedulingIntent ? `automation:${location.key}` : "default"}
+            initialPrompt={initialAutomationPrompt}
+            initialMode={schedulingIntent ? "Chat" : "Build"}
+            automationIntent={schedulingIntent}
+            onAutomationSubmit={handleAutomationDraft}
+          />
+          {schedulingIntent && (
+            <p className={`mt-3 text-center text-xs ${isDark ? "text-neutral-400" : "text-neutral-600"}`}>
+              Automation planning mode · No task is scheduled until you confirm it in a connected scheduler.
+            </p>
+          )}
+          {automationDraft !== null && (
+            <div role="status" className={`mt-4 rounded-xl border p-4 text-sm ${isDark ? "border-white/15 bg-[#242424] text-neutral-200" : "border-slate-200 bg-white text-slate-700"}`}>
+              <p className="font-semibold">Scheduling request drafted</p>
+              <p className="mt-1">Your request has not been scheduled. ICOGON needs its AI planner and scheduling backend connected before it can run tasks automatically.</p>
+              <p className="mt-2 whitespace-pre-wrap break-words opacity-80">{automationDraft}</p>
+            </div>
+          )}
+
+        </div>
+
+      </section>
+
+      {/* Real discovery gallery — no temporary workspace banner. */}
+
+      <div ref={discoveryRef} className="relative mx-auto w-full min-w-0 px-3 pb-8 sm:px-8 lg:px-12" style={{ maxWidth: 1600 }}>
+
+        <DashboardProjectDiscovery
+
+          key={user?.id ?? "guest"}
+
+          isDark={isDark}
+
+          onOpenProject={handleOpenProject}
+
+          onSelectTemplate={handleSelectTemplate}
+
+          onCreateProject={handleCreateProject}
+
+          onBrowseAll={handleBrowseAll}
+
+        />
+
+      </div>
+
+    </div>
+
+  );
+
 };
 
 export default DashboardPage;

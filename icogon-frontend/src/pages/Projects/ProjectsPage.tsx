@@ -1,1159 +1,512 @@
-
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowRight,
-  Clock3,
-  FolderPlus,
-  FolderOpen,
-  Grid2X2,
-  List,
-  MoreHorizontal,
-  Plus,
-  RefreshCw,
-  Search,
-  Trash2,
-  X,
+  ArrowRight, Camera, ChevronDown, Clock3, FolderOpen, FolderPlus, Grid2X2,
+  List, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2, X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-
-import {
-  deleteProjectApi,
-  getProjectsApi,
-  type ProjectResponse,
-} from "../../api/projectApi";
-import { useTheme } from "../../context/ThemeContext";
+import { deleteProjectApi, getProjectsApi, updateProjectNameApi, type ProjectResponse } from "../../api/projectApi";
+import { useTheme } from "../../components/context/ThemeContext";
 import { supabase } from "../../lib/supabase";
-type ViewMode = "grid" | "list";
-type SortMode = "updated" | "oldest" | "name";
 
-const PAGE_STYLE = `
-.projects-page {
-  --projects-bg: var(--background, #090B11);
---projects-panel: var(--card, #090B11);
---projects-text: var(--foreground, #f5f6fa);
---projects-muted: var(--muted-foreground, #858b9a);
---projects-border: var(--border, rgba(148, 163, 184, .16));
-  min-height: 100%;
-  color: var(--projects-text);
-  background: var(--projects-bg);
-}
-.projects-page * { box-sizing: border-box; }
-.projects-page__inner {
-  width: min(100%, 1460px);
-  margin: 0 auto;
-  padding: clamp(18px, 2.4vw, 30px) clamp(16px, 2.2vw, 30px) 42px;
-}
-.projects-page__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 22px;
-}
-.projects-page__heading {
-  margin: 0;
-  color: var(--projects-text);
-  font-size: clamp(21px, 1.9vw, 25px);
-  font-weight: 680;
-  letter-spacing: -.045em;
-}
-.projects-page__actions { display: flex; align-items: center; gap: 10px; }
-.projects-page__button {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 12px;
-  border: 1px solid var(--projects-border);
-  border-radius: 999px;
-  color: var(--projects-text);
-  background: color-mix(in srgb, var(--projects-text), var(--projects-panel) 65%, transparent);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
-}
-.projects-page__button:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--projects-text)40%, var(--projects-border)); background: color-mix(in srgb, var(--projects-text)40%, var(--projects-panel) 65%, transparent); }
-.projects-page__button:disabled { opacity: .55; cursor: wait; transform: none; }
-.projects-page__button--primary {
-  color: #ffffff;
-  background: rgba(12, 14, 20, 0.85);
-  border: 1px solid rgba(190, 195, 215, 0.48);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.025),
-    0 8px 24px rgba(75, 91, 255, 0.12);
-  transition: all 0.22s ease;
-}
+const projectThumbnailKey = (userId: string, projectId: string) =>
+  `icogon-project-thumbnail:${userId}:${projectId}`;
 
-.projects-page__button--primary:hover {
-  transform: translateY(-2px);
-  color: #ffffff;
-  background: #171923;
-  border-color: rgba(170, 180, 220, 0.75);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.07),
-    0 8px 28px rgba(77, 105, 255, 0.22),
-    0 0 18px rgba(130, 91, 255, 0.12);
-}
-
-.projects-page__button--primary:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(75, 91, 255, 0.12);
-}
-.projects-page__button--primary:hover { box-shadow: 0 7px 24px rgba(76, 91, 245, .32), inset 0 1px rgba(255,255,255,.25); }
-.projects-page__toolbar {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 13px;
-}
-.projects-page__search {
-  display: flex;
-  width: min(100%, 360px);
-  min-height: 36px;
-  align-items: center;
-  gap: 9px;
-  padding: 0 11px;
-  border: 1px solid var(--projects-border);
-  border-radius: 999px;
-  color: var(--projects-muted);
-  background: var(--projects-panel);
-  transition: border-color .15s ease, box-shadow .15s ease;
-}
-.projects-page__search:focus-within {
-  border-color: color-mix(in srgb, #7770ff 65%, var(--projects-border));
-  box-shadow: 0 0 0 3px rgba(111, 102, 255, .11);
-}
-.projects-page__search input {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  color: var(--projects-text);
-  background: transparent;
-  font: inherit;
-  font-size: 11px;
-}
-.projects-page__search input::placeholder { color: var(--projects-muted); }
-.projects-page__select {
-  min-height: 36px;
-  padding: 0 34px 0 14px;
-  border: 1px solid var(--projects-border);
-  border-radius: 999px;
-  outline: 0;
-  color: var(--projects-text);
-  background: var(--projects-panel);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-.projects-page__view-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  padding: 3px;
-  border: 1px solid var(--projects-border);
-  border-radius: 999px;
-  background: var(--projects-panel);
-}
-.projects-page__view-button {
-  display: grid;
-  width: 31px;
-  height: 29px;
-  place-items: center;
-  border: 0;
-  border-radius: 999px;
-  color: var(--projects-muted);
-  background: transparent;
-  cursor: pointer;
-}
-.projects-page__view-button[aria-pressed="true"] {
-  color: var(--projects-text);
-  background: color-mix(in srgb, var(--projects-text) 10%, transparent);
-}
-.projects-page__meta-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 37px;
-  margin-bottom: 18px;
-  padding: 0 12px;
-  border: 1px solid color-mix(in srgb, var(--projects-border) 75%, transparent);
-  border-radius: 13px;
-  background: color-mix(in srgb, var(--projects-panel) 65%, transparent);
-}
-.projects-page__filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 9px;
-  border: 1px solid var(--projects-border);
-  border-radius: 7px;
-  color: var(--projects-muted);
-  background: color-mix(in srgb, var(--projects-text) 4%, transparent);
-  font-size: 10px;
-}
-.projects-page__filter-chip strong { color: var(--projects-text); font-weight: 600; }
-.projects-page__owner-avatar {
-  display: block;
-  width: 23px;
-  height: 23px;
-  flex: 0 0 23px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,.16);
-  border-radius: 50%;
-  object-fit: cover;
-}
-.projects-page__owner-avatar--fallback {
-  display: grid;
-  place-items: center;
-  color: #fff;
-  background: linear-gradient(135deg, #536fe8, #8654c8);
-  font-size: 10px;
-  font-weight: 700;
-}
-.projects-page__clear {
-  border: 0;
-  color: var(--projects-muted);
-  background: transparent;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-.projects-page__clear:hover { color: var(--projects-text); }
-.projects-page__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 245px), 285px));
-  align-items: start;
-  gap: 18px 16px;
-}
-.projects-page__card-shell {
-  position: relative;
-  min-width: 0;
-  padding: 1.5px;
-  border-radius: 17px;
-  background: linear-gradient(125deg, #788aff 0%, #a879f4 42%, #63cce5 72%, #8875f4 100%);
-  box-shadow: 0 2px 10px rgba(105, 112, 255, .08);
-  transition: transform .48s cubic-bezier(.2,.75,.25,1), box-shadow .48s ease;
-  will-change: transform;
-}
-.projects-page__card-shell:hover {
-  transform: translateY(-5px) scale(1.012);
-  box-shadow: 0 14px 28px rgba(91, 83, 232, .16), 0 0 16px rgba(100, 113, 255, .10);
-}
-@media (prefers-reduced-motion: reduce) {
-  .projects-page__card-shell { transition: none; }
-  .projects-page__card-shell:hover { transform: none; }
-}
-.projects-page__card {
-  position: relative;
-  z-index: 1;
-  overflow: hidden;
-  border-radius: 16px;
-  color: var(--projects-text);
-  background: var(--projects-panel);
-}
-.projects-page__thumbnail {
-  position: relative;
-  display: grid;
-  height: 132px;
-  overflow: hidden;
-  place-items: center;
-  isolation: isolate;
-  background:
-    radial-gradient(ellipse at 22% 18%, rgba(74, 119, 255, .26), transparent 42%),
-    radial-gradient(ellipse at 82% 75%, rgba(157, 77, 239, .24), transparent 42%),
-    linear-gradient(135deg, #171a29, #10121b 54%, #171326);
-}
-.projects-page__thumbnail-image {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  transition: transform .6s ease;
-}
-.projects-page__thumbnail:hover .projects-page__thumbnail-image {
-  transform: scale(1.035);
-}
-.projects-page__thumbnail-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background: linear-gradient(180deg, rgba(0,0,0,.04) 20%, rgba(0,0,0,.12) 55%, rgba(0,0,0,.58) 100%);
-}
-.projects-page__thumbnail::before,
-.projects-page__thumbnail::after {
-  position: absolute;
-  z-index: -1;
-  display: none;
-  border: 1px solid rgba(190, 194, 255, .15);
-  border-radius: 16px;
-  content: "";
-  transform: rotate(-13deg);
-}
-.projects-page__thumbnail::before { width: 74%; height: 62%; left: 13%; top: 22%; background: linear-gradient(145deg, rgba(255,255,255,.08), rgba(255,255,255,.015)); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
-.projects-page__thumbnail::after { width: 57%; height: 42%; left: 22%; top: 30%; border-color: rgba(125, 133, 255, .2); background: linear-gradient(135deg, rgba(79, 104, 255, .13), rgba(150, 85, 231, .09)); }
-.projects-page__thumbnail-mark {
-  display: grid;
-  width: 47px;
-  height: 47px;
-  place-items: center;
-  border: 1px solid rgba(255,255,255,.18);
-  border-radius: 14px;
-  color: rgba(255,255,255,.9);
-  background: rgba(255,255,255,.08);
-  box-shadow: 0 8px 28px rgba(0,0,0,.2);
-  backdrop-filter: blur(12px);
-  font-size: 19px;
-  font-weight: 650;
-}
-.projects-page__thumbnail-label {
-  position: absolute;
-  z-index: 2;
-  right: 13px;
-  bottom: 11px;
-  left: 13px;
-  overflow: hidden;
-  color: rgba(255,255,255,.68);
-  font-size: 9px;
-  letter-spacing: .12em;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.projects-page__card-content { padding: 11px 12px 10px; }
-.projects-page__card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.projects-page__card-title {
-  overflow: hidden;
-  margin: 0;
-  color: var(--projects-text);
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: -.015em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.projects-page__more {
-  display: grid;
-  width: 27px;
-  height: 27px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 0;
-  border-radius: 7px;
-  color: var(--projects-muted);
-  background: transparent;
-  cursor: pointer;
-}
-.projects-page__more:hover { color: var(--projects-text); background: color-mix(in srgb, var(--projects-text) 8%, transparent); }
-.projects-page__description {
-  display: -webkit-box;
-  min-height: 34px;
-  overflow: hidden;
-  margin: 5px 0 0;
-  color: var(--projects-muted);
-  font-size: 10px;
-  line-height: 1.65;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-.projects-page__card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 12px;
-  padding-top: 11px;
-  border-top: 1px solid var(--projects-border);
-}
-.projects-page__date {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--projects-muted);
-  font-size: 9px;
-}
-.projects-page__open {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 0;
-  color: var(--projects-muted);
-  background: transparent;
-  font: inherit;
-  font-size: 10px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.projects-page__open:hover { color: var(--projects-text); }
-.projects-page__list { display: flex; flex-direction: column; gap: 9px; }
-.projects-page__list-item {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 10px;
-  border: 1px solid var(--projects-border);
-  border-radius: 13px;
-  background: var(--projects-panel);
-  transition: border-color .15s ease;
-}
-.projects-page__list-item:hover { border-color: rgba(133, 115, 255, .5); }
-.projects-page__list-thumb {
-  display: grid;
-  width: 62px;
-  height: 48px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 8px;
-  color: white;
-  background: linear-gradient(135deg, #273a76, #603c91 55%, #1a6676);
-  font-size: 17px;
-  font-weight: 650;
-}
-.projects-page__list-main { min-width: 0; flex: 1; }
-.projects-page__list-title { overflow: hidden; margin: 0; font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.projects-page__list-desc { overflow: hidden; margin: 4px 0 0; color: var(--projects-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.projects-page__empty,
-.projects-page__error {
-  display: flex;
-  min-height: 300px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 36px 20px;
-  border: 1px dashed var(--projects-border);
-  border-radius: 18px;
-  text-align: center;
-  background: color-mix(in srgb, var(--projects-panel) 60%, transparent);
-}
-.projects-page__empty-icon {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  place-items: center;
-  border: 1px solid var(--projects-border);
-  border-radius: 14px;
-  color: #a69bff;
-  background: color-mix(in srgb, #8778ff 12%, var(--projects-panel));
-}
-.projects-page__empty h2 { margin: 15px 0 0; font-size: 15px; font-weight: 650; }
-.projects-page__empty p { max-width: 360px; margin: 6px 0 0; color: var(--projects-muted); font-size: 11px; line-height: 1.65; }
-.projects-page__skeleton {
-  height: 226px;
-  overflow: hidden;
-  border: 1px solid var(--projects-border);
-  border-radius: 17px;
-  background: var(--projects-panel);
-}
-.projects-page__skeleton-thumb { height: 132px; background: linear-gradient(100deg, color-mix(in srgb, var(--projects-text) 4%, transparent) 20%, color-mix(in srgb, var(--projects-text) 8%, transparent) 38%, color-mix(in srgb, var(--projects-text) 4%, transparent) 56%); background-size: 200% 100%; animation: projects-shimmer 1.4s ease infinite; }
-.projects-page__skeleton-line { height: 9px; margin: 17px 15px 0; border-radius: 10px; background: color-mix(in srgb, var(--projects-text) 7%, transparent); }
-@keyframes projects-shimmer { to { background-position-x: -200%; } }
-
-/* Animated first-project experience */
-.projects-page__welcome {
-  position: relative;
-  display: flex;
-  min-height: 390px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  isolation: isolate;
-  padding: 42px 20px;
-  border: 1px solid color-mix(in srgb, var(--projects-border) 72%, transparent);
-  border-radius: 20px;
-  text-align: center;
-  background:
-    radial-gradient(ellipse at 50% 38%, rgba(119, 103, 255, .10), transparent 42%),
-    color-mix(in srgb, var(--projects-panel) 38%, transparent);
-}
-.projects-page__welcome-glow {
-  position: absolute;
-  z-index: -1;
-  top: 50%;
-  left: 50%;
-  width: 330px;
-  height: 250px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(112, 99, 255, .19), rgba(71, 178, 230, .07) 48%, transparent 72%);
-  filter: blur(18px);
-  transform: translate(-50%, -62%);
-  animation: projects-welcome-glow 4s ease-in-out infinite;
-}
-.projects-page__welcome-art {
-  position: relative;
-  display: grid;
-  width: 176px;
-  height: 142px;
-  place-items: center;
-  margin-bottom: 20px;
-}
-.projects-page__welcome-window {
-  position: absolute;
-  display: flex;
-  width: 112px;
-  height: 84px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(151, 142, 255, .42);
-  border-radius: 15px;
-  color: #a99cff;
-  background: color-mix(in srgb, var(--projects-panel) 88%, #7468ff 12%);
-  box-shadow: 0 12px 38px rgba(89, 79, 205, .16), inset 0 1px rgba(255,255,255,.12);
-  animation: projects-welcome-float 3.6s ease-in-out infinite;
-}
-.projects-page__welcome-window::before {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: 17px;
-  border-bottom: 1px solid rgba(151, 142, 255, .18);
-  border-radius: 14px 14px 0 0;
-  background: rgba(151, 142, 255, .08);
-  content: "";
-}
-.projects-page__welcome-window svg { margin-top: 12px; }
-.projects-page__welcome-plus {
-  position: absolute;
-  right: 18px;
-  bottom: 13px;
-  display: grid;
-  width: 35px;
-  height: 35px;
-  place-items: center;
-  border: 1px solid rgba(255,255,255,.35);
-  border-radius: 11px;
-  color: #fff;
-  background: linear-gradient(135deg, #6878ff, #9860e9);
-  box-shadow: 0 7px 22px rgba(111, 94, 245, .35);
-  animation: projects-welcome-pulse 2.2s ease-in-out infinite;
-}
-.projects-page__welcome-spark {
-  position: absolute;
-  color: #a99cff;
-  animation: projects-welcome-twinkle 2.4s ease-in-out infinite;
-}
-.projects-page__welcome-spark--one { top: 12px; left: 17px; }
-.projects-page__welcome-spark--two { top: 30px; right: 12px; animation-delay: .7s; }
-.projects-page__welcome-spark--three { bottom: 8px; left: 24px; animation-delay: 1.2s; }
-.projects-page__welcome-title {
-  margin: 0;
-  color: var(--projects-text);
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -.035em;
-}
-.projects-page__welcome-copy {
-  max-width: 390px;
-  margin: 9px 0 0;
-  color: var(--projects-muted);
-  font-size: 12px;
-  line-height: 1.7;
-}
-.projects-page__welcome-cta {
-  display: inline-flex;
-  min-height: 42px;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  margin-top: 22px;
-  padding: 0 19px;
-  border: 1px solid rgba(255,255,255,.18);
-  border-radius: 999px;
-  color: #fff;
-  background: linear-gradient(110deg, #526fff, #8658e9);
-  box-shadow: 0 8px 24px rgba(91, 91, 232, .25);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 650;
-  cursor: pointer;
-  transition: transform .2s ease, box-shadow .2s ease;
-  animation: projects-welcome-cta 2.8s ease-in-out infinite;
-}
-.projects-page__welcome-cta:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 12px 30px rgba(91, 91, 232, .36);
-}
-.projects-page__welcome-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  color: var(--projects-muted);
-  font-size: 10px;
-  opacity: .8;
-}
-@keyframes projects-welcome-float {
-  0%, 100% { transform: translateY(0) rotate(-3deg); }
-  50% { transform: translateY(-10px) rotate(2deg); }
-}
-@keyframes projects-welcome-pulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 7px 22px rgba(111, 94, 245, .30); }
-  50% { transform: scale(1.09); box-shadow: 0 9px 28px rgba(111, 94, 245, .48); }
-}
-@keyframes projects-welcome-twinkle {
-  0%, 100% { opacity: .35; transform: scale(.8); }
-  50% { opacity: 1; transform: scale(1.18); }
-}
-@keyframes projects-welcome-glow {
-  0%, 100% { opacity: .55; transform: translate(-50%, -62%) scale(.9); }
-  50% { opacity: 1; transform: translate(-50%, -62%) scale(1.12); }
-}
-@keyframes projects-welcome-cta {
-  0%, 75%, 100% { box-shadow: 0 8px 24px rgba(91, 91, 232, .23); }
-  85% { box-shadow: 0 8px 32px rgba(91, 91, 232, .42), 0 0 0 5px rgba(127, 105, 255, .08); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .projects-page__welcome *,
-  .projects-page__welcome::before {
-    animation: none !important;
-    transition: none !important;
+function readLocalProjectThumbnail(userId: string, projectId: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(projectThumbnailKey(userId, projectId));
+  } catch {
+    return null;
   }
 }
-.projects-page__menu-wrap { position: relative; }
-.projects-page__menu {
-  position: absolute;
-  z-index: 5;
-  top: 32px;
-  right: 0;
-  min-width: 135px;
-  padding: 5px;
-  border: 1px solid var(--projects-border);
-  border-radius: 10px;
-  background: var(--projects-panel);
-  box-shadow: 0 12px 35px rgba(0,0,0,.22);
-}
-.projects-page__menu button {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
-  border: 0;
-  border-radius: 6px;
-  color: var(--projects-text);
-  background: transparent;
-  font: inherit;
-  font-size: 10px;
-  text-align: left;
-  cursor: pointer;
-}
-.projects-page__menu button:hover { background: color-mix(in srgb, var(--projects-text) 7%, transparent); }
-@media (max-width: 650px) {
-  .projects-page__inner { padding: 22px 15px 40px; }
-  .projects-page__top { align-items: flex-start; margin-bottom: 22px; }
-  .projects-page__button--folder { display: none; }
-  .projects-page__button { min-height: 36px; padding: 0 12px; font-size: 11px; }
-  .projects-page__toolbar { flex-wrap: wrap; }
-  .projects-page__search { width: 100%; flex-basis: 100%; }
-  .projects-page__select { flex: 1; }
-  .projects-page__meta-row { margin-bottom: 18px; }
-  .projects-page__grid { grid-template-columns: 1fr; }
-  .projects-page__thumbnail { height: 185px; }
-}
-`;
 
+function saveProjectThumbnail(userId: string, projectId: string, dataUrl: string): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(projectThumbnailKey(userId, projectId), dataUrl);
+}
 
-const PROJECT_PREVIEW_IMAGES = {
-  commerce: "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=900&q=82",
-  photography: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=900&q=82",
-  portfolio: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=82",
-  food: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=900&q=82",
-  property: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=900&q=82",
-  fitness: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=900&q=82",
-  analytics: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=900&q=82",
-  technology: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=900&q=82",
-  default: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=900&q=82",
+function removeProjectThumbnail(userId: string, projectId: string): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(projectThumbnailKey(userId, projectId));
+}
+
+// Module-level cache survives React route changes but resets on a full browser reload.
+const projectsCache = new Map<string, ProjectResponse[]>();
+type ViewMode = "grid" | "list";
+type SortMode = "updated" | "oldest" | "name";
+type ProjectWithPreview = ProjectResponse & {
+  thumbnail_url?: string | null;
+  screenshot_url?: string | null;
+  preview_image_url?: string | null;
 };
 
-function getProjectPreviewImage(project: ProjectResponse): string {
-  const text = `${project.name ?? ""} ${project.description ?? ""}`.toLowerCase();
+const styles = `
+.ic-projects { --ip-text:#f5f5f6; --ip-muted:#a0a0a8; --ip-border:rgba(255,255,255,.13); --ip-surface:rgba(24,24,27,.76); --ip-hover:rgba(255,255,255,.07); color:var(--ip-text); min-height:100%; background:transparent; }
+.ic-projects.light { --ip-text:#18181b; --ip-muted:#71717a; --ip-border:rgba(24,24,27,.15); --ip-surface:rgba(255,255,255,.7); --ip-hover:rgba(24,24,27,.05); }
+.ic-projects * { box-sizing:border-box; }
+.ic-projects__inner { width:min(100%,1120px); margin:0 auto; padding:clamp(28px,3.6vw,48px) clamp(18px,3vw,40px) 70px; }
+.ic-projects__header { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:30px; }
+.ic-projects__title { font-size:clamp(23px,2.2vw,29px); letter-spacing:-.045em; font-weight:650; margin:0; }
+.ic-projects__actions,.ic-projects__toolbar,.ic-projects__switch { display:flex; align-items:center; gap:8px; }
+.ic-projects__button,.ic-projects__select { min-height:37px; display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--ip-border); border-radius:999px; padding:0 15px; background:var(--ip-surface); color:var(--ip-text); font:inherit; font-size:13px; font-weight:500; cursor:pointer; white-space:nowrap; }
+.ic-projects__button:hover:not(:disabled),.ic-projects__select:hover { background:var(--ip-hover); }
+.ic-projects__button:focus-visible,.ic-projects__select:focus-visible,.ic-projects__thumb:focus-visible,.ic-projects__menu-trigger:focus-visible { outline:2px solid #4c82ff; outline-offset:3px; }
+.ic-projects__button:disabled { opacity:.45; cursor:not-allowed; }
+.ic-projects__button--primary { background:#2458ec; border-color:#1947cb; color:#fff; box-shadow:0 2px 4px rgba(0,0,0,.12); }
+.ic-projects__button--primary:hover:not(:disabled) { background:#1b4bd5; }
+.ic-projects__toolbar { gap:9px; flex-wrap:wrap; margin-bottom:34px; }
+.ic-projects__search { width:min(100%,365px); min-height:39px; display:flex; align-items:center; gap:9px; padding:0 13px; border:1px solid var(--ip-border); border-radius:999px; background:var(--ip-surface); color:var(--ip-muted); }
+.ic-projects__search:focus-within { border-color:#4c82ff; box-shadow:0 0 0 3px rgba(65,120,255,.12); }
+.ic-projects__search input { width:100%; min-width:0; border:0; outline:0; background:transparent; color:var(--ip-text); font:inherit; font-size:13px; }
+.ic-projects__search input::placeholder { color:var(--ip-muted); }
+.ic-projects__clear { display:grid; place-items:center; padding:3px; border:0; background:transparent; color:var(--ip-muted); cursor:pointer; }
+.ic-projects__select { appearance:none; padding-right:34px; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 11px center; }
+.ic-projects__view-label { color:var(--ip-muted); font-size:12px; margin-left:4px; }
+.ic-projects__switch { margin-left:auto; gap:2px; border:1px solid var(--ip-border); padding:3px; border-radius:999px; background:var(--ip-surface); }
+.ic-projects__switch button { width:31px; height:30px; border:0; border-radius:999px; display:grid; place-items:center; background:transparent; color:var(--ip-muted); cursor:pointer; }
+.ic-projects__switch button[aria-pressed=true] { background:var(--ip-hover); color:var(--ip-text); }
+.ic-projects__count { color:var(--ip-muted); font-size:12px; margin:-12px 0 20px; }
+.ic-projects__grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:30px 22px; align-items:start; }
+.ic-projects__item { position:relative; min-width:0; }
+.ic-projects__thumb { position:relative; width:100%; aspect-ratio:16/9; display:grid; place-items:center; overflow:hidden; padding:0; border:1px solid var(--ip-border); border-radius:13px; background:#111319; color:#b9c5dc; cursor:pointer; text-align:center; transition:border-color .15s,transform .15s; }
+.ic-projects__thumb:hover { border-color:#7c9aff; transform:translateY(-2px); }
+.ic-projects__thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.ic-projects__thumb-actions { position:absolute; right:9px; bottom:9px; z-index:2; display:flex; gap:5px; opacity:0; transition:opacity .15s; }
+.ic-projects__item:hover .ic-projects__thumb-actions,.ic-projects__item:focus-within .ic-projects__thumb-actions,.ic-projects__list-row:hover .ic-projects__thumb-actions,.ic-projects__list-row:focus-within .ic-projects__thumb-actions { opacity:1; }
+.ic-projects__thumb-actions button { display:inline-flex; align-items:center; gap:5px; border:1px solid #555; border-radius:8px; padding:7px 9px; background:rgba(15,15,18,.9); color:#fff; cursor:pointer; font-size:11px; }
+@media(hover:none) { .ic-projects__thumb-actions { opacity:1; } }
+.ic-projects__preview-placeholder { display:flex; flex-direction:column; align-items:center; gap:10px; color:#a6b1c5; font-size:12px; }
+.ic-projects__preview-placeholder svg { opacity:.65; }
+.ic-projects__info { display:flex; align-items:center; gap:11px; padding:13px 1px 0; min-width:0; }
+.ic-projects__avatar { width:37px; height:37px; flex:0 0 37px; display:grid; place-items:center; border-radius:50%; background:#c43a0c; color:white; font-weight:650; font-size:17px; overflow:hidden; }
+.ic-projects__avatar img { width:100%; height:100%; object-fit:cover; }
+.ic-projects__details { min-width:0; flex:1; }
+.ic-projects__name { display:block; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:0; padding:0; text-align:left; background:transparent; color:var(--ip-text); font:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+.ic-projects__date { display:flex; align-items:center; gap:5px; margin-top:4px; color:var(--ip-muted); font-size:12px; }
+.ic-projects__menu-wrap { position:relative; align-self:flex-start; }
+.ic-projects__menu-trigger { display:grid; place-items:center; width:30px; height:30px; border:0; border-radius:8px; background:transparent; color:var(--ip-muted); cursor:pointer; }
+.ic-projects__menu-trigger:hover { background:var(--ip-hover); color:var(--ip-text); }
+.ic-projects__menu { position:absolute; z-index:30; right:0; top:34px; width:166px; padding:5px; border:1px solid var(--ip-border); border-radius:11px; background:var(--ip-surface); backdrop-filter:blur(20px); box-shadow:0 15px 35px rgba(0,0,0,.22); }
+.ic-projects__menu button { display:flex; align-items:center; gap:9px; width:100%; border:0; border-radius:7px; padding:9px; background:transparent; color:var(--ip-text); font:inherit; font-size:12px; text-align:left; cursor:pointer; }
+.ic-projects__menu button:hover { background:var(--ip-hover); }
+ .ic-projects__menu button:disabled { opacity:.5; cursor:wait; }
+.ic-projects__rename-overlay { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; padding:20px; background:rgba(0,0,0,.58); backdrop-filter:blur(4px); }
+.ic-projects__rename-dialog { width:min(100%,420px); padding:24px; border:1px solid var(--ip-border); border-radius:18px; background:#242428; color:#f5f5f6; box-shadow:0 25px 70px rgba(0,0,0,.4); }
+.ic-projects.light .ic-projects__rename-dialog { background:#fff; color:#18181b; }
+.ic-projects__rename-dialog h2 { margin:0 0 7px; font-size:19px; font-weight:650; }
+.ic-projects__rename-dialog p { margin:0 0 18px; font-size:13px; color:var(--ip-muted); }
+.ic-projects__rename-dialog label { display:block; margin-bottom:8px; font-size:12px; font-weight:600; }
+.ic-projects__rename-input { display:block; width:100%; height:43px; padding:0 12px; border:1px solid var(--ip-border); border-radius:9px; outline:none; background:var(--ip-surface); color:inherit; font:inherit; font-size:14px; }
+.ic-projects__rename-input:focus { border-color:#4c82ff; box-shadow:0 0 0 3px rgba(65,120,255,.15); }
+.ic-projects__rename-error { margin-top:9px!important; color:#ef777d!important; }
+.ic-projects__rename-actions { display:flex; justify-content:flex-end; gap:9px; margin-top:22px; }
+.ic-projects__rename-actions button { min-height:38px; border:1px solid var(--ip-border); border-radius:9px; padding:0 16px; background:var(--ip-surface); color:inherit; font:inherit; font-size:13px; cursor:pointer; }
+.ic-projects__rename-actions button[type=submit] { background:#2458ec; color:white; border-color:#2458ec; }
+.ic-projects__rename-actions button:disabled { opacity:.55; cursor:not-allowed; }
+.ic-projects__list { display:flex; flex-direction:column; gap:9px; }
+.ic-projects__list-row { display:flex; align-items:center; gap:15px; padding:10px; border:1px solid var(--ip-border); border-radius:13px; background:var(--ip-surface); }
+.ic-projects__list-row .ic-projects__thumb { width:110px; flex:0 0 110px; border-radius:8px; }
+.ic-projects__list-row .ic-projects__info { padding:0; flex:1; }
+.ic-projects__state { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:290px; gap:11px; padding:30px 15px; text-align:center; border:1px dashed var(--ip-border); border-radius:15px; background:var(--ip-surface); }
+.ic-projects__state h2 { margin:0; font-size:17px; font-weight:650; }
+.ic-projects__state p { margin:0 0 8px; max-width:400px; color:var(--ip-muted); font-size:13px; line-height:1.6; }
+.ic-projects__skeleton { aspect-ratio:16/9; border-radius:13px; background:var(--ip-surface); animation:ic-projects-pulse 1.3s ease-in-out infinite alternate; }
+@keyframes ic-projects-pulse { to { opacity:.4; } }
+@media(max-width:900px) { .ic-projects__grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:620px) { .ic-projects__inner { padding:25px 17px 50px; } .ic-projects__header { align-items:flex-start; } .ic-projects__actions { gap:6px; } .ic-projects__button { padding:0 11px; font-size:12px; } .ic-projects__search { width:100%; } .ic-projects__switch { margin-left:0; } .ic-projects__grid { grid-template-columns:1fr; gap:25px; } .ic-projects__list-row .ic-projects__thumb { width:76px; flex-basis:76px; } .ic-projects__view-label { display:none; } }
+@media(prefers-reduced-motion:reduce) { .ic-projects__thumb,.ic-projects__skeleton { transition:none; animation:none; } .ic-projects__thumb:hover { transform:none; } }
+`;
 
-  if (/photo|photography|camera|gallery|portrait/.test(text)) return PROJECT_PREVIEW_IMAGES.photography;
-  if (/portfolio|artist|creative|designer|agency/.test(text)) return PROJECT_PREVIEW_IMAGES.portfolio;
-  if (/shop|store|ecommerce|e-commerce|cart|product|marketplace/.test(text)) return PROJECT_PREVIEW_IMAGES.commerce;
-  if (/restaurant|food|cafe|coffee|menu|hotel/.test(text)) return PROJECT_PREVIEW_IMAGES.food;
-  if (/real estate|property|house|home|interior|architecture/.test(text)) return PROJECT_PREVIEW_IMAGES.property;
-  if (/fitness|gym|workout|health|yoga/.test(text)) return PROJECT_PREVIEW_IMAGES.fitness;
-  if (/dashboard|analytics|admin|data|report|crm/.test(text)) return PROJECT_PREVIEW_IMAGES.analytics;
-  if (/ai|saas|tech|software|app|platform|developer/.test(text)) return PROJECT_PREVIEW_IMAGES.technology;
-  return PROJECT_PREVIEW_IMAGES.default;
+function previewUrl(project: ProjectResponse): string | null {
+  const p = project as ProjectWithPreview;
+  const candidate = p.thumbnail_url || p.screenshot_url || p.preview_image_url;
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate, window.location.origin);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
 }
 
-const ProjectsPage: React.FC = () => {
+function readLocalPreviews(userId: string, projects: ProjectResponse[]): Record<string, string> {
+  const images: Record<string, string> = {};
+  for (const project of projects) {
+    try {
+      const saved = readLocalProjectThumbnail(userId, project.id);
+      if (saved) images[project.id] = saved;
+    } catch { /* Browser storage unavailable */ }
+  }
+  return images;
+}
+
+function formatEdited(project: ProjectResponse, now: number): string {
+  const raw = project.updated_at || project.created_at;
+  if (!raw) return "Edit date unavailable";
+  const time = new Date(raw).getTime();
+  if (!Number.isFinite(time)) return "Edit date unavailable";
+  const elapsed = Math.max(0, now - time);
+  const mins = Math.floor(elapsed / 60000);
+  if (mins < 1) return "Edited just now";
+  if (mins < 60) return `Edited ${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Edited ${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `Edited ${days} day${days === 1 ? "" : "s"} ago`;
+  return `Edited ${new Date(time).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
+function getErrorMessage(err: unknown): string {
+  if (typeof err === "object" && err !== null) {
+    const e = err as { response?: { data?: { detail?: unknown } }; message?: unknown };
+    if (typeof e.response?.data?.detail === "string") return e.response.data.detail;
+    if (typeof e.message === "string") return e.message;
+  }
+  return "Something went wrong. Please try again.";
+}
+
+const ProjectsPage = () => {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
-
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortMode>("updated");
   const [view, setView] = useState<ViewMode>("grid");
-  const [menuProjectId, setMenuProjectId] = useState<string | null>(null);
+  const [menuId, setMenuId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [currentTime] = useState(() => Date.now());
-  const [profileName, setProfileName] = useState("Your account");
-  const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<ProjectResponse | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameError, setRenameError] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [userId, setUserId] = useState<string | null>(null);
+  const [previewVersion, setPreviewVersion] = useState(0);
+  const localPreviews = useMemo(
+    () => userId ? readLocalPreviews(userId, projects) : {},
+    [userId, projects, previewVersion],
+  );
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const uploadProjectId = useRef<string | null>(null);
+  const requestSequence = useRef(0);
+  const [owner, setOwner] = useState({ name: "Your account", avatar: "" });
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
-  const loadProjects = useCallback(async () => {
-    try {
-      const data = await getProjectsApi();
-      setProjects(data);
-    } catch (err: unknown) {
-      console.error("Failed to load projects:", err);
-      const apiError = err as {
-        response?: { data?: { detail?: unknown } };
-        message?: unknown;
-      };
-      const detail = apiError.response?.data?.detail;
-      setError(
-        (typeof detail === "string" && detail) ||
-          (typeof apiError.message === "string" && apiError.message) ||
-          "Failed to load projects.",
-      );
-    } finally {
+  const loadProjects = useCallback(async (force = false, accountId?: string | null) => {
+    const id = accountId ?? userId;
+    if (!id) return;
+    const cached = projectsCache.get(id);
+    if (cached && !force) {
+      setProjects(cached);
       setLoading(false);
+      setError("");
+      return;
     }
+    const sequence = ++requestSequence.current;
+    setLoading(!cached);
+    setError("");
+    try {
+      const result = await getProjectsApi();
+      projectsCache.set(id, result);
+      if (sequence === requestSequence.current) {
+        setProjects(result);
+        setNow(Date.now());
+      }
+    } catch (err) {
+      if (sequence === requestSequence.current) setError(getErrorMessage(err));
+    } finally {
+      if (sequence === requestSequence.current) setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    let active = true;
+    const updateOwner = (user: { id?: string; email?: string; user_metadata?: Record<string, unknown> } | null) => {
+      if (!active) return;
+      const metadata = user?.user_metadata ?? {};
+      const name = [metadata.full_name, metadata.name, metadata.display_name, user?.email?.split("@")[0]]
+        .find((v): v is string => typeof v === "string" && v.trim().length > 0) || "Your account";
+      const avatar = [metadata.avatar_url, metadata.picture, metadata.profile_image]
+        .find((v): v is string => typeof v === "string" && v.trim().length > 0) || "";
+      setOwner({ name, avatar });
+      const nextId = user?.id ?? null;
+      setUserId((previous) => {
+        if (previous !== nextId) {
+          ++requestSequence.current;
+          setProjects(nextId ? projectsCache.get(nextId) ?? [] : []);
+          setLoading(Boolean(nextId && !projectsCache.has(nextId)));
+          setError("");
+        }
+        return nextId;
+      });
+    };
+    void supabase.auth.getUser().then(({ data }) => updateOwner(data.user));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      updateOwner(session?.user ?? null);
+    });
+    return () => { active = false; subscription.unsubscribe(); ++requestSequence.current; };
   }, []);
 
   useEffect(() => {
-    void Promise.resolve().then(loadProjects);
+    if (!userId) return;
+    const timer = window.setTimeout(() => { void loadProjects(false, userId); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [userId, loadProjects]);
 
-    const updateProfile = (user: {
-      email?: string;
-      user_metadata?: Record<string, unknown>;
-    } | null) => {
-      if (!user) {
-        setProfileName("Your account");
-        setProfileAvatar(null);
-        return;
+  // Close the three-dot menu on outside click or Escape.
+  useEffect(() => {
+    if (!menuId) return;
+    const handleOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && !target.closest(".ic-projects__menu-wrap")) {
+        setMenuId(null);
       }
-
-      const metadata = user.user_metadata ?? {};
-      const name =
-        (typeof metadata.full_name === "string" && metadata.full_name) ||
-        (typeof metadata.name === "string" && metadata.name) ||
-        (typeof metadata.display_name === "string" && metadata.display_name) ||
-        user.email?.split("@")[0] ||
-        "Your account";
-
-      const avatar =
-        (typeof metadata.avatar_url === "string" && metadata.avatar_url) ||
-        (typeof metadata.picture === "string" && metadata.picture) ||
-        (typeof metadata.profile_image === "string" && metadata.profile_image) ||
-        null;
-
-      setProfileName(name);
-      setProfileAvatar(avatar);
     };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuId(null);
+    };
+    document.addEventListener("pointerdown", handleOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [menuId]);
 
-    void supabase.auth.getUser().then(({ data, error: authError }) => {
-      if (authError) {
-        console.warn("Unable to load user profile:", authError.message);
-        return;
+  // Recompute relative timestamps without re-fetching project data.
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const handlePreviewUpload = async (file: File | undefined) => {
+    const projectId = uploadProjectId.current;
+    if (!file || !projectId || !userId) return;
+    if (!file.type.startsWith("image/")) {
+      window.alert("Choose an image file.");
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      window.alert("Choose an image smaller than 15 MB.");
+      return;
+    }
+    try {
+      const source = URL.createObjectURL(file);
+      const img = new Image();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("Could not read the image."));
+          img.src = source;
+        });
+        const canvas = document.createElement("canvas");
+        canvas.width = 960;
+        canvas.height = 540;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Image processing is unavailable.");
+        ctx.fillStyle = "#111319";
+        ctx.fillRect(0, 0, 960, 540);
+        const scale = Math.min(960 / img.naturalWidth, 540 / img.naturalHeight);
+        const width = img.naturalWidth * scale;
+        const height = img.naturalHeight * scale;
+        ctx.drawImage(img, (960 - width) / 2, (540 - height) / 2, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.76);
+        saveProjectThumbnail(userId, projectId, dataUrl);
+        setPreviewVersion((version) => version + 1);
+        setBrokenImages((current) => ({ ...current, [projectId]: false }));
+      } finally {
+        URL.revokeObjectURL(source);
       }
-      updateProfile(data.user);
-    });
+    } catch (err) {
+      window.alert(`Could not save the thumbnail: ${getErrorMessage(err)}`);
+    }
+  };
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      updateProfile(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [loadProjects]);
+  const choosePreview = (id: string) => {
+    uploadProjectId.current = id;
+    if (uploadRef.current) {
+      uploadRef.current.value = "";
+      uploadRef.current.click();
+    }
+  };
 
   const visibleProjects = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const filtered = projects.filter((project) => {
-      const name = project.name ?? "";
-      const description = project.description ?? "";
-      return `${name} ${description}`.toLowerCase().includes(query);
-    });
-
-    return [...filtered].sort((a, b) => {
-      if (sort === "name") return (a.name ?? "").localeCompare(b.name ?? "");
-      const aDate = new Date(a.updated_at || a.created_at || 0).getTime();
-      const bDate = new Date(b.updated_at || b.created_at || 0).getTime();
-      return sort === "oldest" ? aDate - bDate : bDate - aDate;
-    });
+    return projects.filter((p) => `${p.name} ${p.description ?? ""}`.toLowerCase().includes(query))
+      .sort((a, b) => {
+        if (sort === "name") return a.name.localeCompare(b.name);
+        const aTime = new Date(a.updated_at || a.created_at || 0).getTime() || 0;
+        const bTime = new Date(b.updated_at || b.created_at || 0).getTime() || 0;
+        return sort === "oldest" ? aTime - bTime : bTime - aTime;
+      });
   }, [projects, search, sort]);
 
-  const handleDelete = async (projectId: string) => {
-    const confirmed = window.confirm("Are you sure you want to delete this project?");
-    if (!confirmed) return;
+  const openProject = (id: string) => navigate(`/builder/${encodeURIComponent(id)}`);
+  const beginRename = (project: ProjectResponse) => {
+    setMenuId(null);
+    setRenameTarget(project);
+    setRenameValue(project.name);
+    setRenameError("");
+  };
 
+  const handleRename = async () => {
+    if (!renameTarget || renaming) return;
+    const name = renameValue.trim();
+    if (!name) {
+      setRenameError("Project name cannot be empty.");
+      return;
+    }
+    if (name.length > 120) {
+      setRenameError("Project name must be 120 characters or fewer.");
+      return;
+    }
+    if (name === renameTarget.name) {
+      setRenameTarget(null);
+      return;
+    }
+
+    setRenaming(true);
+    setRenameError("");
     try {
-      setDeletingId(projectId);
-      await deleteProjectApi(projectId);
-      setProjects((current) => current.filter((project) => project.id !== projectId));
-      setMenuProjectId(null);
-    } catch (err: unknown) {
-      console.error("Failed to delete project:", err);
-      const apiError = err as {
-        response?: { data?: { detail?: unknown } };
-        message?: unknown;
-      };
-      const detail = apiError.response?.data?.detail;
-      window.alert(
-        (typeof detail === "string" && detail) ||
-          (typeof apiError.message === "string" && apiError.message) ||
-          "Failed to delete project.",
-      );
+      const updated = await updateProjectNameApi(renameTarget.id, name);
+      setProjects((items) => {
+        const next = items.map((item) => item.id === updated.id ? { ...item, ...updated } : item);
+        if (userId) projectsCache.set(userId, next);
+        return next;
+      });
+      setRenameTarget(null);
+      setNow(Date.now());
+    } catch (err) {
+      setRenameError(getErrorMessage(err));
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Delete this project permanently?")) return;
+    setDeletingId(id);
+    try {
+      await deleteProjectApi(id);
+      setProjects((items) => {
+        const next = items.filter((item) => item.id !== id);
+        if (userId) projectsCache.set(userId, next);
+        return next;
+      });
+      if (userId) {
+        try { removeProjectThumbnail(userId, id); } catch { /* ignore */ }
+      }
+      setMenuId(null);
+    } catch (err) {
+      window.alert(getErrorMessage(err));
     } finally {
       setDeletingId(null);
     }
   };
 
-  const formatDate = (project: ProjectResponse) => {
-    const value = project.updated_at || project.created_at;
-    if (!value || currentTime === 0) return "Recently edited";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "Recently edited";
-
-    const elapsed = currentTime - date.getTime();
-    const minute = 60_000;
-    const hour = 60 * minute;
-    const day = 24 * hour;
-    if (elapsed >= 0 && elapsed < minute) return "Edited just now";
-    if (elapsed >= minute && elapsed < hour) {
-      const amount = Math.floor(elapsed / minute);
-      return `Edited ${amount} min${amount === 1 ? "" : "s"} ago`;
-    }
-    if (elapsed >= hour && elapsed < day) {
-      const amount = Math.floor(elapsed / hour);
-      return `Edited ${amount} hour${amount === 1 ? "" : "s"} ago`;
-    }
-    if (elapsed >= day && elapsed < 7 * day) {
-      const amount = Math.floor(elapsed / day);
-      return `Edited ${amount} day${amount === 1 ? "" : "s"} ago`;
-    }
-    return `Edited ${date.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    })}`;
+  const renderProject = (project: ProjectResponse) => {
+    const image = localPreviews[project.id] || previewUrl(project);
+    const showImage = image && !brokenImages[project.id];
+    return (
+      <article key={project.id} className={view === "list" ? "ic-projects__list-row" : "ic-projects__item"}>
+        <div className="ic-projects__preview-wrap" style={{ position: "relative" }}><button type="button" className="ic-projects__thumb" onClick={() => openProject(project.id)} aria-label={`Open ${project.name}`}>
+          {showImage ? (
+            <img src={image} alt={`Preview of ${project.name}`} loading="lazy" onError={() => setBrokenImages((prev) => ({ ...prev, [project.id]: true }))} />
+          ) : (
+            <span className="ic-projects__preview-placeholder"><FolderOpen size={29} strokeWidth={1.4} /><span>Preview not available</span></span>
+          )}
+        </button>
+        <div className="ic-projects__thumb-actions"><button type="button" onClick={() => choosePreview(project.id)} title="Upload a real screenshot for this project"><Camera size={13} /> Add preview</button></div></div>
+        <div className="ic-projects__info">
+          <span className="ic-projects__avatar" aria-hidden="true">
+            {owner.avatar ? <img src={owner.avatar} alt="" onError={(e) => { e.currentTarget.style.display = "none"; }} /> : owner.name.charAt(0).toUpperCase()}
+          </span>
+          <div className="ic-projects__details">
+            <button type="button" className="ic-projects__name" title={project.name} onClick={() => openProject(project.id)}>{project.name}</button>
+            <div className="ic-projects__date"><Clock3 size={12} aria-hidden="true" />{formatEdited(project, now)}</div>
+          </div>
+          <div className="ic-projects__menu-wrap">
+            <button type="button" className="ic-projects__menu-trigger" aria-label={`Actions for ${project.name}`} aria-expanded={menuId === project.id} onClick={() => setMenuId((id) => id === project.id ? null : project.id)}><MoreHorizontal size={18} /></button>
+            {menuId === project.id && (
+              <div className="ic-projects__menu">
+                <button type="button" onClick={() => openProject(project.id)}><ArrowRight size={14} />Open project</button>
+                <button type="button" onClick={() => beginRename(project)}><Pencil size={14} />Rename project</button>
+                <button type="button" disabled={deletingId === project.id} onClick={() => void handleDelete(project.id)} style={{ color: "#ef777d" }}><Trash2 size={14} />{deletingId === project.id ? "Deleting..." : "Delete project"}</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </article>
+    );
   };
 
-  const getInitial = (name?: string) => name?.trim().charAt(0).toUpperCase() || "P";
-
-  const openProject = (projectId: string) => navigate(`/builder/${projectId}`);
-
   return (
-    <div className={`projects-page ${isDark ? "projects-page--dark" : "projects-page--light"}`}>
-      <style>{PAGE_STYLE}</style>
-
-      <main className="projects-page__inner">
-        <header className="projects-page__top">
-          <h1 className="projects-page__heading">Projects</h1>
-          <div className="projects-page__actions">
-            <button
-              type="button"
-              className="projects-page__button projects-page__button--folder"
-              disabled
-              title="Folder management is not implemented yet"
-            >
-              <FolderPlus size={14} />
-              New folder
-            </button>
-            <button
-              type="button"
-              className="projects-page__button projects-page__button--primary"
-              onClick={() => navigate("/builder")}
-            >
-              <Plus size={15} />
-              New project
-            </button>
+    <div className={`ic-projects ${resolvedTheme === "dark" ? "dark" : "light"}`}>
+      <style>{styles}</style>
+      {renameTarget && (
+        <div
+          className="ic-projects__rename-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !renaming) setRenameTarget(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !renaming) setRenameTarget(null);
+          }}
+        >
+          <form
+            className="ic-projects__rename-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ic-project-rename-title"
+            onSubmit={(event) => { event.preventDefault(); void handleRename(); }}
+          >
+            <h2 id="ic-project-rename-title">Rename project</h2>
+            <p>Choose a new name for your website.</p>
+            <label htmlFor="ic-project-rename-input">Project name</label>
+            <input
+              id="ic-project-rename-input"
+              className="ic-projects__rename-input"
+              type="text"
+              autoFocus
+              maxLength={120}
+              required
+              value={renameValue}
+              onChange={(event) => { setRenameValue(event.target.value); setRenameError(""); }}
+              disabled={renaming}
+            />
+            {renameError && <p className="ic-projects__rename-error" role="alert">{renameError}</p>}
+            <div className="ic-projects__rename-actions">
+              <button type="button" onClick={() => setRenameTarget(null)} disabled={renaming}>Cancel</button>
+              <button type="submit" disabled={renaming || !renameValue.trim()}>
+                {renaming ? "Saving..." : "Save name"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      <input ref={uploadRef} type="file" accept="image/*" style={{ display: "none" }} aria-label="Upload project preview" onChange={(event) => { void handlePreviewUpload(event.target.files?.[0]); }} />
+      <div className="ic-projects__inner">
+        <header className="ic-projects__header">
+          <h1 className="ic-projects__title">Projects</h1>
+          <div className="ic-projects__actions">
+            <button type="button" className="ic-projects__button" disabled title="Folder creation is not supported by the current project API"><FolderPlus size={15} />New folder</button>
+            <button type="button" className="ic-projects__button ic-projects__button--primary" onClick={() => navigate("/builder")}><Plus size={16} />New project</button>
           </div>
         </header>
-
-        <section className="projects-page__toolbar" aria-label="Project controls">
-          <label className="projects-page__search">
-            <Search size={15} aria-hidden="true" />
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search projects..."
-              aria-label="Search projects"
-            />
-            {search && (
-              <button
-                type="button"
-                className="projects-page__clear"
-                onClick={() => setSearch("")}
-                aria-label="Clear search"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </label>
-
-          <select
-            className="projects-page__select"
-            value={sort}
-            onChange={(event) => setSort(event.target.value as SortMode)}
-            aria-label="Sort projects"
-          >
-            <option value="updated">Recently edited</option>
-            <option value="oldest">Oldest edited</option>
-            <option value="name">Name A–Z</option>
-          </select>
-
-          <div className="projects-page__view-switch" role="group" aria-label="Project view">
-            <button
-              type="button"
-              className="projects-page__view-button"
-              aria-label="Grid view"
-              aria-pressed={view === "grid"}
-              onClick={() => setView("grid")}
-            >
-              <Grid2X2 size={14} />
-            </button>
-            <button
-              type="button"
-              className="projects-page__view-button"
-              aria-label="List view"
-              aria-pressed={view === "list"}
-              onClick={() => setView("list")}
-            >
-              <List size={15} />
-            </button>
-          </div>
-
-          <button
-            type="button"
-            className="projects-page__button"
-            onClick={() => void loadProjects()}
-            disabled={loading}
-            title="Refresh projects"
-            style={{ width: 41, padding: 0 }}
-          >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          </button>
+        <section className="ic-projects__toolbar" aria-label="Project controls">
+          <label className="ic-projects__search"><Search size={16} aria-hidden="true" /><input type="search" placeholder="Search projects..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search projects" />{search && <button type="button" className="ic-projects__clear" onClick={() => setSearch("")} aria-label="Clear search"><X size={15} /></button>}</label>
+          <span className="ic-projects__view-label">Filter</span>
+          <select className="ic-projects__select" value={sort} onChange={(e) => setSort(e.target.value as SortMode)} aria-label="Sort projects"><option value="updated">Recently edited</option><option value="oldest">Oldest edited</option><option value="name">Name A–Z</option></select>
+          <div className="ic-projects__switch" role="group" aria-label="Project view"><button type="button" aria-label="Grid view" aria-pressed={view === "grid"} onClick={() => setView("grid")}><Grid2X2 size={16} /></button><button type="button" aria-label="List view" aria-pressed={view === "list"} onClick={() => setView("list")}><List size={16} /></button></div>
+          <button type="button" className="ic-projects__button" onClick={() => void loadProjects(true)} disabled={loading} aria-label="Refresh projects" title="Refresh projects"><RefreshCw size={15} /></button>
         </section>
-
-        <div className="projects-page__meta-row">
-          <div className="projects-page__filter-chip">
-            {profileAvatar ? (
-              <img
-                className="projects-page__owner-avatar"
-                src={profileAvatar}
-                alt={`${profileName} profile`}
-                referrerPolicy="no-referrer"
-                onError={(event) => {
-                  event.currentTarget.style.display = "none";
-                }}
-              />
-            ) : (
-              <span className="projects-page__owner-avatar projects-page__owner-avatar--fallback">
-                {profileName.trim().charAt(0).toUpperCase() || "U"}
-              </span>
-            )}
-            <span>{search ? "Search" : "Owner"}</span>
-            <strong>{search ? `“${search}”` : profileName}</strong>
-            {search && (
-              <button
-                type="button"
-                className="projects-page__clear"
-                onClick={() => setSearch("")}
-                aria-label="Remove search filter"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-          <span style={{ color: "var(--projects-muted)", fontSize: 10 }}>
-            {visibleProjects.length} {visibleProjects.length === 1 ? "project" : "projects"}
-          </span>
-        </div>
-
-        {error && !loading && (
-          <section className="projects-page__error" role="alert">
-            <div className="projects-page__empty-icon"><FolderOpen size={20} /></div>
-            <h2 style={{ margin: "14px 0 0", fontSize: 14, fontWeight: 650 }}>Unable to load projects</h2>
-            <p style={{ margin: "6px 0 0", color: "var(--projects-muted)", fontSize: 11 }}>{error}</p>
-            <button
-              type="button"
-              className="projects-page__button"
-              style={{ marginTop: 16 }}
-              onClick={() => void loadProjects()}
-            >
-              <RefreshCw size={13} /> Try again
-            </button>
-          </section>
-        )}
-
-        {loading && (
-          <div className="projects-page__grid" aria-label="Loading projects">
-            {[0, 1, 2, 3].map((item) => (
-              <div className="projects-page__skeleton" key={item}>
-                <div className="projects-page__skeleton-thumb" />
-                <div className="projects-page__skeleton-line" style={{ width: "58%" }} />
-                <div className="projects-page__skeleton-line" style={{ width: "76%", marginTop: 9 }} />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {!loading && !error && visibleProjects.length === 0 && projects.length === 0 && (
-          <section className="projects-page__welcome" aria-labelledby="projects-welcome-title">
-            <div className="projects-page__welcome-glow" aria-hidden="true" />
-            <div className="projects-page__welcome-art" aria-hidden="true">
-              <span className="projects-page__welcome-spark projects-page__welcome-spark--one">✦</span>
-              <span className="projects-page__welcome-spark projects-page__welcome-spark--two">✧</span>
-              <span className="projects-page__welcome-spark projects-page__welcome-spark--three">✦</span>
-              <div className="projects-page__welcome-window">
-                <FolderOpen size={35} strokeWidth={1.6} />
-              </div>
-              <span className="projects-page__welcome-plus"><Plus size={20} /></span>
-            </div>
-            <h2 className="projects-page__welcome-title" id="projects-welcome-title">
-              Your next idea starts here
-            </h2>
-            <p className="projects-page__welcome-copy">
-              Turn your idea into a real website. Start with one prompt and let ICOGON help you build it.
-            </p>
-            <button
-              type="button"
-              className="projects-page__welcome-cta"
-              onClick={() => navigate("/builder")}
-            >
-              <Plus size={16} /> Create your first project <ArrowRight size={15} />
-            </button>
-            <span className="projects-page__welcome-hint">Your workspace is ready when you are</span>
-          </section>
-        )}
-
-        {!loading && !error && visibleProjects.length === 0 && projects.length > 0 && (
-          <section className="projects-page__empty">
-            <div className="projects-page__empty-icon"><Search size={20} /></div>
-            <h2>No matching projects</h2>
-            <p>Try another project name or clear your search to see all projects.</p>
-            <button
-              type="button"
-              className="projects-page__button"
-              style={{ marginTop: 18 }}
-              onClick={() => setSearch("")}
-            >
-              Clear search
-            </button>
-          </section>
-        )}
-
-        {!loading && !error && visibleProjects.length > 0 && view === "grid" && (
-          <section className="projects-page__grid" aria-label="Projects">
-            {visibleProjects.map((project) => (
-              <div className="projects-page__card-shell" key={project.id}>
-                <article className="projects-page__card">
-                  <button
-                    type="button"
-                    className="projects-page__thumbnail"
-                    onClick={() => openProject(project.id)}
-                    aria-label={`Open ${project.name}`}
-                  >
-                    <img
-                      className="projects-page__thumbnail-image"
-                      src={getProjectPreviewImage(project)}
-                      alt={`${project.name} project preview`}
-                      loading="lazy"
-                      onError={(event) => {
-                        event.currentTarget.style.display = "none";
-                      }}
-                    />
-                    <span className="projects-page__thumbnail-overlay" />
-                    <span className="projects-page__thumbnail-label">{project.name}</span>
-                  </button>
-
-                  <div className="projects-page__card-content">
-                    <div className="projects-page__card-title-row">
-                      <h2 className="projects-page__card-title" title={project.name}>{project.name}</h2>
-                      <div className="projects-page__menu-wrap">
-                        <button
-                          type="button"
-                          className="projects-page__more"
-                          aria-label={`More actions for ${project.name}`}
-                          aria-expanded={menuProjectId === project.id}
-                          onClick={() => setMenuProjectId((current) => current === project.id ? null : project.id)}
-                        >
-                          <MoreHorizontal size={16} />
-                        </button>
-                        {menuProjectId === project.id && (
-                          <div className="projects-page__menu">
-                            <button type="button" onClick={() => openProject(project.id)}>
-                              <ArrowRight size={12} /> Open project
-                            </button>
-                            <button
-                              type="button"
-                              disabled={deletingId === project.id}
-                              onClick={() => void handleDelete(project.id)}
-                              style={{ color: "#ed6b76" }}
-                            >
-                              <Trash2 size={12} /> {deletingId === project.id ? "Deleting..." : "Delete project"}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <p className="projects-page__description">
-                      {project.description || "Your ICOGON AI project workspace."}
-                    </p>
-
-                    <div className="projects-page__card-footer">
-                      <span className="projects-page__date">
-                        <Clock3 size={11} /> {formatDate(project)}
-                      </span>
-                      <button type="button" className="projects-page__open" onClick={() => openProject(project.id)}>
-                        Open <ArrowRight size={12} />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              </div>
-            ))}
-          </section>
-        )}
-
-        {!loading && !error && visibleProjects.length > 0 && view === "list" && (
-          <section className="projects-page__list" aria-label="Projects">
-            {visibleProjects.map((project) => (
-              <article className="projects-page__list-item" key={project.id}>
-                <div className="projects-page__list-thumb">{getInitial(project.name)}</div>
-                <div className="projects-page__list-main">
-                  <h2 className="projects-page__list-title">{project.name}</h2>
-                  <p className="projects-page__list-desc">{project.description || "Your ICOGON AI project workspace."}</p>
-                </div>
-                <span className="projects-page__date"><Clock3 size={11} /> {formatDate(project)}</span>
-                <button type="button" className="projects-page__open" onClick={() => openProject(project.id)}>
-                  Open <ArrowRight size={12} />
-                </button>
-                <button
-                  type="button"
-                  className="projects-page__more"
-                  aria-label={`Delete ${project.name}`}
-                  disabled={deletingId === project.id}
-                  onClick={() => void handleDelete(project.id)}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </article>
-            ))}
-          </section>
-        )}
-      </main>
+        {!loading && !error && <p className="ic-projects__count">{visibleProjects.length} {visibleProjects.length === 1 ? "project" : "projects"}</p>}
+        {error && !loading && <section className="ic-projects__state" role="alert"><FolderOpen size={29} /><h2>Unable to load projects</h2><p>{error}</p><button type="button" className="ic-projects__button" onClick={() => void loadProjects(true)}><RefreshCw size={15} />Try again</button></section>}
+        {loading && <div className="ic-projects__grid" aria-label="Loading projects">{[1, 2, 3].map((id) => <div key={id}><div className="ic-projects__skeleton" /><div className="ic-projects__skeleton" style={{ width: "65%", height: 13, marginTop: 15, aspectRatio: "auto" }} /></div>)}</div>}
+        {!loading && !error && visibleProjects.length === 0 && <section className="ic-projects__state"><FolderOpen size={32} /><h2>{projects.length ? "No matching projects" : "Your next idea starts here"}</h2><p>{projects.length ? "Try another search or clear the current filter." : "Create your first project and turn an idea into a working website with ICOGON."}</p><button type="button" className="ic-projects__button ic-projects__button--primary" onClick={() => projects.length ? setSearch("") : navigate("/builder")}>{projects.length ? "Clear search" : "Create a project"}<ChevronDown size={14} style={{ transform: "rotate(-90deg)" }} /></button></section>}
+        {!loading && !error && visibleProjects.length > 0 && <section className={view === "grid" ? "ic-projects__grid" : "ic-projects__list"} aria-label="Your projects">{visibleProjects.map(renderProject)}</section>}
+      </div>
     </div>
   );
 };

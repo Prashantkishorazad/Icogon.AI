@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from datetime import datetime, timezone
 
 from app.schemas.project import (
     ProjectCreate,
@@ -136,6 +138,41 @@ def get_project(
         )
 
     return response.data
+
+
+# ============================================================
+# RENAME PROJECT
+# ============================================================
+
+class ProjectRename(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+@router.patch("/{project_id}", response_model=ProjectResponse)
+def rename_project(
+    project_id: str,
+    payload: ProjectRename,
+    current_user=Depends(get_current_user),
+    supabase=Depends(get_supabase),
+):
+    clean_name = payload.name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Project name cannot be empty.")
+
+    response = (
+        supabase.table("projects")
+        .update({
+            "name": clean_name,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+        .eq("id", project_id)
+        .eq("user_id", current_user.id)
+        .execute()
+    )
+
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return response.data[0]
 
 
 # ============================================================

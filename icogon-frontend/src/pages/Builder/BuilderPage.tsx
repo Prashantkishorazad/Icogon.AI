@@ -16,11 +16,8 @@ import {
   useSearchParams,
 } from "react-router-dom";
 
-import {
-  createProjectApi,
-  getProjectApiErrorMessage,
-} from "../../api/projectApi";
-import { useTheme } from "../../context/ThemeContext";
+import { createProjectApi } from "../../api/projectApi";
+import { useTheme } from "../../components/context/ThemeContext";
 
 const EXAMPLE_PROMPTS = [
   {
@@ -492,3 +489,63 @@ Build a modern project management platform with:
 };
 
 export default BuilderPage;
+function getProjectApiErrorMessage(
+  cause: unknown,
+  fallbackMessage: string,
+): React.SetStateAction<string> {
+  if (cause instanceof Error) {
+    const message = cause.message.trim();
+    if (message) return message;
+  }
+
+  if (cause && typeof cause === "object") {
+    const error = cause as {
+      message?: unknown;
+      error?: unknown;
+      detail?: unknown;
+      data?: unknown;
+      response?: { data?: unknown };
+    };
+
+    const getMessage = (value: unknown): string | undefined => {
+      if (typeof value === "string") {
+        const message = value.trim();
+        return message || undefined;
+      }
+
+      if (value && typeof value === "object") {
+        const data = value as {
+          message?: unknown;
+          error?: unknown;
+          detail?: unknown;
+        };
+
+        for (const candidate of [data.message, data.error, data.detail]) {
+          if (typeof candidate === "string" && candidate.trim()) {
+            return candidate.trim();
+          }
+        }
+      }
+
+      return undefined;
+    };
+
+    for (const candidate of [
+      error.response?.data,
+      error.data,
+      error.message,
+      error.error,
+      error.detail,
+    ]) {
+      const message = getMessage(candidate);
+      if (message) return message;
+    }
+  }
+
+  if (typeof cause === "string" && cause.trim()) {
+    return cause.trim();
+  }
+
+  return fallbackMessage;
+}
+

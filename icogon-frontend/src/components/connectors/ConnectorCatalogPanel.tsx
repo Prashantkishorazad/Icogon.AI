@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, Search, X } from "lucide-react";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../context/ThemeContext";
 import { connectorCatalog, type ConnectorDefinition } from "../../data/connectors/connectorCatalog";
 import ConnectorDetail, { type ConnectorStatus } from "./ConnectorDetail";
 

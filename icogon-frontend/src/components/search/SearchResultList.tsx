@@ -1,12 +1,23 @@
-import React from "react";
+
+import React, { useMemo } from "react";
+
 import {
   Clock3,
   FolderKanban,
   Loader2,
   Search,
+  Plus,
+  AlertCircle,
+  ArrowUpRight,
 } from "lucide-react";
+
 import SearchResultItem from "./SearchResultItem";
+
 import type { SearchNavigationItem } from "../../data/searchNavigation";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 export type SearchResult = SearchNavigationItem & {
   project?: {
@@ -25,21 +36,119 @@ export type SearchResult = SearchNavigationItem & {
   };
 };
 
-interface Props {
-  items: SearchResult[];
-  recentItems: SearchResult[];
+interface Props<T extends SearchResult> {
+  items: T[];
+  recentItems: T[];
   query: string;
   selectedIndex: number;
   isDark: boolean;
   activeTheme: string;
   loading: boolean;
   error: string | null;
-  onSelect: (item: SearchResult) => void;
+  onSelect: (item: T) => void;
   onHover: (index: number) => void;
   onCreateProject: () => void;
+  onClearSearch?: () => void;
 }
 
-const SearchResultList: React.FC<Props> = ({
+/* =========================================================
+   CATEGORY HEADING
+========================================================= */
+
+interface CategoryHeadingProps {
+  title: string;
+  count?: number;
+  isDark: boolean;
+  icon?: React.ReactNode;
+}
+
+const CategoryHeading: React.FC<CategoryHeadingProps> = ({
+  title,
+  count,
+  isDark,
+  icon,
+}) => (
+  <div
+    className={`
+      mb-2 flex items-center gap-2 px-3
+      text-[12px] font-medium
+      tracking-[-0.01em]
+      ${isDark ? "text-[#a3a3a3]" : "text-slate-500"}
+    `}
+  >
+    {icon}
+
+    <span>{title}</span>
+
+    {typeof count === "number" && (
+      <span
+        className={`
+          ml-auto text-[11px] tabular-nums
+          ${isDark ? "text-[#858585]" : "text-slate-400"}
+        `}
+      >
+        {count}
+      </span>
+    )}
+  </div>
+);
+
+/* =========================================================
+   LOADING SKELETON
+========================================================= */
+
+const LoadingSkeleton: React.FC<{
+  isDark: boolean;
+}> = ({ isDark }) => {
+  const skeleton = isDark
+    ? "bg-white/[0.07]"
+    : "bg-slate-200";
+
+  return (
+    <div
+      role="status"
+      aria-label="Loading projects"
+      className="
+        space-y-1
+        motion-safe:animate-pulse
+      "
+    >
+      {[0, 1, 2].map((index) => (
+        <div
+          key={index}
+          className="
+            flex h-12 w-full
+            items-center gap-3
+            rounded-[10px] px-3
+          "
+        >
+          <div
+            className={`
+              h-7 w-7 shrink-0 rounded-lg
+              ${skeleton}
+            `}
+          />
+
+          <div
+            className={`
+              h-3 rounded-md
+              ${skeleton}
+            `}
+            style={{
+              width: `${72 - index * 14}%`,
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* =========================================================
+   MAIN COMPONENT
+========================================================= */
+
+function SearchResultList<T extends SearchResult>({
   items,
   recentItems,
   query,
@@ -51,166 +160,473 @@ const SearchResultList: React.FC<Props> = ({
   onSelect,
   onHover,
   onCreateProject,
-}) => {
+  onClearSearch,
+}: Props<T>) {
   const hasQuery = Boolean(query.trim());
 
-  // On the empty search state, projects are shown only in the
-  // Recent projects section. This avoids displaying them twice.
-  const groupedItems = hasQuery
-    ? items
-    : items.filter((item) => !item.project);
+  /* =======================================================
+     THEME
+  ======================================================= */
 
-  const groups = groupedItems.reduce<Record<string, SearchResult[]>>(
-    (acc, item) => {
-      (acc[item.category] ||= []).push(item);
-      return acc;
-    },
-    {}
+  const colors = isDark
+    ? {
+        text: "text-[#ededed]",
+        muted: "text-[#a3a3a3]",
+        subtle: "text-[#858585]",
+        border: "border-white/[0.08]",
+        surface: "bg-white/[0.035]",
+        hover: "hover:bg-white/[0.06]",
+        icon: "text-[#a3a3a3]",
+        accent: "text-[#60a5fa]",
+        error: "text-[#fca5a5]",
+      }
+    : {
+        text: "text-slate-900",
+        muted: "text-slate-500",
+        subtle: "text-slate-400",
+        border: "border-slate-200",
+        surface: "bg-slate-50",
+        hover: "hover:bg-slate-100",
+        icon: "text-slate-400",
+        accent: "text-[#2563eb]",
+        error: "text-red-600",
+      };
+
+  /* =======================================================
+     RESULT INDEX MAP
+     Preserve keyboard selection order from GlobalSearch.
+  ======================================================= */
+
+  const itemIndexes = useMemo(
+    () =>
+      new Map(
+        items.map((item, index) => [
+          item.id,
+          index,
+        ] as const),
+      ),
+    [items],
   );
 
-  const heading = `
-    mb-2 flex items-center gap-1.5 px-2.5
-    text-[10px] font-semibold uppercase tracking-[0.09em]
-    ${isDark ? "text-[#777]" : "text-slate-400"}
-  `;
+  /* =======================================================
+     GROUP RESULTS
+     Prevent duplicate recent projects.
+  ======================================================= */
+
+  const groups = useMemo(() => {
+    const result = new Map<string, T[]>();
+
+    const recentIds = new Set(
+      recentItems.map((item) => item.id),
+    );
+
+    items.forEach((item) => {
+      if (
+        !hasQuery &&
+        (item.project || recentIds.has(item.id))
+      ) {
+        return;
+      }
+
+      const category =
+        item.category || "Other";
+
+      const existing = result.get(category);
+
+      if (existing) {
+        existing.push(item);
+      } else {
+        result.set(category, [item]);
+      }
+    });
+
+    return Array.from(result.entries());
+  }, [items, recentItems, hasQuery]);
+
+  /* =======================================================
+     RENDER INDIVIDUAL RESULT
+  ======================================================= */
+
+  const renderResult = (item: T) => {
+    const index = itemIndexes.get(item.id);
+
+    if (index === undefined) {
+      return null;
+    }
+
+    const selected = index === selectedIndex;
+
+    return (
+      <div
+        key={item.id}
+        id={`icogon-search-${item.id}`}
+        onFocusCapture={() => onHover(index)}
+        className={`
+          icogon-search-result
+          min-w-0
+          overflow-hidden
+          rounded-[10px]
+          ${selected ? "is-selected" : ""}
+        `}
+      >
+        <SearchResultItem
+          item={item}
+          isProject={Boolean(item.project)}
+          selected={selected}
+          activeTheme={activeTheme}
+          onMouseEnter={() => {
+            onHover(index);
+          }}
+          onClick={() => {
+            onSelect(item);
+          }}
+        />
+      </div>
+    );
+  };
+
+  /* =======================================================
+     EMPTY SEARCH STATE
+  ======================================================= */
 
   if (!items.length && hasQuery) {
     return (
-      <div className="flex min-h-full flex-col items-center justify-center px-5 py-12">
+      <div
+        className="
+          flex min-h-[300px]
+          flex-col items-center
+          justify-center
+          px-6 py-12 text-center
+        "
+      >
         <div
           className={`
-            flex h-11 w-11 items-center justify-center rounded-xl
-            ${isDark
-              ? "bg-[#1d1d1d] text-[#777]"
-              : "bg-slate-100 text-slate-400"}
+            flex h-14 w-14
+            items-center justify-center
+            rounded-2xl border
+            ${colors.border}
+            ${colors.surface}
           `}
         >
-          <Search size={18} />
+          {loading ? (
+            <Loader2
+              size={23}
+              className={`
+                animate-spin
+                ${colors.accent}
+              `}
+            />
+          ) : (
+            <Search
+              size={23}
+              strokeWidth={1.6}
+              className={colors.icon}
+            />
+          )}
         </div>
-        <p
-          className={`mt-3 text-[13px] font-medium ${
-            isDark ? "text-[#aaa]" : "text-slate-600"
-          }`}
+
+        <h3
+          className={`
+            mt-4
+            text-[15px]
+            font-semibold
+            tracking-tight
+            ${colors.text}
+          `}
         >
-          No results found
-        </p>
+          {loading
+            ? "Searching projects..."
+            : "No results found"}
+        </h3>
+
         <p
-          className={`mt-1 text-[11px] ${
-            isDark ? "text-[#777]" : "text-slate-400"
-          }`}
+          className={`
+            mt-2 max-w-[280px]
+            break-words
+            text-[13px]
+            leading-relaxed
+            ${colors.muted}
+          `}
         >
-          Try another search term
+          {loading
+            ? "Loading your available projects."
+            : `We couldn't find anything matching "${query}". Try another search term.`}
         </p>
+
+        {error && (
+          <p
+            role="alert"
+            className={`
+              mt-3 text-xs
+              ${colors.error}
+            `}
+          >
+            {error}
+          </p>
+        )}
+
+        {!loading && onClearSearch && (
+          <button
+            type="button"
+            onClick={onClearSearch}
+            className={`
+              mt-5 cursor-pointer
+              rounded-lg border
+              px-4 py-2
+              text-[13px] font-medium
+              transition-colors
+              focus-visible:outline-none
+              focus-visible:ring-2
+              focus-visible:ring-[#3978ff]
+              ${colors.border}
+              ${colors.surface}
+              ${colors.hover}
+              ${colors.text}
+            `}
+          >
+            Clear search
+          </button>
+        )}
       </div>
     );
   }
 
+  /* =======================================================
+     MAIN RENDER
+  ======================================================= */
+
   return (
-    <div className="space-y-5 px-2.5 py-3">
+    <div
+      className="
+        min-w-0
+        space-y-5
+        px-2.5 py-4
+        sm:px-3
+      "
+    >
+      {/* =================================================
+          RECENT PROJECTS
+      ================================================= */}
+
       {!hasQuery && (
-        <section>
-          <div className={heading}>
-            <Clock3 size={12} />
-            Recent projects
-          </div>
+        <section aria-label="Recent projects">
+          <CategoryHeading
+            title="Recent projects"
+            count={
+              loading
+                ? undefined
+                : recentItems.length
+            }
+            icon={
+              <Clock3
+                size={14}
+                strokeWidth={1.7}
+              />
+            }
+            isDark={isDark}
+          />
 
-          {loading ? (
-            <div
-              className={`
-                flex items-center gap-2.5 rounded-lg px-2.5 py-4 text-[12px]
-                ${isDark ? "text-[#777]" : "text-slate-400"}
-              `}
-            >
-              <Loader2 size={14} className="animate-spin" />
-              Loading projects...
-            </div>
-          ) : error ? (
-            <div
-              className={`
-                rounded-lg px-2.5 py-3 text-[11px]
-                ${isDark
-                  ? "bg-[#151515] text-[#999]"
-                  : "bg-slate-50 text-slate-500"}
-              `}
-            >
-              {error}
-            </div>
-          ) : recentItems.length ? (
+          {loading && !recentItems.length ? (
+            <LoadingSkeleton isDark={isDark} />
+          ) : recentItems.length > 0 ? (
             <div className="space-y-1">
-              {recentItems.map((item) => {
-                const index = items.findIndex((row) => row.id === item.id);
-
-                return (
-                  <SearchResultItem
-                    key={item.id}
-                    item={item}
-                    selected={index === selectedIndex}
-                    activeTheme={activeTheme}
-                    onMouseEnter={() => onHover(index)}
-                    onClick={() => onSelect(item)}
-                  />
-                );
-              })}
+              {recentItems.map(renderResult)}
             </div>
-          ) : (
+          ) : !error ? (
+            /* ===========================================
+               NO PROJECTS
+            =========================================== */
+
             <button
               type="button"
               onClick={onCreateProject}
               className={`
-                flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition
-                ${isDark ? "hover:bg-[#1d1d1d]" : "hover:bg-slate-50"}
+                group flex w-full
+                cursor-pointer items-center
+                gap-3 rounded-[12px]
+                border p-3
+                text-left
+                transition-colors
+                duration-150
+                focus-visible:outline-none
+                focus-visible:ring-2
+                focus-visible:ring-[#3978ff]
+                ${colors.border}
+                ${colors.surface}
+                ${colors.hover}
               `}
             >
               <span
                 className={`
-                  flex h-9 w-9 shrink-0 items-center justify-center rounded-lg
-                  ${isDark
-                    ? "bg-[#202020] text-[#888]"
-                    : "bg-slate-100 text-slate-500"}
+                  flex h-10 w-10 shrink-0
+                  items-center justify-center
+                  rounded-xl border
+                  ${colors.border}
+                  ${colors.accent}
                 `}
               >
-                <FolderKanban size={16} />
+                <FolderKanban
+                  size={19}
+                  strokeWidth={1.7}
+                />
               </span>
-              <span>
-                <span className="block text-[12px] font-medium">
-                  No recent projects
-                </span>
+
+              <span className="min-w-0 flex-1">
                 <span
-                  className={`mt-0.5 block text-[11px] ${
-                    isDark ? "text-[#777]" : "text-slate-400"
-                  }`}
+                  className={`
+                    block text-[13px]
+                    font-semibold
+                    ${colors.text}
+                  `}
                 >
                   Create your first project
                 </span>
+
+                <span
+                  className={`
+                    mt-1 block
+                    text-[12px]
+                    leading-relaxed
+                    ${colors.muted}
+                  `}
+                >
+                  Turn your next idea into reality.
+                </span>
               </span>
+
+              <Plus
+                size={17}
+                className={`
+                  shrink-0
+                  ${colors.icon}
+                `}
+              />
             </button>
+          ) : null}
+
+          {error && (
+            <div
+              role="alert"
+              className={`
+                mt-2 flex items-start
+                gap-2 rounded-lg
+                border px-3 py-3
+                text-[12px]
+                leading-relaxed
+                ${colors.border}
+                ${colors.error}
+              `}
+            >
+              <AlertCircle
+                size={15}
+                className="mt-0.5 shrink-0"
+              />
+
+              {error}
+            </div>
           )}
         </section>
       )}
 
-      {Object.entries(groups).map(([category, rows]) => (
-        <section key={category}>
-          <div className={heading}>{category}</div>
-          <div className="space-y-1">
-            {rows.map((item) => {
-              const index = items.findIndex((row) => row.id === item.id);
+      {/* =================================================
+          SEARCH RESULTS COUNT
+      ================================================= */}
 
-              return (
-                <SearchResultItem
-                  key={item.id}
-                  item={item}
-                  selected={index === selectedIndex}
-                  activeTheme={activeTheme}
-                  onMouseEnter={() => onHover(index)}
-                  onClick={() => onSelect(item)}
-                />
-              );
-            })}
+      {hasQuery && (
+        <div
+          role="status"
+          className={`
+            flex items-center
+            justify-between
+            px-3
+            text-[12px]
+            ${colors.muted}
+          `}
+        >
+          <span>
+            {items.length}{" "}
+            {items.length === 1
+              ? "result"
+              : "results"}
+          </span>
+
+          {loading && (
+            <Loader2
+              size={13}
+              className="animate-spin"
+            />
+          )}
+        </div>
+      )}
+
+      {/* =================================================
+          CATEGORY GROUPS
+      ================================================= */}
+
+      {groups.map(([category, rows]) => (
+        <section
+          key={category}
+          aria-label={category}
+        >
+          <CategoryHeading
+            title={category}
+            count={rows.length}
+            isDark={isDark}
+          />
+
+          <div className="space-y-1">
+            {rows.map(renderResult)}
           </div>
         </section>
       ))}
+
+      {/* =================================================
+          QUICK CREATE ACTION
+      ================================================= */}
+
+      {!hasQuery && recentItems.length > 0 && (
+        <div
+          className={`
+            border-t pt-3
+            ${colors.border}
+          `}
+        >
+          <button
+            type="button"
+            onClick={onCreateProject}
+            className={`
+              flex h-11 w-full
+              cursor-pointer items-center
+              gap-3 rounded-[10px]
+              px-3 text-left
+              text-[13px] font-medium
+              transition-colors
+              focus-visible:outline-none
+              focus-visible:ring-2
+              focus-visible:ring-[#3978ff]
+              ${colors.muted}
+              ${colors.hover}
+            `}
+          >
+            <Plus
+              size={18}
+              strokeWidth={1.7}
+              className={colors.accent}
+            />
+
+            <span className="flex-1">
+              Start a new project
+            </span>
+
+            <ArrowUpRight
+              size={14}
+              className={colors.subtle}
+            />
+          </button>
+        </div>
+      )}
     </div>
   );
-};
+}
 
 export default SearchResultList;

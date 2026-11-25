@@ -1,310 +1,759 @@
-import React, { useMemo, useState } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
+
 import {
-  AlertCircle,
-  ArrowUpRight,
-  Code2,
+
   ExternalLink,
-  Eye,
+
   Laptop,
-  Loader2,
-  // Maximize2,
+
+  Lock,
+
   Monitor,
+
   Moon,
+
   RefreshCw,
+
   Smartphone,
+
   Sun,
+
   Tablet,
+
+  Terminal,
+
+  Zap,
+
 } from "lucide-react";
-import type { DeviceMode, PreviewState } from "../types";
-import type { ProjectResponse } from "../../../api/projectApi";
+
+import type { DeviceMode, GeneratedFile, PreviewState, ProjectResponse } from "../types";
+
+
 
 interface WorkspacePreviewProps {
+
   project: ProjectResponse | null;
+
   previewState: PreviewState;
+
   deviceMode: DeviceMode;
+
   setDeviceMode: (mode: DeviceMode) => void;
+
   isRefreshing: boolean;
+
   onRefreshPreview: () => void;
+
   isRunning: boolean;
+
   onQuickPrompt: (prompt: string) => void;
-  files: Array<{ path: string; content?: string | null }>;
+
+  files?: GeneratedFile[];
+
 }
 
-type PreviewTheme = "light" | "dark" | "system";
 
-const STARTER_PROMPTS = [
-  "Create a polished landing page for my product",
-  "Build a modern SaaS dashboard",
-  "Make this application responsive",
-];
 
-const getHtml = (previewState: PreviewState): string => {
-  if (typeof previewState.html === "string" && previewState.html.trim()) {
-    return previewState.html;
-  }
-  const data = previewState.data;
-  if (data && typeof data === "object" && "html" in data) {
-    const html = (data as { html?: unknown }).html;
-    if (typeof html === "string" && html.trim()) return html;
-  }
-  return "";
+// Keep generated documents in an opaque-origin iframe, including detached previews.
+const CSP_POLICY = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https: data: blob:; style-src 'unsafe-inline' https: data:; font-src https: data:; img-src data: blob: https:; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'">`;
+
+const SANDBOX_PERMISSIONS = "allow-scripts allow-forms allow-modals";
+const EMPTY_FILES: GeneratedFile[] = [];
+type ThemeMode = "dark" | "light" | "system";
+
+/** A policy must precede any generated executable content. A second policy
+ * can only restrict the first; never trust a policy supplied by generated HTML.
+ * The leading doctype keeps standards mode, even for fragment previews.
+ */
+const applyPreviewPolicy = (html: string): string => {
+  const source = html.replace(/^\uFEFF?\s*<!doctype[^>]*>/i, "");
+  return `<!doctype html>\n${CSP_POLICY}\n${source}`;
 };
 
-const withBaseDocument = (html: string) => {
-  if (!html.trim()) return "";
-  if (/<html[\s>]/i.test(html)) return html;
-  return `<!doctype html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head><body>${html}</body></html>`;
+const nonEmptyHtml = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim() ? value : undefined;
+
+const previewData = (state: PreviewState): Record<string, unknown> =>
+  typeof state.data === "object" && state.data !== null
+    ? state.data as Record<string, unknown>
+    : {};
+
+const getPreviewError = (state: PreviewState): string | undefined => {
+  const error = state.error || previewData(state).error;
+  return typeof error === "string" && error.trim()
+    ? error
+    : error instanceof Error ? error.message : undefined;
 };
+
+// Only inline explicitly referenced local assets for static HTML projects.
+// React/TypeScript and module graphs must use the real backend compiler.
+const localAssetPath = (value: string): string | undefined => {
+  const path = value.trim();
+  if (!path || /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(path)) return undefined;
+  const parts: string[] = [];
+  for (const segment of path.split(/[?#]/, 1)[0].split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") {
+      if (!parts.length) return undefined;
+      parts.pop();
+    } else parts.push(segment);
+  }
+  return parts.join("/") || undefined;
+};
+
+const readAttribute = (tag: string, name: string): string | undefined => {
+  const match = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
+  return match ? match[1] ?? match[2] ?? match[3] : undefined;
+};
+
+const getStaticPreview = (files: GeneratedFile[]): { html?: string; error?: string } => {
+  const assets = new Map(files.filter(file => file.operation !== "delete" && typeof file.content === "string")
+    .map(file => [localAssetPath(file.path), file.content as string]));
+  const entry = nonEmptyHtml(assets.get("index.html"));
+  if (!entry) return {};
+  let unresolved = false;
+  const html = entry.replace(/<link\b[^>]*>|<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, tag => {
+    if (/^<link\b/i.test(tag)) {
+      if (readAttribute(tag, "rel")?.toLowerCase() !== "stylesheet") return tag;
+      const href = readAttribute(tag, "href");
+      const path = href && localAssetPath(href);
+      if (!path) return tag;
+      const css = assets.get(path);
+      if (css === undefined) { unresolved = true; return tag; }
+      // Local media qualifiers and relative CSS dependencies need a compiler.
+      if (readAttribute(tag, "media") || /@import\b|url\(\s*["']?(?!["']|data:|https?:|#)/i.test(css)) {
+        unresolved = true; return tag;
+      }
+      return `<style>\n${css.replace(/<\/style/gi, "<\\/style")}\n</style>`;
+    }
+    const source = readAttribute(tag.split(">")[0], "src");
+    const type = readAttribute(tag.split(">")[0], "type")?.toLowerCase();
+    if (type === "module") { unresolved = true; return tag; }
+    if (!source) return tag;
+    const path = localAssetPath(source);
+    if (!path) return tag;
+    const js = assets.get(path);
+    if (js === undefined || !/\.js$/i.test(path) || /\b(?:import|export)\s|import\s*\(/.test(js)) {
+      unresolved = true; return tag;
+    }
+    return `<script>\n${js.replace(/<\/script/gi, "<\\/script")}\n</script>`;
+  });
+  return unresolved
+    ? { error: "This project needs the backend compiler to resolve its source files. Retry the generated preview." }
+    : { html };
+};
+
+// The compiler already bundles dependencies; never append source JS/CSS to
+// compiled HTML, since doing so can execute scripts twice or corrupt a build.
+const resolvePreview = (state: PreviewState, files: GeneratedFile[]) => {
+  const html = nonEmptyHtml(state.html) || nonEmptyHtml(previewData(state).html);
+  const error = getPreviewError(state);
+  if (html) return { html, error, staticFallback: false };
+  if (error) return { html: undefined, error, staticFallback: false };
+  const fallback = getStaticPreview(files);
+  return { ...fallback, staticFallback: Boolean(fallback.html) };
+};
+
+const escapeAttribute = (value: string): string => value
+  .replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+  .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+const createDetachedPreview = (srcDoc: string): string =>
+  `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ICOGON Sandbox Preview</title><style>html,body{margin:0;width:100%;height:100%;background:#090a0f}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe title="Generated application" sandbox="${SANDBOX_PERMISSIONS}" referrerpolicy="no-referrer" srcdoc="${escapeAttribute(srcDoc)}"></iframe></body></html>`;
+
 
 export const WorkspacePreview: React.FC<WorkspacePreviewProps> = ({
-  project,
-  previewState,
-  deviceMode,
-  setDeviceMode,
-  isRefreshing,
-  onRefreshPreview,
-  isRunning,
-  onQuickPrompt,
-  files,
-}) => {
-  const [previewTheme, setPreviewTheme] = useState<PreviewTheme>("system");
-  const html = useMemo(() => withBaseDocument(getHtml(previewState)), [previewState]);
-  const hasPreview = Boolean(html.trim());
-  const warnings = previewState.warnings || [];
-  const viewportWidth =
-    deviceMode === "mobile" ? 390 : deviceMode === "tablet" ? 820 : 1440;
 
-  const openPreviewInNewTab = () => {
-    if (!hasPreview) return;
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const opened = window.open(url, "_blank", "noopener,noreferrer");
-    if (!opened) {
-      URL.revokeObjectURL(url);
-      return;
+  project,
+
+  previewState,
+
+  deviceMode,
+
+  setDeviceMode,
+
+  isRefreshing,
+
+  onRefreshPreview,
+
+  isRunning,
+
+  onQuickPrompt,
+
+  files = EMPTY_FILES,
+
+}) => {
+
+  const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
+
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+
+
+  const getContainerWidth = () => {
+
+    switch (deviceMode) {
+
+      case "mobile":
+
+        return "w-full max-w-[375px]";
+
+      case "tablet":
+
+        return "w-full max-w-[768px]";
+
+      default:
+
+        return "w-full";
+
     }
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+
   };
 
+
+
+  // Derive from the controller's restored build rather than creating a second
+  // persistence cache. A stable srcDoc does not reload for unrelated UI updates.
+  const { html: htmlContent, error: previewError, staticFallback } = useMemo(
+    () => resolvePreview(previewState, files),
+    [previewState, files],
+  );
+  const sandboxHtml = useMemo(() => htmlContent ? applyPreviewPolicy(htmlContent) : undefined, [htmlContent]);
+  const rawWarnings = previewState.warnings ?? previewData(previewState).warnings;
+  const warnings = Array.isArray(rawWarnings)
+    ? rawWarnings.filter((warning): warning is string => typeof warning === "string")
+    : [];
+
+  // Explicit retry reloads the current iframe. Ordinary renders and device
+  // changes leave its document untouched. Server refresh may replace srcDoc.
+  const [reloadRevision, setReloadRevision] = useState(0);
+  const [frameLoadedSource, setFrameLoadedSource] = useState<string | undefined>();
+  const [externalError, setExternalError] = useState("");
+  const frameLoaded = sandboxHtml !== undefined && frameLoadedSource === `${reloadRevision}:${sandboxHtml}`;
+
+  const handleRefresh = () => {
+    if (isRefreshing || isRunning) return;
+    setExternalError("");
+    setReloadRevision(value => value + 1);
+    onRefreshPreview();
+  };
+
+  // Sync theme with iframe content (generated apps may opt into this message).
+  const sendTheme = (mode: ThemeMode) => {
+    // A sandbox without allow-same-origin has an opaque origin. Only a theme
+    // preference is sent; never pass credentials or project data here.
+    iframeRef.current?.contentWindow?.postMessage({ type: "SET_THEME", theme: mode }, "*");
+  };
+
+  const handleThemeChange = (mode: ThemeMode) => {
+    setThemeMode(mode);
+  };
+
+  useEffect(() => {
+    sendTheme(themeMode);
+  }, [themeMode, sandboxHtml, reloadRevision]);
+
+  const handleOpenNewWindow = () => {
+    if (!sandboxHtml) return;
+    setExternalError("");
+    let url: string | undefined;
+    try {
+      // Do NOT navigate directly to a blob containing generated scripts:
+      // it inherits the application origin and loses iframe isolation.
+      const blob = new Blob([createDetachedPreview(sandboxHtml)], { type: "text/html" });
+      url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.click();
+      const openedUrl = url;
+      // Allow the new document to load before releasing the temporary URL.
+      window.setTimeout(() => URL.revokeObjectURL(openedUrl), 60_000);
+    } catch {
+      if (url) URL.revokeObjectURL(url);
+      setExternalError("Unable to open the detached preview. Try again or check your browser settings.");
+    }
+  };
+
+
   return (
-    <section className="icogon-preview-workspace" aria-label="Application preview">
-      <style>{`
-        .icogon-preview-workspace {
-          --preview-bg: var(--builder-bg, #f5f6fa);
-          --preview-panel: var(--builder-panel, #fff);
-          --preview-surface: var(--builder-surface, #f1f3f8);
-          --preview-border: var(--builder-border, #e1e5ee);
-          --preview-text: var(--builder-text, #202536);
-          --preview-muted: var(--builder-muted, #697386);
-          display: flex; flex: 1 1 auto; flex-direction: column;
-          width: 100%; height: 100%; min-width: 0; min-height: 0;
-          overflow: hidden; color: var(--preview-text); background: var(--preview-bg);
-        }
-        .icogon-preview-toolbar {
-          display: flex; flex: 0 0 48px; align-items: center; justify-content: space-between;
-          gap: 10px; min-width: 0; padding: 0 14px;
-          border-bottom: 1px solid var(--preview-border); background: var(--preview-panel);
-        }
-        .icogon-preview-toolbar-group { display: flex; align-items: center; gap: 5px; min-width: 0; }
-        .icogon-preview-label { display: flex; align-items: center; gap: 7px; color: var(--preview-muted); font-size: 11px; font-weight: 600; }
-        .icogon-preview-label strong { color: var(--preview-text); font-weight: 650; }
-        .icogon-preview-workspace button {
-          display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-          height: 31px; min-width: 31px; padding: 0 9px; border: 1px solid transparent;
-          border-radius: 8px; color: var(--preview-muted); background: transparent;
-          font: inherit; font-size: 11px; cursor: pointer;
-          transition: color 130ms ease, background 130ms ease, border-color 130ms ease;
-        }
-        .icogon-preview-workspace button:hover:not(:disabled) {
-          color: var(--preview-text); background: var(--preview-surface); border-color: var(--preview-border);
-        }
-        .icogon-preview-workspace button:focus-visible { outline: 2px solid #7188e8; outline-offset: 2px; }
-        .icogon-preview-workspace button:disabled { opacity: .4; cursor: not-allowed; }
-        .icogon-preview-device-group, .icogon-preview-theme-group {
-          display: inline-flex; align-items: center; gap: 2px; padding: 3px;
-          border: 1px solid var(--preview-border); border-radius: 10px; background: var(--preview-surface);
-        }
-        .icogon-preview-workspace .icogon-preview-device-group button,
-        .icogon-preview-workspace .icogon-preview-theme-group button {
-          width: 29px; height: 27px; min-width: 29px; padding: 0; border: 0;
-        }
-        .icogon-preview-workspace .icogon-preview-device-group button[aria-pressed="true"],
-        .icogon-preview-workspace .icogon-preview-theme-group button[aria-pressed="true"] {
-          color: #647be8; background: var(--preview-panel); box-shadow: 0 1px 3px rgb(0 0 0 / .1);
-        }
-        .icogon-preview-stage {
-          display: flex; flex: 1 1 auto; align-items: flex-start; justify-content: center;
-          min-width: 0; min-height: 0; overflow: auto; padding: 22px;
-          background-color: var(--preview-bg);
-          background-image: radial-gradient(color-mix(in srgb, var(--preview-muted) 20%, transparent) .7px, transparent .7px);
-          background-size: 16px 16px;
-        }
-        .icogon-preview-frame-shell {
-          display: flex; flex-direction: column; flex: 0 0 auto;
-          width: min(100%, var(--preview-width, 1440px)); min-height: min(100%, 720px);
-          overflow: hidden; border: 1px solid var(--preview-border); border-radius: 13px;
-          background: white; box-shadow: 0 12px 36px rgb(15 23 42 / .12);
-          transition: width 180ms ease;
-        }
-        .icogon-preview-frame-top {
-          display: flex; flex: 0 0 34px; align-items: center; gap: 7px; padding: 0 11px;
-          border-bottom: 1px solid #e7e9ef; background: #fafbfc;
-        }
-        .icogon-preview-window-dot { width: 7px; height: 7px; border-radius: 50%; background: #d1d5df; }
-        .icogon-preview-address {
-          flex: 1; max-width: 420px; margin: 0 auto; padding: 4px 10px;
-          overflow: hidden; border: 1px solid #e8eaf0; border-radius: 6px;
-          color: #9299a8; background: white; font-size: 9px; text-align: center;
-          text-overflow: ellipsis; white-space: nowrap;
-        }
-        .icogon-preview-iframe { display: block; flex: 1 1 auto; width: 100%; min-height: 600px; border: 0; background: white; }
-        .icogon-preview-empty {
-          display: flex; flex: 1 1 auto; align-items: center; justify-content: center;
-          min-height: 420px; padding: 30px;
-        }
-        .icogon-preview-empty-card {
-          width: min(100%, 560px); padding: 30px; border: 1px solid var(--preview-border);
-          border-radius: 18px; background: var(--preview-panel); box-shadow: 0 12px 34px rgb(15 23 42 / .06);
-          text-align: center;
-        }
-        .icogon-preview-empty-icon {
-          display: grid; place-items: center; width: 48px; height: 48px; margin: 0 auto 15px;
-          border: 1px solid var(--preview-border); border-radius: 15px;
-          color: #7188e8; background: color-mix(in srgb, #7188e8 10%, var(--preview-panel));
-        }
-        .icogon-preview-empty-card h2 { margin: 0; color: var(--preview-text); font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
-        .icogon-preview-empty-card p { max-width: 410px; margin: 9px auto 19px; color: var(--preview-muted); font-size: 12px; line-height: 1.65; }
-        .icogon-preview-prompts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-        .icogon-preview-workspace .icogon-preview-prompts button {
-          justify-content: flex-start; height: auto; min-height: 39px; padding: 9px 10px;
-          border: 1px solid var(--preview-border); background: var(--preview-surface);
-          color: var(--preview-text); text-align: left; white-space: normal; line-height: 1.4;
-        }
-        .icogon-preview-workspace .icogon-preview-prompts button:hover { border-color: #7188e8; }
-        .icogon-preview-warning {
-          display: flex; align-items: flex-start; gap: 7px; padding: 9px 14px;
-          border-bottom: 1px solid color-mix(in srgb, #d69b38 35%, var(--preview-border));
-          color: #a97926; background: color-mix(in srgb, #e9b34c 9%, var(--preview-panel));
-          font-size: 10px; line-height: 1.5;
-        }
-        @media (max-width: 700px) {
-          .icogon-preview-toolbar { padding: 0 8px; gap: 5px; }
-          .icogon-preview-stage { padding: 10px; }
-          .icogon-preview-frame-shell { width: 100% !important; min-height: 100%; }
-          .icogon-preview-iframe { min-height: 520px; }
-          .icogon-preview-empty-card { padding: 22px 16px; }
-          .icogon-preview-prompts { grid-template-columns: 1fr; }
-          .icogon-preview-label span { display: none; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .icogon-preview-frame-shell, .icogon-preview-workspace button { transition: none; }
-        }
-      `}</style>
 
-      <div className="icogon-preview-toolbar">
-        <div className="icogon-preview-toolbar-group">
-          <div className="icogon-preview-label">
-            <Eye size={14} />
-            <strong>Preview</strong>
-            <span>· {project?.name || "Your application"}</span>
+    <div className="flex h-full w-full flex-col bg-[#090a0f] text-slate-200 overflow-hidden">
+
+      {/* BROWSER CHROME TOOLBAR */}
+
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[#1b1e2a] bg-[#0f1118] px-3">
+
+        {/* Window controls & simulated address bar */}
+
+        <div className="flex items-center gap-2.5 min-w-0 flex-1 max-w-xl">
+
+          <div className="flex items-center gap-1.5 shrink-0">
+
+            <span className="h-2.5 w-2.5 rounded-full bg-rose-500/70" />
+
+            <span className="h-2.5 w-2.5 rounded-full bg-amber-500/70" />
+
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/70" />
+
           </div>
+
+
+
+          <div className="flex h-6 flex-1 items-center gap-1.5 rounded-md border border-[#212535] bg-[#0a0b10] px-2.5 text-[11px] text-slate-400">
+
+            <Lock size={10} className="text-emerald-400" aria-label="Isolated sandbox" />
+
+            <span className="truncate font-mono text-[10px] text-slate-400">
+
+              Sandbox / {project?.id?.slice(0, 8) || "local"}
+
+            </span>
+
+          </div>
+
         </div>
 
-        <div className="icogon-preview-toolbar-group">
-          <div className="icogon-preview-device-group" role="group" aria-label="Preview device size">
-            <button type="button" onClick={() => setDeviceMode("desktop")} aria-pressed={deviceMode === "desktop"} title="Desktop">
-              <Laptop size={14} />
+
+
+        {/* Viewport Toggles, Theme Mode and Quick Actions */}
+
+        <div className="flex items-center gap-1.5">
+
+          {/* Device viewport toggle */}
+
+          <div className="flex items-center rounded-md border border-[#212535] bg-[#0a0b10] p-0.5">
+
+            <button
+
+              type="button"
+
+              onClick={() => setDeviceMode("desktop")}
+              aria-pressed={deviceMode === "desktop"}
+
+              title="Desktop"
+
+              className={`p-1 rounded transition ${
+
+                deviceMode === "desktop" ? "bg-[#1f2334] text-indigo-300" : "text-slate-400 hover:text-white"
+
+              }`}
+
+            >
+
+              <Laptop size={12} />
+
             </button>
-            <button type="button" onClick={() => setDeviceMode("tablet")} aria-pressed={deviceMode === "tablet"} title="Tablet">
-              <Tablet size={14} />
+
+            <button
+
+              type="button"
+
+              onClick={() => setDeviceMode("tablet")}
+              aria-pressed={deviceMode === "tablet"}
+
+              title="Tablet (768px)"
+
+              className={`p-1 rounded transition ${
+
+                deviceMode === "tablet" ? "bg-[#1f2334] text-indigo-300" : "text-slate-400 hover:text-white"
+
+              }`}
+
+            >
+
+              <Tablet size={12} />
+
             </button>
-            <button type="button" onClick={() => setDeviceMode("mobile")} aria-pressed={deviceMode === "mobile"} title="Mobile">
-              <Smartphone size={14} />
+
+            <button
+
+              type="button"
+
+              onClick={() => setDeviceMode("mobile")}
+              aria-pressed={deviceMode === "mobile"}
+
+              title="Mobile (375px)"
+
+              className={`p-1 rounded transition ${
+
+                deviceMode === "mobile" ? "bg-[#1f2334] text-indigo-300" : "text-slate-400 hover:text-white"
+
+              }`}
+
+            >
+
+              <Smartphone size={12} />
+
             </button>
+
           </div>
-          <div className="icogon-preview-theme-group" role="group" aria-label="Preview appearance">
-            {(["light", "dark", "system"] as PreviewTheme[]).map((theme) => (
-              <button
-                type="button"
-                key={theme}
-                onClick={() => setPreviewTheme(theme)}
-                aria-pressed={previewTheme === theme}
-                title={`${theme[0].toUpperCase()}${theme.slice(1)} preview`}
-              >
-                {theme === "light" ? <Sun size={13} /> : theme === "dark" ? <Moon size={13} /> : <Monitor size={13} />}
-              </button>
-            ))}
+
+
+
+          {/* Theme switcher toggle */}
+
+          <div className="flex items-center rounded-md border border-[#212535] bg-[#0a0b10] p-0.5" title="Preview Theme Mode">
+
+            <button
+
+              type="button"
+
+              onClick={() => handleThemeChange("dark")}
+              aria-pressed={themeMode === "dark"}
+
+              title="Dark Mode"
+
+              className={`p-1 rounded transition ${
+
+                themeMode === "dark" ? "bg-[#1f2334] text-indigo-300" : "text-slate-400 hover:text-white"
+
+              }`}
+
+            >
+
+              <Moon size={12} />
+
+            </button>
+
+            <button
+
+              type="button"
+
+              onClick={() => handleThemeChange("light")}
+              aria-pressed={themeMode === "light"}
+
+              title="Light Mode"
+
+              className={`p-1 rounded transition ${
+
+                themeMode === "light" ? "bg-[#1f2334] text-amber-300" : "text-slate-400 hover:text-white"
+
+              }`}
+
+            >
+
+              <Sun size={12} />
+
+            </button>
+
+            <button
+
+              type="button"
+
+              onClick={() => handleThemeChange("system")}
+              aria-pressed={themeMode === "system"}
+
+              title="System Theme"
+
+              className={`p-1 rounded transition ${
+
+                themeMode === "system" ? "bg-[#1f2334] text-cyan-300" : "text-slate-400 hover:text-white"
+
+              }`}
+
+            >
+
+              <Monitor size={12} />
+
+            </button>
+
           </div>
-          <button type="button" onClick={onRefreshPreview} disabled={isRefreshing || isRunning} title="Refresh preview" aria-label="Refresh preview">
-            {isRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+
+
+
+          <button
+
+            type="button"
+
+            onClick={handleRefresh}
+
+            disabled={isRefreshing || isRunning}
+
+            title="Refresh Sandbox"
+            aria-label="Refresh sandbox"
+
+            className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-[#1b1f2d] hover:text-white transition disabled:opacity-40"
+
+          >
+
+            <RefreshCw size={12} className={isRefreshing ? "animate-spin text-indigo-400" : ""} />
+
           </button>
-          <button type="button" onClick={openPreviewInNewTab} disabled={!hasPreview} title="Open preview in new tab" aria-label="Open preview in new tab">
-            <ExternalLink size={14} />
-          </button>
+
+
+
+          {htmlContent && (
+
+            <button
+
+              type="button"
+
+              onClick={handleOpenNewWindow}
+
+              title="Open in new window"
+              aria-label="Open isolated preview in new window"
+
+              className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-[#1b1f2d] hover:text-white transition"
+
+            >
+
+              <ExternalLink size={12} />
+
+            </button>
+
+          )}
+
         </div>
+
       </div>
 
-      {warnings.length > 0 && (
-        <div className="icogon-preview-warning" role="status">
-          <AlertCircle size={13} />
-          <div>{warnings.slice(0, 3).join(" · ")}</div>
+
+
+      {/* Retained preview stays visible during generation or refresh. */}
+      {htmlContent && (isRunning || isRefreshing || staticFallback || previewError || !frameLoaded) && (
+        <div role="status" className="shrink-0 border-b border-[#1b1e2a] bg-[#12141e] px-3 py-1.5 text-[11px] text-slate-300">
+          {previewError
+            ? `Preview warning: ${previewError}`
+            : isRunning ? "Generating changes · showing the current preview"
+            : isRefreshing ? "Refreshing · showing the current preview"
+            : staticFallback ? "Static HTML preview · not a verified build"
+            : "Loading preview document…"}
         </div>
+      )}
+      {externalError && <p role="alert" className="px-3 py-1.5 text-xs text-rose-300">{externalError}</p>}
+
+      {/* COMPILER WARNINGS (if any) */}
+
+      {warnings && warnings.length > 0 && (
+
+        <div className="border-b border-amber-900/40 bg-amber-950/20 px-3 py-1.5 text-[11px] text-amber-300">
+
+          <p className="font-semibold">Compiler Warnings ({warnings.length}):</p>
+
+          <ul className="list-disc pl-4 text-[10px] space-y-0.5">
+
+            {warnings.map((w, i) => (
+
+              <li key={i}>{w}</li>
+
+            ))}
+
+          </ul>
+
+        </div>
+
       )}
 
-      {hasPreview ? (
-        <div className="icogon-preview-stage">
+
+
+      {/* VIEWPORT CANVAS */}
+
+      <div className="relative flex-1 overflow-auto bg-[#07080c] p-2 flex items-center justify-center">
+
+        {/* Subtle grid pattern background */}
+
+        <div className="absolute inset-0 bg-[radial-gradient(#1a1d29_1px,transparent_1px)] [background-size:16px_16px] opacity-40 pointer-events-none" />
+
+
+
+        {htmlContent ? (
+
           <div
-            className="icogon-preview-frame-shell"
-            style={{ "--preview-width": `${viewportWidth}px` } as React.CSSProperties}
+
+            className={`h-full ${getContainerWidth()} mx-auto transition-all duration-300 flex flex-col rounded-lg overflow-hidden border border-[#212435] ${
+
+              themeMode === "light" ? "bg-white" : "bg-[#07080d]"
+
+            } shadow-2xl`}
+
           >
-            <div className="icogon-preview-frame-top" aria-hidden="true">
-              <span className="icogon-preview-window-dot" />
-              <span className="icogon-preview-window-dot" />
-              <span className="icogon-preview-window-dot" />
-              <div className="icogon-preview-address">
-                {project?.name || "localhost"} · Preview
-              </div>
-            </div>
+
             <iframe
-              key={`${previewTheme}-${html.length}`}
-              className="icogon-preview-iframe"
-              title={`${project?.name || "Application"} preview`}
-              srcDoc={html}
-              sandbox="allow-scripts allow-forms allow-modals"
+
+              ref={iframeRef}
+
+              title="ICOGON Generated App Preview"
+
+              key={`${project?.id ?? "sandbox"}:${reloadRevision}`}
+              srcDoc={sandboxHtml}
+              onLoad={() => {
+                setFrameLoadedSource(`${reloadRevision}:${sandboxHtml}`);
+                sendTheme(themeMode);
+              }}
               referrerPolicy="no-referrer"
-              loading="eager"
+
+              sandbox={SANDBOX_PERMISSIONS}
+
+              className={`h-full w-full border-none ${
+
+                themeMode === "light" ? "bg-white" : "bg-[#07080d]"
+
+              }`}
+
             />
+
           </div>
-        </div>
-      ) : (
-        <div className="icogon-preview-empty">
-          <div className="icogon-preview-empty-card">
-            <div className="icogon-preview-empty-icon">
-              {isRunning ? <Loader2 size={22} className="animate-spin" /> : <Code2 size={22} />}
+
+        ) : (
+
+          /* Preview state and actionable build feedback */
+
+          <div className="relative z-10 max-w-lg w-full rounded-2xl border border-[#1f2231] bg-[#0e1017]/90 p-8 shadow-2xl backdrop-blur-md text-center">
+
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-[#232738] bg-[#121420] p-2 shadow-xl shadow-indigo-500/10">
+
+              <img src="/logo.png" alt="ICOGON" className="h-10 w-10 object-contain drop-shadow" />
+
             </div>
-            <h2>{isRunning ? "Building your workspace" : "Your preview starts here"}</h2>
-            <p>
-              {isRunning
-                ? "Your changes are being prepared. The preview will appear when compiled HTML is available."
-                : files.length > 0
-                  ? "Source files are available, but there is no compiled preview yet."
-                  : "Describe what you want to build in the chat. ICOGON will prepare the application preview here."}
+
+
+
+            <h2 className="mt-5 text-base font-semibold text-white tracking-tight">
+
+              {previewError ? "Preview failed to load" : project?.name || "Developer Workspace"}
+
+            </h2>
+
+
+
+            <p className={`mt-2 text-xs leading-relaxed ${previewError ? "text-rose-300" : "text-slate-400"}`} role={previewError ? "alert" : undefined}>
+
+              {previewError
+
+                ? previewError
+
+                : isRunning
+
+                  ? "ICOGON AI is generating your application. The interactive preview will appear here when the build is ready."
+
+                  : project?.description ||
+
+                    "Describe the app, dashboard, or website you want to build in the AI Assistant on the left."}
+
             </p>
-            {!isRunning && (
-              <div className="icogon-preview-prompts">
-                {STARTER_PROMPTS.map((prompt) => (
-                  <button type="button" key={prompt} onClick={() => onQuickPrompt(prompt)}>
-                    <span>{prompt}</span>
-                    <ArrowUpRight size={13} />
-                  </button>
-                ))}
-              </div>
+
+            {previewError && (
+
+              <button
+
+                type="button"
+
+                onClick={handleRefresh}
+
+                disabled={isRefreshing || isRunning}
+
+                className="mt-4 inline-flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-200 transition hover:bg-rose-500/15 disabled:opacity-50"
+
+              >
+
+                <RefreshCw size={12} className={isRefreshing ? "animate-spin" : ""} />
+
+                Retry preview
+
+              </button>
+
             )}
+
+
+
+            <div className="mt-6 grid grid-cols-2 gap-2 text-left text-[11px]">
+
+              <div className="rounded-lg border border-[#1f2231] bg-[#141622] p-3">
+
+                <div className="flex items-center gap-1.5 font-medium text-slate-200">
+
+                  <Zap size={12} className="text-indigo-400" />
+
+                  <span>Instant Sandboxing</span>
+
+                </div>
+
+                <p className="mt-1 text-[10px] text-slate-400 leading-normal">
+
+                  Compiled React and TypeScript previews, with static HTML fallback.
+
+                </p>
+
+              </div>
+
+
+
+              <div className="rounded-lg border border-[#1f2231] bg-[#141622] p-3">
+
+                <div className="flex items-center gap-1.5 font-medium text-slate-200">
+
+                  <Terminal size={12} className="text-violet-400" />
+
+                  <span>Multi-Agent Stack</span>
+
+                </div>
+
+                <p className="mt-1 text-[10px] text-slate-400 leading-normal">
+
+                  Architect, Planner, Coder, and Verifier agents in tandem.
+
+                </p>
+
+              </div>
+
+            </div>
+
+
+
+            {!isRunning && (
+
+              <div className="mt-6 border-t border-[#1d202e] pt-4">
+
+                <p className="text-[10px] font-medium text-slate-400 mb-2">Try a starter prompt:</p>
+
+                <div className="flex flex-wrap justify-center gap-1.5">
+
+                  {[
+
+                    "Create modern SaaS dashboard",
+
+                    "Build an AI landing page with pricing",
+
+                    "Add task manager with categories",
+
+                  ].map((starter) => (
+
+                    <button
+
+                      key={starter}
+
+                      type="button"
+
+                      onClick={() => onQuickPrompt(starter)}
+
+                      className="rounded-lg border border-[#232738] bg-[#141622] px-2.5 py-1 text-[10px] text-indigo-300 hover:border-indigo-500/50 hover:bg-[#1a1d2e] transition"
+
+                    >
+
+                      {starter}
+
+                    </button>
+
+                  ))}
+
+                </div>
+
+              </div>
+
+            )}
+
           </div>
-        </div>
-      )}
-    </section>
+
+        )}
+
+      </div>
+
+    </div>
+
   );
+
 };
 
 export default WorkspacePreview;

@@ -1,122 +1,553 @@
+
+
 import {
-  BrowserRouter,
   Routes,
   Route,
+  Navigate,
 } from "react-router-dom";
 
-// Public Pages
+import { Link } from "react-router-dom";
+
+
+// =====================================================
+// LANDING
+// =====================================================
+
 import LandingPage from "../pages/Landing/LandingPage";
-import Login from "../pages/Auth/LoginPage";
-import Signup from "../pages/Auth/SignupPage";
 
-// Private Pages
-import Dashboard from "../pages/Dashboard/DashboardPage";
-import ProfilePage from "../pages/Profile/ProfilePage";
+
+// =====================================================
+// AUTH
+// =====================================================
+
+import LoginPage from "../pages/Auth/LoginPage";
+import SignupPage from "../pages/Auth/SignupPage";
+import AuthCallback from "../pages/Auth/AuthCallback";
+import ForgotPassword from "../pages/Auth/ForgotPassword";
+
+
+// =====================================================
+// RESOURCES
+// =====================================================
+
+import AcademyPage from "../pages/Resources/AcademyPage";
+import ResourcesPage from "../pages/Resources/ResourcesPage";
+import BlogPage from "../pages/Resources/BlogPage";
+import PartnersPage from "../pages/Resources/PartnersPage";
+import TemplatesPage from "../pages/Resources/TemplatesPage";
+import GuidesPage from "../pages/Resources/GuidesPage";
+import DocsPage from "../pages/Resources/DocsPage";
+import CustomerStoriesPage from "../pages/Resources/CustomerStoriesPage";
+
+// Public resources connectors page.
+// Kept separately from the authenticated connectors page.
+import ResourcesConnectorsPage from "../pages/Resources/ConnectorsPage";
+
+
+// =====================================================
+// COMMUNITY
+// =====================================================
+
+import CommunityPage from "../pages/Community/CommunityPage";
+
+
+// =====================================================
+// DASHBOARD / APP
+// =====================================================
+
+import DashboardPage from "../pages/Dashboard/DashboardPage";
+import AutomationsPage from "../pages/Automations/AutomationsPage";
 import ProjectsPage from "../pages/Projects/ProjectsPage";
+import ProfilePage from "../pages/Profile/ProfilePage";
 
-// Builder
+
+// =====================================================
+// CONNECTORS
+// =====================================================
+
+// Authenticated Gmail / app connectors page.
+import ConnectorsPage from "../pages/Connectors/ConnectorsPage";
+
+
+// =====================================================
+// BUILDER
+// =====================================================
+
 import BuilderPage from "../pages/Builder/BuilderPage";
 import BuilderWorkspacePage from "../pages/Builder/BuilderWorkspacePage";
+import DashboardLayout from "../layouts/DashboardLayout";
+import SettingsLayout from "../layouts/SettingsLayout";
+import SettingsOverview from "../pages/Settings/SettingsOverview";
+import SettingsSectionPage from "../pages/Settings/SettingsSectionPage";
+import ConnectorSettingsPage from "../pages/Settings/ConnectorSettingsPage";
 
-// Route Guards
-import PrivateRoute from "./PrivateRoute";
-import PublicRoute from "./PublicRoute";
+
+// =====================================================
+// SOLUTIONS
+// =====================================================
+
+import FoundersPage from "../pages/Solutions/FoundersPage";
+import ProductManagersPage from "../pages/Solutions/ProductManagersPage";
+import DesignersPage from "../pages/Solutions/DesignersPage";
+import MarketersPage from "../pages/Solutions/MarketersPage";
+import SalesPage from "../pages/Solutions/SalesPage";
+import PeoplePage from "../pages/Solutions/PeoplePage";
+import OpsPage from "../pages/Solutions/OperationsPage";
+import WebsitesPage from "../pages/Solutions/WebsitesPage";
+import PrototypingPage from "../pages/Solutions/PrototypingPage";
+import DashboardsPage from "../pages/Solutions/DashboardsPage";
+import InternalToolsPage from "../pages/Solutions/InternalToolsPage";
+import AIAppsPage from "../pages/Solutions/AIAppsPage";
 
 
-const AppRoutes = () => {
+// =====================================================
+// ENTERPRISE
+// =====================================================
+
+import EnterprisePage from "../pages/Enterprise/EnterprisePage";
+
+
+// =====================================================
+// PRICING
+// =====================================================
+
+import PricingPage from "../pages/Pricing/PricingPage";
+
+
+// =====================================================
+// SECURITY / LEGAL
+// =====================================================
+
+import ProtectedRoute from "../components/auth/ProtectedRoute";
+
+import SecurityPage from "../pages/Security/SecurityPage";
+import PrivacyPage from "../pages/Legal/PrivacyPage";
+import TermsPage from "../pages/Legal/TermsPage";
+
+
+function NotFoundPage() {
+  return <main className="grid min-h-screen place-items-center bg-[#f7f8fb] p-6 text-[#171717]"><section className="text-center"><p className="text-sm text-slate-500">404</p><h1 className="my-4 text-3xl font-semibold">Page not found</h1><p className="mb-5">This address does not match an ICOGON page.</p><Link className="rounded-full bg-blue-600 px-5 py-3 text-white" to="/">Back to ICOGON</Link></section></main>;
+}
+
+export default function AppRoutes() {
   return (
-    <BrowserRouter>
-
       <Routes>
 
-        {/* =========================================
-            PUBLIC ROUTES
-        ========================================= */}
+        {/* =================================================
+            LANDING
+        ================================================= */}
 
         <Route
           path="/"
-          element={<LandingPage />}
+          element={
+            <LandingPage />
+          }
         />
 
-        <Route element={<PublicRoute />}>
+
+        {/* =================================================
+            AUTH
+        ================================================= */}
+
+        <Route
+          path="/login"
+          element={
+            <LoginPage />
+          }
+        />
+
+        <Route
+          path="/signup"
+          element={
+            <SignupPage />
+          }
+        />
+
+        <Route
+          path="/auth/callback"
+          element={
+            <AuthCallback />
+          }
+        />
+
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/auth/reset-password" element={<ForgotPassword />} />
+
+
+        {/* =================================================
+            RESOURCES
+        ================================================= */}
+
+        <Route
+          path="/resources"
+          element={
+            <ResourcesPage />
+          }
+        />
+
+        <Route
+          path="/partners"
+          element={
+            <PartnersPage />
+          }
+        />
+
+        <Route
+          path="/templates"
+          element={
+            <TemplatesPage />
+          }
+        />
+
+        <Route
+          path="/docs"
+          element={
+            <DocsPage />
+          }
+        />
+
+        <Route
+          path="/guides"
+          element={
+            <GuidesPage />
+          }
+        />
+
+        <Route
+          path="/academy"
+          element={
+            <AcademyPage />
+          }
+        />
+
+        <Route
+          path="/blog"
+          element={
+            <BlogPage />
+          }
+        />
+
+        <Route
+          path="/customer-stories"
+          element={
+            <CustomerStoriesPage />
+          }
+        />
+
+
+        {/* =================================================
+            PUBLIC RESOURCES CONNECTORS
+        ================================================= */}
+
+        {/*
+          This is the marketing/public connector catalog.
+
+          URL:
+          /resources/connectors
+
+          It is NOT the authenticated Gmail connector page.
+        */}
+
+        <Route
+          path="/resources/connectors"
+          element={
+            <ResourcesConnectorsPage />
+          }
+        />
+
+
+        {/* =================================================
+            COMMUNITY
+        ================================================= */}
+
+        <Route
+          path="/community"
+          element={
+            <CommunityPage />
+          }
+        />
+
+
+        {/* =================================================
+            PRICING
+        ================================================= */}
+
+        <Route
+          path="/pricing"
+          element={
+            <PricingPage />
+          }
+        />
+
+
+        {/* =================================================
+            ENTERPRISE
+        ================================================= */}
+
+        <Route
+          path="/enterprise"
+          element={
+            <EnterprisePage />
+          }
+        />
+
+
+        {/* =================================================
+            SOLUTIONS
+        ================================================= */}
+
+        <Route
+          path="/solutions/founders"
+          element={
+            <FoundersPage />
+          }
+        />
+
+        <Route
+          path="/solutions/product-managers"
+          element={
+            <ProductManagersPage />
+          }
+        />
+
+        <Route
+          path="/solutions/designers"
+          element={
+            <DesignersPage />
+          }
+        />
+
+        <Route
+          path="/solutions/marketers"
+          element={
+            <MarketersPage />
+          }
+        />
+
+        <Route
+          path="/solutions/sales"
+          element={
+            <SalesPage />
+          }
+        />
+
+        <Route
+          path="/solutions/people"
+          element={
+            <PeoplePage />
+          }
+        />
+
+        <Route
+          path="/solutions/operations"
+          element={
+            <OpsPage />
+          }
+        />
+
+        <Route
+          path="/solutions/websites"
+          element={
+            <WebsitesPage />
+          }
+        />
+
+        <Route
+          path="/solutions/prototyping"
+          element={
+            <PrototypingPage />
+          }
+        />
+
+        <Route
+          path="/solutions/dashboards"
+          element={
+            <DashboardsPage />
+          }
+        />
+
+
+        {/* =================================================
+            SECURITY
+        ================================================= */}
+
+        <Route
+          path="/security"
+          element={
+            <SecurityPage />
+          }
+        />
+
+
+        {/* =================================================
+            LEGAL
+        ================================================= */}
+
+        <Route
+          path="/terms"
+          element={
+            <TermsPage />
+          }
+        />
+
+        <Route
+          path="/privacy"
+          element={
+            <PrivacyPage />
+          }
+        />
+
+
+        {/* =================================================
+            INTERNAL TOOLS
+        ================================================= */}
+
+        <Route
+          path="/solutions/internal-tools"
+          element={
+            <InternalToolsPage />
+          }
+        />
+
+
+        {/* OLD URL ALIAS */}
+
+        <Route
+          path="/solutions/internalToolsPage"
+          element={
+            <InternalToolsPage />
+          }
+        />
+
+
+        {/* =================================================
+            AI APPS
+        ================================================= */}
+
+        <Route
+          path="/solutions/ai-apps"
+          element={
+            <AIAppsPage />
+          }
+        />
+
+
+        {/* =================================================
+            PROTECTED ROUTES
+        ================================================= */}
+
+        <Route
+          element={
+            <ProtectedRoute />
+          }
+        >
+
+          {/* =================================================
+              WORKSPACE SETTINGS
+          ================================================= */}
 
           <Route
-            path="/login"
-            element={<Login />}
+            path="/workspace/settings"
+            element={<Navigate to="/settings/workspace" replace />}
           />
 
           <Route
-            path="/signup"
-            element={<Signup />}
-          />
-
-        </Route>
-
-
-        {/* =========================================
-            PRIVATE ROUTES
-        ========================================= */}
-
-        <Route element={<PrivateRoute />}>
-
-          {/* Dashboard */}
-          <Route
-            path="/dashboard"
-            element={<Dashboard />}
-          />
+            element={<SettingsLayout />}
+          >
+            <Route
+              path="/settings"
+              element={<SettingsOverview />}
+            />
+            <Route
+              path="/settings/connector-settings"
+              element={<ConnectorSettingsPage />}
+            />
+            <Route
+              path="/settings/:sectionId"
+              element={<SettingsSectionPage />}
+            />
+          </Route>
 
 
-          {/* Projects */}
-          <Route
-            path="/projects"
-            element={<ProjectsPage />}
-          />
+          {/* =================================================
+              MAIN APPLICATION SHELL
+              DashboardSidebar is rendered by DashboardLayout.
+              All primary app pages must be nested here so the
+              sidebar stays mounted while navigating.
+          ================================================= */}
+
+          <Route element={<DashboardLayout />}>
+            <Route
+              path="/connectors"
+              element={<ConnectorsPage />}
+            />
+
+            {/* Legacy connectors URL */}
+            <Route
+              path="/ConnectorsPage"
+              element={<ConnectorsPage />}
+            />
+
+            <Route
+              path="/dashboard"
+              element={<DashboardPage />}
+            />
+
+            <Route
+              path="/automations"
+              element={<AutomationsPage />}
+            />
+
+            <Route
+              path="/projects"
+              element={<ProjectsPage />}
+            />
+
+            <Route
+              path="/profile"
+              element={<ProfilePage />}
+            />
+          </Route>
 
 
-          {/* Profile */}
-          <Route
-            path="/profile"
-            element={<ProfilePage />}
-          />
-
-
-          {/* =====================================
-              BUILDER - CREATE NEW PROJECT
-
-              URL:
-              /builder
-
-              Example:
-              http://localhost:5173/builder
-          ===================================== */}
+          {/* =================================================
+              CREATE NEW PROJECT
+          ================================================= */}
 
           <Route
             path="/builder"
-            element={<BuilderPage />}
+            element={
+              <BuilderPage />
+            }
           />
 
 
-          {/* =====================================
-              BUILDER WORKSPACE
-
-              URL:
-              /builder/:projectId
-
-              Example:
-              /builder/b7a56003-1592-44ac-a038-c93717bcdb9d
-          ===================================== */}
+          {/* =================================================
+              PROJECT WORKSPACE
+          ================================================= */}
 
           <Route
             path="/builder/:projectId"
-            element={<BuilderWorkspacePage />}
+            element={
+              <BuilderWorkspacePage />
+            }
           />
 
         </Route>
 
+
+        {/* =================================================
+            404 FALLBACK
+        ================================================= */}
+
+        <Route
+          path="*"
+          element={
+            <NotFoundPage />
+          }
+        />
+
       </Routes>
 
-    </BrowserRouter>
   );
-};
-
-export default AppRoutes;
+}

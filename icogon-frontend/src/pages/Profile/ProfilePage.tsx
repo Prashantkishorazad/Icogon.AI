@@ -11,7 +11,7 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 
 import { supabase } from "../../lib/supabase";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../../components/context/ThemeContext";
 
 interface ProfileData {
   id: string;

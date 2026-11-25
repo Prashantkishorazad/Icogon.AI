@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import re
 from pathlib import Path
-from typing import Any
+from urllib.parse import urlsplit
+from typing import Any, Literal, TypeVar, overload
 
 import httpx
 from dotenv import load_dotenv
@@ -26,6 +28,11 @@ from app.orchestrator.models import (
     ProviderUsage,
     ReviewResponse,
 )
+
+
+# Model validation must retain the exact Pydantic subclass returned by the
+# schema argument (IntelligentPlan, ChangeReview, ChangeSet, etc.).
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 # ============================================================
@@ -80,6 +87,142 @@ class ProviderError(RuntimeError):
 
         self.code = code
         self.retryable = retryable
+
+
+# ============================================================
+# CONFIGURATION AND SAFE DIAGNOSTICS
+# ============================================================
+
+GROQ_DEFAULT_URL = "https://api.groq.com/openai/v1"
+GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
+GROQ_DEFAULT_SMALL_MODEL = "openai/gpt-oss-20b"
+
+
+def _validate_base_url(value: str, mode: str = "compatible") -> str:
+    """Require an explicit, safe endpoint for external model requests.
+
+    HTTP is only permitted for local development endpoints. API credentials
+    must never be sent to an arbitrary remote host over plain HTTP.
+    """
+    url = value.strip().rstrip("/") if isinstance(value, str) else ""
+    if not url or any(char.isspace() for char in url):
+        raise ProviderError(
+            "provider_invalid_config",
+            "LLM_BASE_URL must be a valid endpoint URL without whitespace.",
+        )
+
+    try:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").lower()
+        _ = parsed.port  # Trigger validation of malformed port numbers.
+    except ValueError:
+        raise ProviderError(
+            "provider_invalid_config",
+            "LLM_BASE_URL contains an invalid host or port.",
+        ) from None
+
+    if (
+        not host
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.scheme.lower() not in {"http", "https"}
+    ):
+        raise ProviderError(
+            "provider_invalid_config",
+            "LLM_BASE_URL must be an HTTP(S) URL without credentials, query, or fragment.",
+        )
+
+    is_local = host in {"localhost", "127.0.0.1", "::1"}
+    if parsed.scheme.lower() != "https" and not is_local:
+        raise ProviderError(
+            "provider_invalid_config",
+            "A remote LLM_BASE_URL must use HTTPS; HTTP is only allowed for localhost.",
+        )
+
+    if mode == "groq" and (host != "api.groq.com" or parsed.scheme != "https"):
+        raise ProviderError(
+            "provider_invalid_config",
+            "ORCHESTRATOR_PROVIDER=groq requires the HTTPS api.groq.com endpoint.",
+        )
+
+    if parsed.path.rstrip("/").endswith("/chat/completions"):
+        raise ProviderError(
+            "provider_invalid_config",
+            "LLM_BASE_URL must end at the API root, not /chat/completions.",
+        )
+
+    return url
+
+
+def _configured_base_url(mode: str) -> str:
+    configured = (os.getenv("LLM_BASE_URL") or "").strip()
+    if mode == "groq":
+        return _validate_base_url(configured or GROQ_DEFAULT_URL, mode="groq")
+    if mode == "compatible":
+        if not configured:
+            raise ProviderError(
+                "provider_invalid_config",
+                "LLM_BASE_URL is required for ORCHESTRATOR_PROVIDER=compatible.",
+            )
+        return _validate_base_url(configured, mode="compatible")
+    raise ProviderError(
+        "provider_invalid_config",
+        "ORCHESTRATOR_PROVIDER must be mock, groq, or compatible.",
+    )
+
+
+@overload
+def _env_number(
+    name: str, default: str, *, integer: Literal[True],
+    minimum: float, maximum: float,
+) -> int: ...
+
+
+@overload
+def _env_number(
+    name: str, default: str, *, integer: Literal[False],
+    minimum: float, maximum: float,
+) -> float: ...
+
+
+def _env_number(
+    name: str, default: str, *, integer: bool,
+    minimum: float, maximum: float,
+) -> int | float:
+    raw = (os.getenv(name) or default).strip()
+    try:
+        value = int(raw) if integer else float(raw)
+    except (ValueError, OverflowError):
+        raise ProviderError(
+            "provider_invalid_config", f"{name} must be a valid number."
+        ) from None
+    if not math.isfinite(value) or not minimum <= value <= maximum:
+        raise ProviderError(
+            "provider_invalid_config",
+            f"{name} must be between {minimum:g} and {maximum:g}.",
+        )
+    return value
+
+
+def _safe_provider_detail(value: Any, limit: int = 240) -> str:
+    """Bound and redact provider errors before exposing them via run status.
+
+    Never include the provider's failed_generation field: it may contain
+    user documents, generated source, or other sensitive model output.
+    """
+    if not isinstance(value, (str, int, float)):
+        return ""
+    text = str(value).replace("\r", " ").replace("\n", " ").strip()
+    text = re.sub(r"(?i)bearer\s+[^\s,;]+", "Bearer [REDACTED]", text)
+    text = re.sub(r"(?i)\bsk-[a-z0-9_-]{8,}", "[REDACTED]", text)
+    text = re.sub(
+        r"(?i)\b(api[_-]?key|access[_-]?token|secret)\b\s*[:=]\s*[^\s,;]+",
+        r"\1=[REDACTED]",
+        text,
+    )
+    return text[:limit] + ("…" if len(text) > limit else "")
 
 
 # ============================================================
@@ -1088,9 +1231,9 @@ def _normalize_plan_json(raw: Any) -> Any:
 # ============================================================
 
 def _quality_review_fallback(
-    schema: type[BaseModel],
+    schema: type[ModelT],
     reason: str,
-):
+) -> ModelT:
 
     data = {
         "approved": True,
@@ -1154,12 +1297,27 @@ class ModelProvider:
         transport=None,
     ):
 
-        self.key = key
-        self.base_url = (
-            base_url.rstrip("/")
-        )
+        if not isinstance(key, str) or not key.strip():
+            raise ProviderError("provider_not_configured", "A model API key is required.")
+        self.key = key.strip()
+        self.base_url = _validate_base_url(base_url)
 
-        self.model = model
+        if not isinstance(model, str) or not model.strip():
+            raise ProviderError("model_not_configured", "LLM_MODEL must not be empty.")
+        try:
+            parsed_timeout = float(timeout)
+        except (ValueError, TypeError, OverflowError):
+            parsed_timeout = float("nan")
+        if not math.isfinite(parsed_timeout) or parsed_timeout <= 0:
+            raise ProviderError(
+                "provider_invalid_config", "LLM_TIMEOUT_SECONDS must be positive and finite."
+            )
+        if not isinstance(max_retries, int) or not 0 <= max_retries <= 6:
+            raise ProviderError(
+                "provider_invalid_config", "LLM_MAX_RETRIES must be between 0 and 6."
+            )
+
+        self.model = model.strip()
 
         self.planning_model = (
             planning_model
@@ -1176,7 +1334,7 @@ class ModelProvider:
             or model
         )
 
-        self.timeout = timeout
+        self.timeout = parsed_timeout
 
         self.max_tokens = min(
             max(
@@ -1218,11 +1376,9 @@ class ModelProvider:
         self,
     ) -> str:
 
-        if "groq.com" in (
-            self.base_url.lower()
-        ):
+        # Match the actual hostname, not a substring of an attacker-chosen URL.
+        if (urlsplit(self.base_url).hostname or "").lower() == "api.groq.com":
             return "groq"
-
         return "compatible"
 
     # ========================================================
@@ -1247,24 +1403,20 @@ class ModelProvider:
         model: str,
     ) -> ProviderUsage:
 
-        usage = (
-            data.get("usage")
-            or {}
-        )
+        usage = data.get("usage")
+        if not isinstance(usage, dict):
+            usage = {}
+
+        def safe_count(value: Any) -> int:
+            try:
+                result = int(value)
+                return result if result >= 0 else 0
+            except (ValueError, TypeError, OverflowError):
+                return 0
 
         return ProviderUsage(
-            input_tokens=int(
-                usage.get(
-                    "prompt_tokens",
-                    0,
-                )
-            ),
-            output_tokens=int(
-                usage.get(
-                    "completion_tokens",
-                    0,
-                )
-            ),
+            input_tokens=safe_count(usage.get("prompt_tokens")),
+            output_tokens=safe_count(usage.get("completion_tokens")),
             model=model,
             provider=self._provider_name(),
         )
@@ -1768,9 +1920,15 @@ class ModelProvider:
     ) -> httpx.Response:
         """Send an OpenAI-compatible request with GPT-OSS-safe options."""
 
-        base_url_lower = self.base_url.lower()
-        is_groq = "groq.com" in base_url_lower
+        is_groq = self._provider_name() == "groq"
         is_gpt_oss = model.startswith("openai/gpt-oss-")
+
+        if len(encoded.encode("utf-8")) > MAX_REQUEST_BYTES:
+            raise ProviderError(
+                "context_too_large",
+                f"Model request exceeds {MAX_REQUEST_BYTES} bytes.",
+                False,
+            )
 
         body: dict[str, Any] = {
             "model": model,
@@ -1857,9 +2015,26 @@ class ModelProvider:
 
             if response.status_code < 400:
                 return response
+            # Retry Groq JSON validation failures without JSON mode.
+            if (
+                response.status_code == 400
+                and attempt < self.max_retries
+                and "json_validate_failed" in response.text
+                and "response_format" in body
+            ):
+                body.pop("response_format", None)
+
+                body["messages"][0]["content"] += (
+                    "\nReturn exactly one valid JSON object. "
+                    "Do not include Markdown, code fences, "
+                    "comments, or text outside the JSON object."
+                )
+
+                await asyncio.sleep(1)
+                continue
 
             if (
-                response.status_code == 429
+                response.status_code in {408, 429}
                 and attempt < self.max_retries
             ):
                 await asyncio.sleep(
@@ -1937,77 +2112,30 @@ class ModelProvider:
         self,
         response: httpx.Response,
     ) -> None:
-
-        message = (
-            "Model provider returned HTTP "
-            f"{response.status_code}."
-        )
+        """Raise a bounded, sanitized failure without exposing model output."""
+        status = response.status_code
+        message = f"Model provider returned HTTP {status}."
 
         try:
-
             body = response.json()
-
-            if isinstance(
-                body,
-                dict,
-            ):
-
-                error = body.get(
-                    "error"
-                )
-
-                if isinstance(
-                    error,
-                    dict,
-                ):
-
-                    provider_message = error.get(
-                        "message"
-                    )
-
-                    if provider_message:
-                        message += (
-                            f" {provider_message}"
-                        )
-
-                    failed_generation = error.get(
-                        "failed_generation"
-                    )
-
-                    if failed_generation:
-                        message += (
-                            " failed_generation="
-                            f"{failed_generation}"
-                        )
-
-                    error_type = error.get(
-                        "type"
-                    )
-
-                    if error_type:
-                        message += (
-                            f" error_type={error_type}"
-                        )
-
-                    error_code = error.get(
-                        "code"
-                    )
-
-                    if error_code:
-                        message += (
-                            f" error_code={error_code}"
-                        )
-
-        except Exception:
+            if isinstance(body, dict):
+                error = body.get("error")
+                if isinstance(error, dict):
+                    details = [
+                        _safe_provider_detail(error.get("message"), 280),
+                        _safe_provider_detail(error.get("type"), 64),
+                        _safe_provider_detail(error.get("code"), 64),
+                    ]
+                    message += " " + " ".join(part for part in details if part)
+                elif isinstance(error, str):
+                    message += " " + _safe_provider_detail(error, 280)
+        except (ValueError, TypeError):
             pass
 
         raise ProviderError(
             "provider_http_error",
-            message,
-            (
-                response.status_code == 429
-                or response.status_code >= 500
-            ),
+            message.strip(),
+            status in {408, 429} or status >= 500,
         )
 
     # ========================================================
@@ -2017,10 +2145,10 @@ class ModelProvider:
     async def _parse_response(
         self,
         response: httpx.Response,
-        schema: type[BaseModel],
+        schema: type[ModelT],
         model: str,
         normalize_plan: bool = False,
-    ):
+    ) -> tuple[ModelT, ProviderUsage]:
         """Parse provider output, including GPT-OSS response variants."""
 
         data = response.json()
@@ -2058,8 +2186,6 @@ class ModelProvider:
                 ),
                 True,
             )
-
-        message = choice.get("message") or {}
 
         message = choice.get("message") or {}
 
@@ -2185,14 +2311,22 @@ class ModelProvider:
         )
 
         if normalize_plan:
-            raw = _normalize_plan_json(
-                raw
-            )
+            raw = _normalize_plan_json(raw)
 
-        result = schema.model_validate(
-            raw
-        )
+           # Fix a misplaced top-level operation in ChangeSet.
+        if schema is ChangeSet:
+            if (
+                isinstance(raw, dict)
+                and "operation" in raw
+                and isinstance(raw.get("files"), list)
+            ):
+                raw = dict(raw)
+                raw.pop("operation", None)
 
+        # Always validate, regardless of schema type.
+        result = schema.model_validate(raw)
+
+        # Always return on the successful path.
         return result, usage
 
     # ========================================================
@@ -2202,10 +2336,10 @@ class ModelProvider:
     async def _implementation_retry(
         self,
         request,
-        schema,
+        schema: type[ModelT],
         context,
         model,
-    ):
+    ) -> tuple[ModelT, ProviderUsage]:
 
         payload = {
             "prompt": request.prompt,
@@ -2281,10 +2415,10 @@ class ModelProvider:
     async def _call(
         self,
         role: str,
-        schema: type[BaseModel],
+        schema: type[ModelT],
         request,
         **context,
-    ):
+    ) -> tuple[ModelT, ProviderUsage]:
 
         if not self.key:
 
@@ -2538,7 +2672,14 @@ class ModelProvider:
     # PLANNER
     # ========================================================
 
-    async def _planner_retry(self, request, schema, brief, architecture, error_message):
+    async def _planner_retry(
+        self,
+        request,
+        schema: type[ModelT],
+        brief,
+        architecture,
+        error_message,
+    ) -> tuple[ModelT, ProviderUsage]:
         """Retry planner with an explicit product-specific multi-file contract."""
         payload={
             "prompt":request.prompt,
@@ -3290,68 +3431,52 @@ class ModelProvider:
 # ============================================================
 
 def provider_settings() -> dict:
+    """Expose nonsecret provider capability and configuration diagnostics."""
+    mode = (os.getenv("ORCHESTRATOR_PROVIDER") or "mock").strip().lower()
+    raw_model = (os.getenv("LLM_MODEL") or "").strip()
+    default_model = GROQ_DEFAULT_MODEL if mode == "groq" else ""
+    model = raw_model or default_model
+    smaller = GROQ_DEFAULT_SMALL_MODEL if mode == "groq" else model
 
-    mode = os.getenv(
-        "ORCHESTRATOR_PROVIDER",
-        "mock",
-    ).strip().lower()
+    planning = (os.getenv("LLM_PLANNING_MODEL") or "").strip() or smaller
+    reviewing = (os.getenv("LLM_REVIEW_MODEL") or "").strip() or smaller
+    fallback = (os.getenv("LLM_FALLBACK_MODEL") or "").strip() or smaller
+
+    configured = mode == "mock"
+    error = None
+    if mode != "mock":
+        try:
+            _configured_base_url(mode)
+            if not (os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY")):
+                raise ProviderError(
+                    "provider_not_configured",
+                    "LLM_API_KEY or GROQ_API_KEY is required for real generation.",
+                )
+            if not model:
+                raise ProviderError(
+                    "model_not_configured",
+                    "LLM_MODEL is required for a compatible model provider.",
+                )
+            _env_number("LLM_TIMEOUT_SECONDS", "90", integer=False, minimum=0.01, maximum=600)
+            _env_number("LLM_MAX_OUTPUT_TOKENS", "7000", integer=True, minimum=500, maximum=100000)
+            _env_number("LLM_MAX_RETRIES", "2", integer=True, minimum=0, maximum=6)
+            configured = True
+        except ProviderError as exc:
+            error = str(exc)
 
     return {
         "provider": mode,
-
-        "configured": (
-            mode == "mock"
-            or bool(
-                os.getenv("LLM_API_KEY")
-                or os.getenv("GROQ_API_KEY")
-            )
-        ),
-
-        "model": (
-            os.getenv(
-                "LLM_MODEL",
-                "openai/gpt-oss-120b",
-            )
-            if mode != "mock"
-            else "deterministic-demo"
-        ),
-
-        "planning_model": os.getenv(
-            "LLM_PLANNING_MODEL",
-            "openai/gpt-oss-20b",
-        ),
-
-        "review_model": os.getenv(
-            "LLM_REVIEW_MODEL",
-            "openai/gpt-oss-20b",
-        ),
-
-        "fallback_model": os.getenv(
-            "LLM_FALLBACK_MODEL",
-            "openai/gpt-oss-20b",
-        ),
-
-        "verification": os.getenv(
-            "CHANGE_VERIFIER_BACKEND",
-            "static",
-        ),
-
-        "persistence": os.getenv(
-            "ORCHESTRATOR_BACKEND",
-            "memory",
-        ),
-
-        "templates": [
-            "html",
-            "react",
-            "react-three",
-        ],
-
-        "quality_modes": [
-            "fast",
-            "balanced",
-            "polished",
-        ],
+        "configured": configured,
+        "configuration_error": error,
+        "model": "deterministic-demo" if mode == "mock" else model,
+        "planning_model": planning,
+        "review_model": reviewing,
+        "fallback_model": fallback,
+        "verification": os.getenv("CHANGE_VERIFIER_BACKEND", "static"),
+        "persistence": os.getenv("ORCHESTRATOR_BACKEND", "memory"),
+        "templates": ["html", "react", "react-three"],
+        "quality_modes": ["fast", "balanced", "polished"],
+        "supports_structured_output": mode == "groq" and model.startswith("openai/gpt-oss-"),
     }
 
 
@@ -3359,92 +3484,34 @@ def provider_settings() -> dict:
 # BUILD PROVIDER
 # ============================================================
 
+
 def build_provider():
-
+    """Select an explicit provider without silent model/endpoint fallback."""
     settings = provider_settings()
-
-    mode = settings[
-        "provider"
-    ]
-
+    mode = settings["provider"]
     if mode == "mock":
-
         return MockAgentProvider()
 
-    if mode not in {
-        "groq",
-        "compatible",
-    }:
-
-        raise RuntimeError(
-            "ORCHESTRATOR_PROVIDER must be "
-            "mock, groq, or compatible"
-        )
-
-    key = (
-        os.getenv(
-            "LLM_API_KEY"
-        )
-        or os.getenv(
-            "GROQ_API_KEY",
-            "",
-        )
-    )
-
-    if not key:
-
-        raise RuntimeError(
-            "LLM_API_KEY or GROQ_API_KEY is required."
+    if not settings["configured"]:
+        raise ProviderError(
+            "provider_not_configured",
+            settings["configuration_error"] or "Model provider is not configured.",
         )
 
     return ModelProvider(
-        key=key,
-
-        base_url=os.getenv(
-            "LLM_BASE_URL",
-            "https://api.groq.com/openai/v1",
+        key=(os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY") or ""),
+        base_url=_configured_base_url(mode),
+        model=settings["model"],
+        planning_model=settings["planning_model"],
+        review_model=settings["review_model"],
+        fallback_model=settings["fallback_model"],
+        timeout=_env_number(
+            "LLM_TIMEOUT_SECONDS", "90", integer=False, minimum=0.01, maximum=600
         ),
-
-        model=os.getenv(
-            "LLM_MODEL",
-            "openai/gpt-oss-120b",
+        max_tokens=_env_number(
+            "LLM_MAX_OUTPUT_TOKENS", "7000", integer=True, minimum=500, maximum=100000
         ),
-
-        planning_model=os.getenv(
-            "LLM_PLANNING_MODEL",
-            "openai/gpt-oss-20b",
-        ),
-
-        review_model=os.getenv(
-            "LLM_REVIEW_MODEL",
-            "openai/gpt-oss-20b",
-        ),
-
-        fallback_model=os.getenv(
-            "LLM_FALLBACK_MODEL",
-            "openai/gpt-oss-20b",
-        ),
-
-        timeout=float(
-            os.getenv(
-                "LLM_TIMEOUT_SECONDS",
-                "90",
-            )
-        ),
-
-        max_tokens=int(
-            os.getenv(
-                "LLM_MAX_OUTPUT_TOKENS",
-                "7000",
-            )
-        ),
-
-        max_retries=int(
-            os.getenv(
-                "LLM_MAX_RETRIES",
-                "2",
-            )
+        max_retries=_env_number(
+            "LLM_MAX_RETRIES", "2", integer=True, minimum=0, maximum=6
         ),
     )
-
-

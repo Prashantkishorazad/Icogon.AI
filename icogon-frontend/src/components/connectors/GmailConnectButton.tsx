@@ -9,7 +9,7 @@ import {
   connectGmail,
 } from "../../api/connectors/connectorsApi";
 
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../context/ThemeContext";
 
 interface GmailConnectButtonProps {
   onConnectedStart?: () => void;

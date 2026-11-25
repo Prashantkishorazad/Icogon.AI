@@ -115,17 +115,19 @@ class RunBudget(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_model_calls: int = Field(
-        default=8,
+        default=12,
         ge=1,
         le=50,
     )
+
     max_repair_attempts: int = Field(
         default=2,
         ge=0,
         le=20,
     )
+
     max_output_tokens: int = Field(
-        default=20_000,
+        default=100_000,
         ge=256,
         le=200_000,
     )
@@ -418,7 +420,17 @@ class IntelligentPlan(GenerationPlan):
         max_length=150,
     )
 
-    blueprint: DesignBlueprint
+    blueprint: DesignBlueprint | None = Field(...)
+
+    @field_validator("blueprint")
+    @classmethod
+    def require_blueprint(
+        cls,
+        value: DesignBlueprint | None,
+    ) -> DesignBlueprint | None:
+        if value is None:
+            raise ValueError("Intelligent plans require a blueprint")
+        return value
 
     @model_validator(mode="after")
     def validate_dependency_graph(

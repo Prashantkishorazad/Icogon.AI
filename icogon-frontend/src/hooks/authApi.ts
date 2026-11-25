@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { supabase } from "../lib/supabase";
@@ -18,87 +17,8 @@ export const useAuth = () => {
     logout,
   } = useAuthStore();
 
-  // ==========================================
-  // AUTH INITIALIZATION
-  // ==========================================
-
-  useEffect(() => {
-    let mounted = true;
-
-    const initializeAuth = async () => {
-      try {
-        setLoading(true);
-
-        const {
-          data,
-          error,
-        } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error(
-            "GET SESSION ERROR:",
-            error
-          );
-
-          if (mounted) {
-            setSession(null);
-          }
-
-          return;
-        }
-
-        if (mounted) {
-          setSession(data.session);
-        }
-
-      } catch (error) {
-        console.error(
-          "AUTH INITIALIZATION ERROR:",
-          error
-        );
-
-        if (mounted) {
-          setSession(null);
-        }
-
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    initializeAuth();
-
-    // ==========================================
-    // AUTH STATE LISTENER
-    // ==========================================
-
-    const {
-      data: {
-        subscription,
-      },
-    } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-
-        console.log(
-          "AUTH STATE CHANGED:",
-          _event
-        );
-
-        if (mounted) {
-          setSession(session);
-        }
-      }
-    );
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-
-  }, [setSession, setLoading]);
-
+  // Session hydration and onAuthStateChange are centralized in App.tsx.
+  // Do not create another listener for each login / signup component.
 
   // ==========================================
   // EMAIL LOGIN
@@ -193,6 +113,7 @@ export const useAuth = () => {
           data: {
             full_name,
           },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
@@ -251,33 +172,13 @@ export const useAuth = () => {
   // ==========================================
 
   const logoutUser = async () => {
-
     try {
-
-      const {
-        error,
-      } = await supabase.auth.signOut();
-
-      if (error) {
-        throw error;
-      }
-
-      logout();
-
-      navigate("/login", {
-        replace: true,
-      });
-
+      await logout();
+      navigate("/login", { replace: true });
     } catch (error) {
-
-      console.error(
-        "LOGOUT ERROR:",
-        error
-      );
-
+      console.error("LOGOUT ERROR:", error);
     }
   };
-
 
   // ==========================================
   // RETURN

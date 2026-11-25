@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 
 import GmailConnectButton from "./GmailConnectButton";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../context/ThemeContext";
 
 interface GmailConnectionModalProps {
   open: boolean;

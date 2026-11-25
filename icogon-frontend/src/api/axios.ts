@@ -51,9 +51,9 @@ api.interceptors.response.use(
       error?.response?.data
     );
 
+    // Preserve Supabase auth if an individual backend API endpoint rejects a request.
     if (error?.response?.status === 401) {
-      await supabase.auth.signOut();
-      window.location.href = "/login";
+      console.warn("Backend API returned 401; authentication session was not discarded.");
     }
 
     return Promise.reject(error);

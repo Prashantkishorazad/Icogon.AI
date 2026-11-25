@@ -7,9 +7,9 @@ const AuthSection = () => {
 
       {/* Soft background glow */}
 
-      <div className="pointer-events-none absolute bottom-[-250px] left-[-250px] h-[550px] w-[550px] rounded-full bg-blue-400/25 blur-[140px]" />
+      <div className="pointer-events-none absolute bottom-250px left-250px h-550px w-550px rounded-full bg-blue-400/25 blur-[140px]" />
 
-      <div className="pointer-events-none absolute bottom-[-250px] right-[-250px] h-[550px] w-[550px] rounded-full bg-pink-400/30 blur-[140px]" />
+      <div className="pointer-events-none absolute bottom-250px right-250px h-550px w-550px rounded-full bg-pink-400/30 blur-[140px]" />
 
 
       <div className="relative mx-auto max-w-4xl px-6 text-center">

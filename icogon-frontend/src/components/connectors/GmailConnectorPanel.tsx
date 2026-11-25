@@ -18,7 +18,7 @@ import {
   getGmailProfile,
 } from "../../api/connectors/connectorsApi";
 
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../context/ThemeContext";
 
 interface GmailConnectorPanelProps {
   email: string;

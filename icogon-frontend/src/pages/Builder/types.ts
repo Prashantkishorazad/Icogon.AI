@@ -1,4 +1,9 @@
-import type { OrchestratorRun } from "../../api/projectApi";
+import type {
+  OrchestratorRun,
+  OrchestratorRunEvent,
+  OrchestratorRunStep,
+  OrchestratorQuality,
+} from "../../api/projectApi";
 
 export type {
   OrchestratorRun,
@@ -35,6 +40,7 @@ export interface PreviewState {
   html?: string;
   warnings?: string[];
   compiler?: string;
+  error?: string;
   data?: unknown | null;
 }
 
@@ -143,4 +149,163 @@ export const getFileContent = (file: GeneratedFile | undefined): string => {
 export const getFileName = (file: GeneratedFile | undefined): string => {
   if (!file?.path) return "";
   return file.path;
-};  
+};
+
+/* =========================================================
+   PHASE 1 — WORKSPACE SESSION & PROJECT PERSISTENCE
+========================================================= */
+
+/** Bump this when the stored session format changes incompatibly. */
+export const WORKSPACE_SESSION_VERSION = 1 as const;
+
+/** The authenticated user and project together identify a session. */
+export interface WorkspaceSessionScope {
+  userId: string;
+  projectId: string;
+}
+
+/* =========================================================
+   WORKSPACE UI PREFERENCES
+========================================================= */
+
+export interface WorkspacePreferences {
+  activeTab: WorkspaceTab;
+  deviceMode: DeviceMode;
+  sidebarOpen: boolean;
+  selectedFilePath: string;
+}
+
+/* =========================================================
+   LAST SUCCESSFUL BUILD
+
+   Keep this snapshot independent of the active generation run.
+   A failed or cancelled run must not overwrite a working build.
+========================================================= */
+
+export interface WorkspaceBuildSnapshot {
+  runId: string;
+  generatedFiles: GeneratedFile[];
+  previewState: PreviewState;
+  savedAt: string;
+}
+
+/* =========================================================
+   GENERATION SUBMISSION CHECKPOINT
+
+   Persist before sending the request. If a response is lost,
+   recover using the original idempotency key, not a new one.
+========================================================= */
+
+export interface PendingRunSubmission {
+  kind: "submitting";
+  prompt: string;
+  idempotencyKey: string;
+  baseRunId?: string;
+  quality: OrchestratorQuality;
+  submittedAt: string;
+  messageId: string;
+}
+
+/* =========================================================
+   ACTIVE RUN RECOVERY
+
+   The API remains authoritative for actual run status.
+   Resume SSE from the last successfully applied sequence.
+========================================================= */
+
+export interface WorkspaceRunCheckpoint {
+  kind: "tracking";
+  runId: string;
+  stage: RunStage;
+  lastEventSequence: number;
+  runEvents: OrchestratorRunEvent[];
+  runSteps: OrchestratorRunStep[];
+  runError: string;
+  updatedAt: string;
+}
+
+export type WorkspaceRunRecovery =
+  | PendingRunSubmission
+  | WorkspaceRunCheckpoint;
+
+/* =========================================================
+   PERSISTED WORKSPACE SESSION
+
+   Contains project-specific durable state only. Do not store
+   access tokens, AbortControllers or transient loading flags.
+   Preview data and API payloads must be validated and made
+   serializable by the persistence layer before writing.
+========================================================= */
+
+export interface WorkspaceSessionSnapshot {
+  schemaVersion: typeof WORKSPACE_SESSION_VERSION;
+  scope: WorkspaceSessionScope;
+  savedAt: string;
+
+  messages: ChatMessage[];
+  draftPrompt: string;
+  preferences: WorkspacePreferences;
+
+  // The currently visible files and preview; these may differ
+  // from the last working build during an incremental generation.
+  generatedFiles: GeneratedFile[];
+  previewState: PreviewState;
+
+  // Last completed generation usable as follow-up context.
+  lastCompletedRunId: string | null;
+
+  // Last build with a usable preview; never replace on failure.
+  lastSuccessfulBuild: WorkspaceBuildSnapshot | null;
+
+  // Null when there is no submission or run to recover.
+  recovery: WorkspaceRunRecovery | null;
+}
+
+/* =========================================================
+   SESSION RESTORATION & STORAGE RESULTS
+========================================================= */
+
+export type WorkspaceHydrationStatus =
+  | "idle"
+  | "restoring"
+  | "ready"
+  | "error";
+
+export type WorkspaceSaveStatus =
+  | "idle"
+  | "saving"
+  | "saved"
+  | "error";
+
+export type WorkspaceRestoreResult =
+  | { status: "restored"; snapshot: WorkspaceSessionSnapshot }
+  | { status: "missing" }
+  | { status: "invalid"; reason: string }
+  | { status: "error"; reason: string };
+
+export type WorkspaceWriteResult =
+  | { status: "saved" }
+  | { status: "error"; reason: string };
+
+/** Storage adapter contract; implementation is supplied in later files. */
+export interface WorkspacePersistenceAdapter {
+  load(scope: WorkspaceSessionScope): Promise<WorkspaceRestoreResult>;
+  save(snapshot: WorkspaceSessionSnapshot): Promise<WorkspaceWriteResult>;
+  remove(scope: WorkspaceSessionScope): Promise<void>;
+}
+
+/* =========================================================
+   RUN LIFECYCLE HELPERS
+========================================================= */
+
+export const isTerminalRunStage = (stage: RunStage): boolean => {
+  return (
+    stage === "completed" ||
+    stage === "failed" ||
+    stage === "cancelled"
+  );
+};
+
+export const isActiveRunStage = (stage: RunStage): boolean => {
+  return stage !== "idle" && !isTerminalRunStage(stage);
+};

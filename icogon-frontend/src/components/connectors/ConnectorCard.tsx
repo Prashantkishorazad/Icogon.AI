@@ -5,7 +5,7 @@ import {
 
 import GmailConnectButton from "./GmailConnectButton";
 import ConnectorStatus from "./ConnectorStatus";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../context/ThemeContext";
 
 interface ConnectorCardProps {
   connected: boolean;

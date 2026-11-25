@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextvars import ContextVar
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 from uuid import uuid4
 
 from app.agents.context import (
@@ -25,6 +25,7 @@ from app.orchestrator.models import (
     AgentRun,
     ChangeResponse,
     ChangeSet,
+    GenerationPlan,
     ReviewResponse,
     ProviderUsage,
     RunEvent,
@@ -35,6 +36,23 @@ from app.orchestrator.models import (
     utc_now,
 )
 from app.orchestrator.ports import AgentProvider, ChangeVerifier, RunRepository
+from app.sandbox.verifier import VerificationInfrastructureError
+
+
+@runtime_checkable
+class _SemanticQualityReviewer(Protocol):
+    """Optional async quality-review capability for polished builds.
+
+    The base AgentProvider does not require this method, so normal providers
+    continue to work without implementing it.
+    """
+
+    async def review_changes(
+        self,
+        request: RunRequest,
+        plan: GenerationPlan,
+        changes: ChangeSet,
+    ) -> ReviewResponse: ...
 
 
 class BudgetExceededError(RuntimeError):
@@ -347,6 +365,14 @@ class OrchestratorService:
                 retryable=exc.retryable,
             )
 
+        except VerificationInfrastructureError as exc:
+            await self._fail(
+                run,
+                "verification_infrastructure_unavailable",
+                str(exc),
+                retryable=True,
+            )
+
         except Exception as exc:
             await self._fail(
                 run,
@@ -532,6 +558,27 @@ class OrchestratorService:
             )
 
             run.plan = response.plan
+
+            # ICOGON FIX: reconcile existing project files before validation.
+            # The LLM frequently marks existing React entry files (index.html,
+            # src/App.tsx, etc.) as 'create' when editing a previous run.
+            # Keep all path and protected-file validation in place.
+            existing_paths = {
+                file.path
+                for file in request.context_files
+                if file.operation == "upsert"
+            }
+            for entry in run.plan.file_plan:
+                if entry.path in ALWAYS_PRESERVE:
+                    continue  # Never automatically change protected files.
+                if entry.action == "create" and entry.path in existing_paths:
+                    entry.action = "modify"
+                    entry.create = False
+                    entry.modify = True
+                elif entry.action == "modify" and entry.path not in existing_paths:
+                    entry.action = "create"
+                    entry.modify = False
+                    entry.create = True
 
             validate_file_plan(
                 run.plan.file_plan,
@@ -1154,15 +1201,11 @@ class OrchestratorService:
             # SEMANTIC / LLM QUALITY REVIEW
             # ============================================================
             if run.review.approved:
-                semantic_review = getattr(
-                    self._provider,
-                    "review_changes",
-                    None,
-                )
-
+                quality_reviewer = self._provider
                 if (
                     request.quality == "polished"
-                    and callable(semantic_review)
+                    and isinstance(quality_reviewer, _SemanticQualityReviewer)
+                    and callable(quality_reviewer.review_changes)
                 ):
                     quality_step = await self._start_step(
                         run,
@@ -1172,7 +1215,7 @@ class OrchestratorService:
                     try:
                         await self._reserve_model_call(run)
 
-                        response: ReviewResponse = await semantic_review(
+                        quality_response = await quality_reviewer.review_changes(
                             self._remaining_request(
                                 run,
                                 request,
@@ -1183,15 +1226,15 @@ class OrchestratorService:
 
                         self._record_usage(
                             run,
-                            response.usage,
+                            quality_response.usage,
                         )
 
                         run.review.findings.extend(
-                            response.review.findings
+                            quality_response.review.findings
                         )
 
                         run.review.approved = (
-                            response.review.approved
+                            quality_response.review.approved
                         )
 
                         await self._handoff(
@@ -1216,7 +1259,7 @@ class OrchestratorService:
                             {
                                 "approved": run.review.approved,
                                 "findings": len(
-                                    response.review.findings
+                                    quality_response.review.findings
                                 ),
                             },
                         )
@@ -1475,19 +1518,27 @@ class OrchestratorService:
         if run.status == RunStatus.CANCELLED:
             return
 
-        if not run.is_terminal:
-            await self._change_status(
-                run,
-                RunStatus.FAILED,
-            )
-
+        # Save failure details *before* exposing terminal FAILED status.
+        # Previously _change_status persisted FAILED without RunFailure, so
+        # a frontend poll could consume the terminal run, clear recovery, and
+        # permanently display a generic error even though details arrived
+        # in a subsequent database write.
         run.failure = RunFailure(
             code=code,
             message=message,
             retryable=retryable,
         )
 
-        await self._save(run)
+        if not run.is_terminal:
+            # _change_status atomically persists status + failure, then emits
+            # run.status_changed; clients can safely fetch the failure now.
+            await self._change_status(
+                run,
+                RunStatus.FAILED,
+            )
+        else:
+            # Repeated failure recording on a pre-existing failed run.
+            await self._save(run)
 
         await self._emit(
             run,
@@ -1776,6 +1827,3 @@ class OrchestratorService:
             raise BudgetExceededError(
                 "Maximum output token budget reached"
             )
-
-
-

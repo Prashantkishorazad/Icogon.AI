@@ -1,6 +1,21 @@
 import axios from "axios";
 
 import { supabase } from "../lib/supabase";
+import {
+  createIdempotencyKey as createSharedIdempotencyKey,
+  getOrchestratorRunApi,
+  getOrchestratorEventsApi,
+  getOrchestratorRecoveryApi,
+  getOrchestratorPreviewApi,
+  cancelOrchestratorRunApi,
+  streamOrchestratorEventsApi,
+  type OrchestratorRun,
+  type OrchestratorRunEvent,
+  type OrchestratorQuality,
+  type OrchestratorRecoveryOptions,
+  type ProjectRequestOptions,
+  type PreviewResponse,
+} from "./projectApi";
 
 
 // ============================================================
@@ -8,8 +23,8 @@ import { supabase } from "../lib/supabase";
 // ============================================================
 
 const API_URL =
-  import.meta.env.VITE_API_URL ||
-  "http://127.0.0.1:8000";
+  (import.meta.env.VITE_API_URL ||
+    "http://127.0.0.1:8000").replace(/\/+$/, "");
 
 
 // ============================================================
@@ -42,6 +57,8 @@ export interface SubmitRunRequest {
   prompt: string;
   idempotency_key: string;
   budget?: RunBudget;
+  base_run_id?: string;
+  quality?: OrchestratorQuality;
 }
 
 
@@ -86,6 +103,10 @@ export interface AgentRun {
 
   status: RunStatus;
 
+  base_run_id?: string | null;
+
+  quality?: OrchestratorQuality;
+
   budget: {
     max_model_calls: number;
     max_repair_attempts: number;
@@ -127,359 +148,336 @@ export interface AgentRun {
 
 
 // ============================================================
+// PERSISTENCE AND RECOVERY CONTRACTS
+// ============================================================
+
+export interface SubmitBuilderRunOptions extends ProjectRequestOptions {
+  idempotencyKey?: string;
+  budget?: RunBudget;
+  baseRunId?: string;
+  quality?: OrchestratorQuality;
+}
+
+export interface BuilderRunRecovery {
+  run: AgentRun;
+  events: RunEvent[];
+  lastSequence: number;
+}
+
+const DEFAULT_BUDGET: Required<RunBudget> = {
+  max_model_calls: 12,
+  max_repair_attempts: 2,
+  max_output_tokens: 100000,
+};
+
+const BUDGET_LIMITS: Record<keyof RunBudget, readonly [number, number]> = {
+  max_model_calls: [1, 50],
+  max_repair_attempts: [0, 20],
+  max_output_tokens: [256, 200000],
+};
+
+const RUN_STATUSES: ReadonlySet<string> = new Set<RunStatus>([
+  "queued", "analyzing", "designing", "planning", "generating",
+  "reviewing", "verifying", "repairing", "completed", "failed", "cancelled",
+]);
+
+export const isTerminalBuilderRun = (status: string): boolean =>
+  status === "completed" || status === "failed" || status === "cancelled";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isCounter = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+// The shared API exposes a deliberately broad run contract. Validate the
+// fields required by legacy builder consumers instead of inventing defaults.
+const asAgentRun = (run: OrchestratorRun): AgentRun => {
+  const raw: unknown = run;
+  if (
+    !isRecord(raw) ||
+    typeof raw.id !== "string" || !raw.id ||
+    typeof raw.user_id !== "string" ||
+    typeof raw.project_id !== "string" ||
+    typeof raw.prompt !== "string" ||
+    typeof raw.idempotency_key !== "string" ||
+    typeof raw.status !== "string" || !RUN_STATUSES.has(raw.status) ||
+    typeof raw.created_at !== "string" ||
+    typeof raw.updated_at !== "string" ||
+    !isCounter(raw.version) ||
+    !isCounter(raw.model_calls) || !isCounter(raw.input_tokens) ||
+    !isCounter(raw.output_tokens) || !isCounter(raw.repair_attempts) ||
+    !isRecord(raw.budget) ||
+    !isCounter(raw.budget.max_model_calls) ||
+    !isCounter(raw.budget.max_repair_attempts) ||
+    !isCounter(raw.budget.max_output_tokens) ||
+    !Array.isArray(raw.steps) ||
+    !raw.steps.every(step => isRecord(step) && typeof step.id === "string" &&
+      typeof step.name === "string" && typeof step.status === "string" &&
+      typeof step.started_at === "string")
+  ) {
+    throw new Error("The server returned an incomplete Builder run.");
+  }
+  if (raw.failure != null && (!isRecord(raw.failure) ||
+    typeof raw.failure.code !== "string" || typeof raw.failure.message !== "string" ||
+    typeof raw.failure.retryable !== "boolean")) {
+    throw new Error("The server returned invalid run failure details.");
+  }
+
+  return raw as unknown as AgentRun;
+};
+
+const asRunEvent = (event: OrchestratorRunEvent): RunEvent => {
+  // The server supplies id and created_at even though the shared API only
+  // requires the sequence. Never manufacture a server event or timestamp.
+  const raw = event as OrchestratorRunEvent & { id?: unknown };
+  if (typeof raw.id !== "string" || !raw.id || typeof raw.created_at !== "string") {
+    throw new Error("The server returned an incomplete Builder event.");
+  }
+  return { ...event, id: raw.id, created_at: raw.created_at };
+};
+
+const validateBudget = (budget: RunBudget): RunBudget => {
+  for (const key of Object.keys(budget)) {
+    if (!Object.prototype.hasOwnProperty.call(BUDGET_LIMITS, key)) {
+      throw new Error(`Unknown generation budget field: ${key}.`);
+    }
+    const field = key as keyof RunBudget;
+    const value = budget[field];
+    if (value === undefined) continue;
+    const [minimum, maximum] = BUDGET_LIMITS[field];
+    if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+      throw new Error(`${field} must be an integer between ${minimum} and ${maximum}.`);
+    }
+  }
+  return budget;
+};
+
+// ============================================================
 // GET ACCESS TOKEN
 // ============================================================
 
-const getAccessToken =
-  async (): Promise<string> => {
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.getSession();
+// Keep this private helper only for budget-aware submissions. The shared
+// project API currently has no budget option. All other transport is shared.
+const getAccessToken = async (signal?: AbortSignal): Promise<{ token: string; userId: string }> => {
+  signal?.throwIfAborted();
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+  signal?.throwIfAborted();
 
-    if (error) {
-      throw error;
-    }
+  if (error) {
+    throw error;
+  }
 
-    if (!session?.access_token) {
-      throw new Error(
-        "Not authenticated. Please login again."
-      );
-    }
+  if (!session?.access_token) {
+    throw new Error(
+      "Not authenticated. Please login again."
+    );
+  }
 
-    return session.access_token;
-  };
-
+  return { token: session.access_token, userId: session.user.id };
+};
 
 // ============================================================
 // CREATE IDEMPOTENCY KEY
 // ============================================================
 
-export const createIdempotencyKey =
-  (): string => {
-    return crypto.randomUUID();
-  };
-
+export const createIdempotencyKey = createSharedIdempotencyKey;
 
 // ============================================================
 // SUBMIT AI RUN
 // ============================================================
 
-export const submitBuilderRun =
-  async (
-    projectId: string,
-    prompt: string,
-    options?: {
-      idempotencyKey?: string;
-      budget?: RunBudget;
-    }
-  ): Promise<AgentRun> => {
+// Preserve the existing budget payload and default 6/2/20000 limits.
+// A retry after an ambiguous network failure must reuse the original key,
+// project, prompt, base run and budget. Aborting HTTP does not cancel a run.
+export const submitBuilderRun = async (
+  projectId: string,
+  prompt: string,
+  options: SubmitBuilderRunOptions = {},
+): Promise<AgentRun> => {
+  const cleanPrompt = prompt.trim();
+  const length = Array.from(cleanPrompt).length;
+  if (!projectId.trim()) throw new Error("Project ID is required.");
+  if (length < 3 || length > 20000) {
+    throw new Error("Prompt must contain between 3 and 20,000 characters.");
+  }
 
-    const token =
-      await getAccessToken();
+  const idempotencyKey = options.idempotencyKey ?? createIdempotencyKey();
+  if (!idempotencyKey.trim() || idempotencyKey.length < 8 || idempotencyKey.length > 200) {
+    throw new Error("Idempotency key must contain between 8 and 200 characters.");
+  }
 
-    const idempotencyKey =
-      options?.idempotencyKey ||
-      createIdempotencyKey();
-
-    const response =
-      await axios.post<AgentRun>(
-        `${API_URL}/orchestrator/runs`,
-        {
-          project_id: projectId,
-
-          prompt: prompt.trim(),
-
-          idempotency_key:
-            idempotencyKey,
-
-          budget:
-            options?.budget || {
-              max_model_calls: 6,
-              max_repair_attempts: 2,
-              max_output_tokens: 20000,
-            },
-        } satisfies SubmitRunRequest,
-        {
-          headers: {
-            Authorization:
-              `Bearer ${token}`,
-
-            "Content-Type":
-              "application/json",
-          },
-        }
-      );
-
-    return response.data;
+  const budget = validateBudget(options.budget ?? { ...DEFAULT_BUDGET });
+  const payload: SubmitRunRequest = {
+    project_id: projectId,
+    prompt: cleanPrompt,
+    idempotency_key: idempotencyKey,
+    budget,
+    ...(options.baseRunId ? { base_run_id: options.baseRunId } : {}),
+    ...(options.quality ? { quality: options.quality } : {}),
   };
 
+  const { token, userId } = await getAccessToken(options.signal);
+  const response = await axios.post<OrchestratorRun>(
+    `${API_URL}/orchestrator/runs`,
+    payload,
+    {
+      signal: options.signal,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  const run = asAgentRun(response.data);
+  if (run.project_id !== projectId || run.user_id !== userId || run.idempotency_key !== idempotencyKey) {
+    throw new Error("Generation response does not match the requested submission.");
+  }
+  return run;
+};
 
 // ============================================================
 // GET RUN
 // ============================================================
 
-export const getBuilderRun =
-  async (
-    runId: string
-  ): Promise<AgentRun> => {
-
-    const token =
-      await getAccessToken();
-
-    const response =
-      await axios.get<AgentRun>(
-        `${API_URL}/orchestrator/runs/${runId}`,
-        {
-          headers: {
-            Authorization:
-              `Bearer ${token}`,
-          },
-        }
-      );
-
-    return response.data;
-  };
-
+export const getBuilderRun = async (
+  runId: string,
+  options: ProjectRequestOptions = {},
+): Promise<AgentRun> => asAgentRun(await getOrchestratorRunApi(runId, options));
 
 // ============================================================
 // GET RUN EVENTS
 // ============================================================
 
-export const getBuilderRunEvents =
-  async (
-    runId: string,
-    after = 0
-  ): Promise<RunEvent[]> => {
-
-    const token =
-      await getAccessToken();
-
-    const response =
-      await axios.get<RunEvent[]>(
-        `${API_URL}/orchestrator/runs/${runId}/events`,
-        {
-          params: {
-            after,
-          },
-
-          headers: {
-            Authorization:
-              `Bearer ${token}`,
-          },
-        }
-      );
-
-    return response.data;
-  };
-
+export const getBuilderRunEvents = async (
+  runId: string,
+  after = 0,
+  options: ProjectRequestOptions = {},
+): Promise<RunEvent[]> => {
+  const events = await getOrchestratorEventsApi(runId, after, options);
+  return events.map(asRunEvent);
+};
 
 // ============================================================
 // CANCEL RUN
 // ============================================================
 
-export const cancelBuilderRun =
-  async (
-    runId: string
-  ): Promise<AgentRun> => {
+export const cancelBuilderRun = async (
+  runId: string,
+  options: ProjectRequestOptions = {},
+): Promise<AgentRun> => asAgentRun(await cancelOrchestratorRunApi(runId, options));
 
-    const token =
-      await getAccessToken();
+// ============================================================
+// GET LAST GENERATED PREVIEW
+// ============================================================
 
-    const response =
-      await axios.post<AgentRun>(
-        `${API_URL}/orchestrator/runs/${runId}/cancel`,
-        {},
-        {
-          headers: {
-            Authorization:
-              `Bearer ${token}`,
-          },
-        }
-      );
+export const getBuilderPreview = (
+  runId: string,
+  options: ProjectRequestOptions = {},
+): Promise<PreviewResponse> => getOrchestratorPreviewApi(runId, options);
 
-    return response.data;
+// ============================================================
+// RECOVER AN EXISTING RUN
+// ============================================================
+
+// Reads a saved run ID and replays missed events. No POST or new AI run.
+export const recoverBuilderRun = async (
+  options: OrchestratorRecoveryOptions,
+): Promise<BuilderRunRecovery> => {
+  const recovered = await getOrchestratorRecoveryApi(options);
+  return {
+    run: asAgentRun(recovered.run),
+    events: recovered.events.map(asRunEvent),
+    lastSequence: recovered.lastSequence,
   };
-
+};
 
 // ============================================================
 // STREAM RUN EVENTS
 //
 // IMPORTANT:
-// Native EventSource cannot send our Supabase
-// Authorization header.
-//
-// Therefore we use fetch() and manually read
-// the SSE stream.
+// Native EventSource cannot send our Supabase Authorization header.
+// Reuse the shared authenticated fetch/SSE parser. Adapt its callback
+// interface to the original async generator without a second parser.
 // ============================================================
 
-export const streamBuilderRun =
-  async function* (
-    runId: string,
-    after = 0
-  ): AsyncGenerator<RunEvent, void, unknown> {
+// The shared SSE callback cannot apply asynchronous backpressure. Bound its
+// queue and fail explicitly if a consumer falls behind; never drop events.
+// The caller can replay from the last sequence it actually processed.
+const MAX_BUFFERED_EVENTS = 1024;
 
-    const token =
-      await getAccessToken();
+export const streamBuilderRun = async function* (
+  runId: string,
+  after = 0,
+  options: ProjectRequestOptions = {},
+): AsyncGenerator<RunEvent, void, unknown> {
+  const controller = new AbortController();
+  const queue: RunEvent[] = [];
+  let outcome: { ok: true } | { ok: false; error: unknown } | null = null;
+  let notify: (() => void) | undefined;
 
-    const response =
-      await fetch(
-        `${API_URL}/orchestrator/runs/${runId}/events/stream?after=${after}`,
-        {
-          method: "GET",
-
-          headers: {
-            Authorization:
-              `Bearer ${token}`,
-
-            Accept:
-              "text/event-stream",
-          },
-
-          cache: "no-store",
-        }
-      );
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to connect to generation stream (${response.status})`
-      );
-    }
-
-    if (!response.body) {
-      throw new Error(
-        "Generation stream is not available."
-      );
-    }
-
-    const reader =
-      response.body.getReader();
-
-    const decoder =
-      new TextDecoder();
-
-    let buffer = "";
-
-    try {
-      while (true) {
-        const {
-          value,
-          done,
-        } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(
-          value,
-          {
-            stream: true,
-          }
-        );
-
-        const messages =
-          buffer.split("\n\n");
-
-        buffer =
-          messages.pop() || "";
-
-        for (const message of messages) {
-          const parsed =
-            parseSSEMessage(message);
-
-          if (parsed) {
-            yield parsed;
-          }
-        }
-      }
-
-      // Parse any remaining event.
-      if (buffer.trim()) {
-        const parsed =
-          parseSSEMessage(buffer);
-
-        if (parsed) {
-          yield parsed;
-        }
-      }
-
-    } finally {
-      reader.releaseLock();
-    }
+  const wake = () => {
+    const resolve = notify;
+    notify = undefined;
+    resolve?.();
   };
 
-
-// ============================================================
-// SSE PARSER
-// ============================================================
-
-const parseSSEMessage =
-  (
-    message: string
-  ): RunEvent | null => {
-
-    const lines =
-      message.split("\n");
-
-    let eventId = "";
-
-    let eventType = "";
-
-    let data = "";
-
-    for (const rawLine of lines) {
-      const line =
-        rawLine.trimEnd();
-
-      if (
-        line.startsWith("id:")
-      ) {
-        eventId =
-          line.slice(3).trim();
-      }
-
-      else if (
-        line.startsWith("event:")
-      ) {
-        eventType =
-          line.slice(6).trim();
-      }
-
-      else if (
-        line.startsWith("data:")
-      ) {
-        data +=
-          line.slice(5).trim();
-      }
-    }
-
-    if (!data) {
-      return null;
-    }
-
-    try {
-      const parsed =
-        JSON.parse(data) as RunEvent;
-
-      return {
-        ...parsed,
-
-        id:
-          parsed.id ||
-          eventId,
-
-        event_type:
-          parsed.event_type ||
-          eventType,
-      };
-
-    } catch (error) {
-      console.error(
-        "SSE EVENT PARSE ERROR:",
-        error
-      );
-
-      return null;
-    }
+  const abort = () => {
+    controller.abort(options.signal?.reason);
+    wake();
   };
+
+  options.signal?.addEventListener("abort", abort, { once: true });
+  if (options.signal?.aborted) abort();
+
+  // Attach both success and error handlers immediately. This prevents a
+  // rejected producer promise becoming an unhandled rejection while yielding.
+  const producer = streamOrchestratorEventsApi({
+    runId,
+    after,
+    signal: controller.signal,
+    onEvent: (event) => {
+      controller.signal.throwIfAborted();
+      if (queue.length >= MAX_BUFFERED_EVENTS) {
+        throw new Error("Builder event buffer is full. Resume from the last processed sequence.");
+      }
+      queue.push(asRunEvent(event));
+      wake();
+    },
+  }).then(
+    () => { outcome = { ok: true }; wake(); },
+    (error: unknown) => { outcome = { ok: false, error }; wake(); },
+  );
+
+  try {
+    for (; ;) {
+      controller.signal.throwIfAborted();
+      const next = queue.shift();
+      if (next) {
+        yield next;
+        continue;
+      }
+
+      if (outcome !== null) {
+        // TS control-flow analysis does not model asynchronous assignments.
+        const result = outcome as { ok: true } | { ok: false; error: unknown };
+        if (!result.ok) throw result.error;
+        return;
+      }
+
+      await new Promise<void>((resolve) => { notify = resolve; });
+    }
+  } finally {
+    // Breaking out of for-await releases the underlying fetch stream.
+    // To interrupt a pending next() call, pass and abort options.signal.
+    controller.abort();
+    options.signal?.removeEventListener("abort", abort);
+    queue.length = 0;
+    wake();
+    await producer;
+  }
+};

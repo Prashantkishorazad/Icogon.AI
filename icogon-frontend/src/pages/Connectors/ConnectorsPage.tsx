@@ -15,7 +15,7 @@ import {
 import ConnectorCard from "../../components/connectors/ConnectorCard";
 import GmailConnectionModal from "../../components/connectors/GmailConnectionModal";
 import GmailConnectorPanel from "../../components/connectors/GmailConnectorPanel";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../../components/context/ThemeContext";
 
 interface GmailStatus {
   connected: boolean;

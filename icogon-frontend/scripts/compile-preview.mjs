@@ -7,6 +7,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const allowedPackages = new Set([
   "react",
   "react-dom",
+  "react-router",
+  "react-router-dom",
   "three",
   "lucide-react",
 ]);

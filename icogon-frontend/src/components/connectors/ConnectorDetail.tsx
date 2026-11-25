@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Database, ShieldCheck, Unplug } from "lucide-react";
 import type { ConnectorConnectionType, ConnectorDefinition } from "../../data/connectors/connectorCatalog";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../context/ThemeContext";
 
 export type ConnectorStatus = "connected" | "not_connected" | "coming_soon";
 interface ConnectorDetailProps {

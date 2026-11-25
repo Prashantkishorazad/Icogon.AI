@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useRef, useEffect, useId } from "react";
 import {
   AlertCircle,
+  ArrowDown,
   Check,
   ChevronDown,
   ChevronRight,
@@ -8,12 +9,16 @@ import {
   Loader2,
   PanelLeftClose,
   Send,
-  Square,
   Sparkles,
+  Square,
   User,
   WandSparkles,
 } from "lucide-react";
-import type { ChatMessage, GeneratedFile, RunStage } from "../types";
+import type {
+  ChatMessage,
+  GeneratedFile,
+  RunStage,
+} from "../types";
 import { PIPELINE_STAGES, stageLabel } from "../types";
 import type { OrchestratorRunStep } from "../../../api/projectApi";
 
@@ -32,22 +37,21 @@ interface WorkspaceSidebarProps {
   runError: string;
   generatedFiles: GeneratedFile[];
   onSelectFile: (path: string) => void;
+  // Optional integration with the controller's persisted recovery checkpoint.
+  // The controller remains responsible for blocking duplicate submissions.
+  recoveryPending?: boolean;
 }
 
-const QUICK_PROMPTS = [
-  "Make the layout responsive on mobile",
-  "Improve the visual design and spacing",
-  "Add a dashboard with interactive cards",
-];
+const CHAT_BOTTOM_THRESHOLD = 72;
 
-const stageState = (stage: RunStage, current: RunStage) => {
-  if (current === "completed") return "complete";
-  if (current === "failed" || current === "cancelled") return "pending";
-  const currentIndex = PIPELINE_STAGES.indexOf(current);
-  const stageIndex = PIPELINE_STAGES.indexOf(stage);
-  if (stageIndex < currentIndex) return "complete";
-  if (stageIndex === currentIndex) return "current";
-  return "pending";
+const formatMessageTime = (timestamp?: string): { label: string; title: string } | null => {
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    label: date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+    title: date.toLocaleString(),
+  };
 };
 
 export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
@@ -65,451 +69,363 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   runError,
   generatedFiles,
   onSelectFile,
+  recoveryPending = false,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const feedRef = useRef<HTMLDivElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [stepperExpanded, setStepperExpanded] = useState(true);
-  const [showAllSuggestions, setShowAllSuggestions] = useState(false);
+  const messagesFeedRef = useRef<HTMLDivElement | null>(null);
+  const messagesContentRef = useRef<HTMLDivElement | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement | null>(null);
+  const followLatestRef = useRef(true);
+  const previousScrollTopRef = useRef(0);
+  const [showJumpToLatest, setShowJumpToLatest] = React.useState(false);
+  const [stepperExpanded, setStepperExpanded] = React.useState(true);
+  const stepperId = useId();
+  const feedId = useId();
 
-  const scrollToLatest = useCallback(() => {
-    const feed = feedRef.current;
+  const trackingPaused = !isRunning && (recoveryPending || (
+    runStage !== "idle" && runStage !== "completed" &&
+    runStage !== "failed" && runStage !== "cancelled"
+  ));
+  const composerLocked = isRunning || isCancelling || trackingPaused;
+  const availablePaths = React.useMemo(
+    () => new Set(generatedFiles.map((file) => file.path)),
+    [generatedFiles],
+  );
+
+  // Scroll only the message feed, not the surrounding Builder layout.
+  // Restoring a saved conversation should not force the user to watch a long animation.
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const feed = messagesFeedRef.current;
     if (!feed) return;
-    const distanceFromBottom =
-      feed.scrollHeight - feed.scrollTop - feed.clientHeight;
-    // Do not pull the user away from older messages while they are reading.
-    if (distanceFromBottom < 140) {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "auto"
-          : "smooth",
-        block: "end",
-      });
+    const moveToSavedPosition = () => {
+      if (followLatestRef.current) feed.scrollTop = feed.scrollHeight;
+      else feed.scrollTop = previousScrollTopRef.current;
+    };
+    moveToSavedPosition();
+    // Reflow (e.g. responsive width or expanding the stepper) must also keep
+    // users at the latest message when they have not scrolled into history.
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (followLatestRef.current) feed.scrollTop = feed.scrollHeight;
+    });
+    observer.observe(feed);
+    if (messagesContentRef.current) observer.observe(messagesContentRef.current);
+    return () => observer.disconnect();
+  }, [sidebarOpen]);
+
+  useEffect(() => {
+    const feed = messagesFeedRef.current;
+    if (sidebarOpen && feed && followLatestRef.current) {
+      feed.scrollTop = feed.scrollHeight;
     }
-  }, []);
+  }, [sidebarOpen, messages, runSteps, isRunning, runError, runStage]);
 
-  useEffect(() => {
-    scrollToLatest();
-  }, [messages, runSteps, isRunning, runError, scrollToLatest]);
+  const handleChatScroll = () => {
+    const feed = messagesFeedRef.current;
+    if (!feed) return;
+    previousScrollTopRef.current = feed.scrollTop;
+    const nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight <= CHAT_BOTTOM_THRESHOLD;
+    followLatestRef.current = nearBottom;
+    setShowJumpToLatest(!nearBottom);
+  };
 
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
-  }, [prompt]);
+  const jumpToLatest = () => {
+    followLatestRef.current = true;
+    const feed = messagesFeedRef.current;
+    if (feed) feed.scrollTop = feed.scrollHeight;
+    setShowJumpToLatest(false);
+  };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      if (prompt.trim() && !isRunning) onSendPrompt();
+  const handleSend = () => {
+    if (composerLocked || !prompt.trim()) return;
+    jumpToLatest();
+    onSendPrompt();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      if (!e.repeat) handleSend();
     }
   };
 
+  const quickPrompts = [
+    "Add responsive mobile navigation",
+    "Improve color palette & dark mode",
+    "Add interactive dashboard cards",
+  ];
+
   if (!sidebarOpen) return null;
 
-  const hasRunActivity =
-    isRunning || runSteps.length > 0 || runStage !== "idle";
-  const visibleStages = PIPELINE_STAGES.filter(
-    (stage) => stage !== "completed",
-  );
+  const currentStageIndex = PIPELINE_STAGES.indexOf(runStage);
 
   return (
-    <aside className="icogon-chat-sidebar" aria-label="ICOGON AI chat">
-      <style>{`
-        .icogon-chat-sidebar {
-          --chat-bg: var(--builder-panel, var(--card, #fff));
-          --chat-surface: var(--builder-surface, var(--background, #f8fafc));
-          --chat-border: var(--builder-border, var(--border, #e2e8f0));
-          --chat-text: var(--builder-text, var(--foreground, #0f172a));
-          --chat-muted: var(--builder-muted, #8992a5);
-          display: flex;
-          flex: 1 1 auto;
-          flex-direction: column;
-          width: 100%;
-          height: 100%;
-          min-width: 0;
-          min-height: 0;
-          overflow: hidden;
-          color: var(--chat-text);
-          background: var(--chat-bg);
-          user-select: text;
-        }
-        .icogon-chat-sidebar * { box-sizing: border-box; }
-        .icogon-chat-header {
-          display: flex;
-          flex: 0 0 54px;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          min-width: 0;
-          padding: 0 14px;
-          border-bottom: 1px solid var(--chat-border);
-        }
-        .icogon-chat-brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
-        .icogon-chat-logo {
-          display: grid; place-items: center; flex: 0 0 30px;
-          width: 30px; height: 30px; border: 1px solid var(--chat-border);
-          border-radius: 9px; background: var(--chat-surface);
-        }
-        .icogon-chat-logo img { width: 23px; height: 23px; object-fit: contain; }
-        .icogon-chat-heading { min-width: 0; }
-        .icogon-chat-heading strong {
-          display: block; overflow: hidden; color: var(--chat-text);
-          font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .icogon-chat-heading span { display: block; margin-top: 2px; color: var(--chat-muted); font-size: 10px; }
-        .icogon-chat-sidebar button { font: inherit; }
-        .icogon-chat-icon-button {
-          display: inline-flex; align-items: center; justify-content: center;
-          width: 30px; height: 30px; flex: 0 0 30px; border: 1px solid transparent;
-          border-radius: 8px; color: var(--chat-muted); background: transparent; cursor: pointer;
-        }
-        .icogon-chat-icon-button:hover { color: var(--chat-text); background: var(--chat-surface); border-color: var(--chat-border); }
-        .icogon-chat-icon-button:focus-visible,
-        .icogon-chat-sidebar button:focus-visible,
-        .icogon-chat-sidebar textarea:focus-visible {
-          outline: 2px solid #7188f5; outline-offset: 2px;
-        }
-        .icogon-chat-pipeline {
-          flex: 0 0 auto; padding: 11px 14px 12px;
-          border-bottom: 1px solid var(--chat-border);
-          background: color-mix(in srgb, var(--chat-surface) 72%, transparent);
-        }
-        .icogon-chat-pipeline-toggle {
-          display: flex; width: 100%; align-items: center; justify-content: space-between;
-          gap: 8px; padding: 0; border: 0; color: var(--chat-text);
-          background: transparent; text-align: left; cursor: pointer;
-        }
-        .icogon-chat-pipeline-title { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 11px; font-weight: 600; }
-        .icogon-chat-pipeline-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .icogon-chat-stage-list { display: grid; gap: 6px; margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--chat-border); }
-        .icogon-chat-stage { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--chat-muted); font-size: 10px; }
-        .icogon-chat-stage-marker {
-          display: grid; place-items: center; width: 17px; height: 17px; flex: 0 0 17px;
-          border: 1px solid var(--chat-border); border-radius: 50%; background: var(--chat-bg);
-          font-size: 9px; font-variant-numeric: tabular-nums;
-        }
-        .icogon-chat-stage.is-complete { color: #16a36a; }
-        .icogon-chat-stage.is-complete .icogon-chat-stage-marker { border-color: color-mix(in srgb, #16a36a 40%, var(--chat-border)); background: color-mix(in srgb, #16a36a 10%, var(--chat-bg)); }
-        .icogon-chat-stage.is-current { color: #7188e8; font-weight: 650; }
-        .icogon-chat-stage.is-current .icogon-chat-stage-marker { border-color: #7188e8; color: #7188e8; }
-        .icogon-chat-feed {
-          display: flex; flex: 1 1 auto; flex-direction: column; gap: 18px;
-          min-height: 0; overflow-y: auto; overscroll-behavior: contain;
-          padding: 18px 15px 14px; scrollbar-gutter: stable;
-        }
-        .icogon-chat-message { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
-        .icogon-chat-message.is-user { align-items: flex-end; }
-        .icogon-chat-message-meta { display: flex; align-items: center; gap: 6px; color: var(--chat-muted); font-size: 10px; }
-        .icogon-chat-message.is-user .icogon-chat-message-meta { flex-direction: row-reverse; }
-        .icogon-chat-message-bubble {
-          max-width: 94%; padding: 11px 13px; border: 1px solid var(--chat-border);
-          border-radius: 13px; color: var(--chat-text); background: var(--chat-surface);
-          font-size: 12px; line-height: 1.65; overflow-wrap: anywhere;
-        }
-        .icogon-chat-message.is-user .icogon-chat-message-bubble {
-          border-color: color-mix(in srgb, #657be8 28%, var(--chat-border));
-          background: color-mix(in srgb, #657be8 9%, var(--chat-surface));
-        }
-        .icogon-chat-message-bubble p { margin: 0; white-space: pre-wrap; }
-        .icogon-chat-file-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--chat-border); }
-        .icogon-chat-file-list button {
-          display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
-          padding: 4px 7px; border: 1px solid var(--chat-border); border-radius: 7px;
-          color: #7188e8; background: var(--chat-bg); font-size: 10px; cursor: pointer;
-        }
-        .icogon-chat-file-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .icogon-chat-live, .icogon-chat-error {
-          display: flex; align-items: flex-start; gap: 9px; padding: 11px 12px;
-          border: 1px solid var(--chat-border); border-radius: 11px;
-          color: var(--chat-muted); background: var(--chat-surface); font-size: 11px; line-height: 1.5;
-        }
-        .icogon-chat-error { color: #e06b7d; border-color: color-mix(in srgb, #e06b7d 35%, var(--chat-border)); }
-        .icogon-chat-suggestions {
-          display: flex; flex: 0 0 auto; gap: 6px; overflow-x: auto;
-          padding: 0 13px 10px; scrollbar-width: none;
-        }
-        .icogon-chat-suggestions::-webkit-scrollbar { display: none; }
-        .icogon-chat-suggestions button {
-          flex: 0 0 auto; max-width: 220px; overflow: hidden; padding: 6px 10px;
-          border: 1px solid var(--chat-border); border-radius: 999px;
-          color: var(--chat-muted); background: var(--chat-bg); font-size: 10px;
-          text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
-        }
-        .icogon-chat-suggestions button:hover { color: var(--chat-text); border-color: #7188e8; }
-        .icogon-chat-composer-wrap {
-          flex: 0 0 auto; padding: 11px 12px 9px; border-top: 1px solid var(--chat-border);
-          background: var(--chat-bg);
-        }
-        .icogon-chat-composer {
-          padding: 10px 11px 9px; border: 1px solid var(--chat-border);
-          border-radius: 14px; background: var(--chat-surface);
-          transition: border-color 130ms ease, box-shadow 130ms ease;
-        }
-        .icogon-chat-composer:focus-within { border-color: #7188e8; box-shadow: 0 0 0 2px color-mix(in srgb, #7188e8 16%, transparent); }
-        .icogon-chat-composer textarea {
-          display: block; width: 100%; min-height: 58px; max-height: 180px; resize: none;
-          padding: 1px 1px 8px; border: 0; outline: none; color: var(--chat-text);
-          background: transparent; font: inherit; font-size: 12px; line-height: 1.55;
-        }
-        .icogon-chat-composer textarea::placeholder { color: var(--chat-muted); opacity: 1; }
-        .icogon-chat-composer textarea:disabled { opacity: .6; cursor: not-allowed; }
-        .icogon-chat-composer-footer {
-          display: flex; align-items: center; justify-content: space-between; gap: 8px;
-          padding-top: 8px; border-top: 1px solid var(--chat-border);
-        }
-        .icogon-chat-mode { display: flex; align-items: center; gap: 6px; color: var(--chat-muted); font-size: 10px; }
-        .icogon-chat-send, .icogon-chat-stop {
-          display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-          min-width: 32px; height: 31px; padding: 0 10px; border: 0; border-radius: 9px;
-          color: white; background: #586fe4; font-size: 11px; font-weight: 600; cursor: pointer;
-        }
-        .icogon-chat-send:disabled { opacity: .35; cursor: not-allowed; }
-        .icogon-chat-stop { background: #dc3658; }
-        .icogon-chat-stop:disabled { opacity: .6; cursor: wait; }
-        .icogon-chat-hint { margin: 7px 0 0; color: var(--chat-muted); font-size: 9px; text-align: center; }
-        @media (max-width: 600px) {
-          .icogon-chat-feed { padding: 14px 12px; }
-          .icogon-chat-message-bubble { max-width: 97%; }
-          .icogon-chat-composer-wrap { padding: 9px; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .icogon-chat-composer { transition: none; }
-        }
-      `}</style>
-
-      <div className="icogon-chat-header">
-        <div className="icogon-chat-brand">
-          <div className="icogon-chat-logo">
-            <img src="/logo.png" alt="" />
-          </div>
-          <div className="icogon-chat-heading">
-            <strong>ICOGON Assistant</strong>
-            <span>AI workspace</span>
-          </div>
+    <aside className="absolute inset-y-0 left-0 z-30 flex w-[min(88vw,380px)] shrink-0 flex-col border-r border-[#1f222e] bg-[#0e1017] text-slate-200 shadow-2xl select-none transition-all duration-200 lg:relative lg:z-auto lg:w-[380px] lg:shadow-none">
+      {/* SIDEBAR HEADER */}
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#1f222e] px-4">
+        <div className="flex items-center gap-2">
+          <img src="/logo.png" alt="ICOGON" className="h-5 w-5 object-contain" />
+          <span className="text-xs font-semibold tracking-wide text-white">ICOGON Assistant</span>
+          <span className="rounded bg-[#1a1d2a] px-1.5 py-0.5 text-[9px] font-mono text-indigo-300 border border-[#262a3d]">
+            Engine 2.0
+          </span>
         </div>
+
         <button
           type="button"
-          className="icogon-chat-icon-button"
           onClick={() => setSidebarOpen(false)}
-          aria-label="Collapse AI chat"
-          title="Collapse chat"
+          title="Collapse Sidebar"
+          aria-label="Collapse assistant sidebar"
+          className="rounded p-1 text-slate-400 hover:bg-[#1a1d2a] hover:text-white transition"
         >
-          <PanelLeftClose size={16} />
+          <PanelLeftClose size={15} />
         </button>
       </div>
 
-      {hasRunActivity && (
-        <section className="icogon-chat-pipeline" aria-label="Build progress">
+      {/* PIPELINE LIVE STEPPER (if running or has active steps) */}
+      {(isRunning || runSteps.length > 0 || runStage !== "idle") && (
+        <div className="border-b border-[#1f222e] bg-[#12141e] p-3 text-xs">
           <button
             type="button"
-            className="icogon-chat-pipeline-toggle"
-            onClick={() => setStepperExpanded((expanded) => !expanded)}
+            onClick={() => setStepperExpanded((prev) => !prev)}
             aria-expanded={stepperExpanded}
+            aria-controls={stepperExpanded ? stepperId : undefined}
+            className="flex w-full items-center justify-between text-[11px] font-medium text-slate-300 hover:text-white"
           >
-            <span className="icogon-chat-pipeline-title">
+            <div className="flex items-center gap-2">
               {isRunning ? (
-                <Loader2 size={13} className="animate-spin" color="#7188e8" />
+                <Loader2 size={12} className="animate-spin text-indigo-400" />
               ) : runStage === "completed" ? (
-                <Check size={13} color="#16a36a" />
+                <Check size={12} className="text-emerald-400" />
               ) : runStage === "failed" ? (
-                <AlertCircle size={13} color="#e06b7d" />
+                <AlertCircle size={12} className="text-rose-400" />
+              ) : runStage === "cancelled" ? (
+                <Square size={11} className="text-slate-400" />
               ) : (
-                <Sparkles size={13} color="#7188e8" />
+                <Sparkles size={12} className="text-indigo-400" />
               )}
-              <span>{stageLabel(runStage)}</span>
-            </span>
-            {stepperExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              <span>{trackingPaused ? "Generation tracking paused" : stageLabel(runStage)}</span>
+            </div>
+            {stepperExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </button>
 
           {stepperExpanded && (
-            <div className="icogon-chat-stage-list">
-              {visibleStages.map((stage, index) => {
-                const state = stageState(stage, runStage);
+            <div id={stepperId} className="mt-2.5 space-y-1 pt-2 border-t border-[#1d202e]">
+              {PIPELINE_STAGES.slice(0, 8).map((stage, idx) => {
+                const isPast = currentStageIndex > idx || runStage === "completed";
+                const isCurrent = runStage === stage;
                 return (
-                  <div className={`icogon-chat-stage is-${state}`} key={stage}>
-                    <span className="icogon-chat-stage-marker">
-                      {state === "complete" ? (
-                        <Check size={10} />
-                      ) : state === "current" ? (
-                        <Loader2 size={10} className={isRunning ? "animate-spin" : ""} />
-                      ) : (
-                        index + 1
-                      )}
+                  <div key={stage} className="flex items-center gap-2 text-[10px]">
+                    <div
+                      className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-mono ${
+                        isPast
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                          : isCurrent
+                          ? `bg-indigo-500/30 text-indigo-300 border border-indigo-400 ${isRunning ? "animate-pulse" : ""}`
+                          : "bg-[#181a25] text-slate-400 border border-[#232738]"
+                      }`}
+                    >
+                      {isPast ? <Check size={8} /> : isCurrent && isRunning ? <Loader2 size={8} className="animate-spin" /> : idx + 1}
+                    </div>
+                    <span
+                      className={`capitalize ${
+                        isCurrent ? "font-semibold text-indigo-300" : isPast ? "text-slate-300" : "text-slate-400"
+                      }`}
+                    >
+                      {stage}
                     </span>
-                    <span>{stageLabel(stage)}</span>
                   </div>
                 );
               })}
-              {runSteps.length > 0 && (
-                <div style={{ marginTop: 3, color: "var(--chat-muted)", fontSize: 10 }}>
-                  {runSteps.filter((step) => step.status === "completed").length} of{" "}
-                  {runSteps.length} reported steps completed
-                </div>
-              )}
-              {runStage === "completed" && (
-                <div className="icogon-chat-stage is-complete">
-                  <span className="icogon-chat-stage-marker"><Check size={10} /></span>
-                  <span>Build completed</span>
-                </div>
-              )}
             </div>
           )}
-        </section>
-      )}
-
-      <div
-        ref={feedRef}
-        className="icogon-chat-feed"
-        role="log"
-        aria-live="polite"
-        aria-relevant="additions text"
-      >
-        {messages.map((message, index) => {
-          const isUser = message.role === "user";
-          const showFiles =
-            !isUser &&
-            generatedFiles.length > 0 &&
-            index === messages.length - 1;
-          return (
-            <article
-              key={message.id}
-              className={`icogon-chat-message ${isUser ? "is-user" : ""}`}
-            >
-              <div className="icogon-chat-message-meta">
-                {isUser ? (
-                  <>
-                    <span>You</span>
-                    <User size={11} />
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={11} color="#7188e8" />
-                    <span>ICOGON AI</span>
-                  </>
-                )}
-              </div>
-              <div className="icogon-chat-message-bubble">
-                <p>{message.content}</p>
-                {showFiles && (
-                  <div className="icogon-chat-file-list">
-                    {generatedFiles.map((file) => (
-                      <button
-                        type="button"
-                        key={file.path}
-                        onClick={() => onSelectFile(file.path)}
-                        title={`Open ${file.path} in Code`}
-                      >
-                        <FileCode2 size={11} />
-                        <span>{file.path}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </article>
-          );
-        })}
-
-        {isRunning && (
-          <div className="icogon-chat-live">
-            <Loader2 size={14} className="animate-spin" color="#7188e8" />
-            <span>ICOGON is working on your application…</span>
-          </div>
-        )}
-
-        {runError && (
-          <div className="icogon-chat-error" role="alert">
-            <AlertCircle size={14} />
-            <span>{runError}</span>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {!isRunning && (
-        <div className="icogon-chat-suggestions" aria-label="Suggested prompts">
-          {(showAllSuggestions
-            ? [...QUICK_PROMPTS, "Create a polished landing page", "Improve accessibility"]
-            : QUICK_PROMPTS
-          ).map((suggestion) => (
-            <button
-              type="button"
-              key={suggestion}
-              onClick={() => {
-                setPrompt(suggestion);
-                textareaRef.current?.focus();
-              }}
-              title={suggestion}
-            >
-              {suggestion}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setShowAllSuggestions((show) => !show)}
-            aria-expanded={showAllSuggestions}
-          >
-            {showAllSuggestions ? "Less" : "More"}
-          </button>
         </div>
       )}
 
-      <div className="icogon-chat-composer-wrap">
-        <div className="icogon-chat-composer">
+      {/* CHAT MESSAGES FEED */}
+      <div className="relative flex-1 min-h-0">
+        <div
+          id={feedId}
+          ref={messagesFeedRef}
+          onScroll={handleChatScroll}
+          role="region"
+          aria-label="Workspace conversation"
+          tabIndex={0}
+          className="h-full overflow-y-auto overscroll-contain p-4 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-indigo-500/50"
+        >
+          <div ref={messagesContentRef} className="space-y-4">
+            {messages.map((msg) => {
+              const timestamp = formatMessageTime(msg.timestamp);
+              // A restored chat must describe its own generation, not today's file list.
+              const modifiedPaths = [...new Set((msg.filesModified ?? []).filter(path => path.trim()))];
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex flex-col gap-1.5 ${
+                    msg.role === "user" ? "items-end" : "items-start"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                    {msg.role === "user" ? (
+                      <>
+                        <span>You</span>
+                        <User size={11} className="text-slate-400" />
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={11} className="text-indigo-400" />
+                        <span className="font-medium text-indigo-300">{msg.role === "system" ? "System" : "ICOGON AI"}</span>
+                      </>
+                    )}
+                    {timestamp && <time dateTime={msg.timestamp} title={timestamp.title} className="text-slate-400">{timestamp.label}</time>}
+                  </div>
+
+                  <div
+                    className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed max-w-[92%] select-text ${
+                      msg.role === "user"
+                        ? "bg-[#1e2233] text-slate-100 border border-[#2b3147] shadow-sm"
+                        : "bg-[#141622] text-slate-200 border border-[#212435]"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
+                    {msg.planSummary && (
+                      <p className="mt-2 whitespace-pre-wrap break-words text-[11px] text-slate-400">{msg.planSummary}</p>
+                    )}
+
+                    {/* Generated Files Pills if message contains files */}
+                    {msg.role === "ai" && modifiedPaths.length > 0 && (
+                      <div className="mt-3 border-t border-[#232738] pt-2">
+                        <p className="text-[10px] font-medium text-slate-400 mb-1.5">Modified Files:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {modifiedPaths.map((path) => (
+                            <button
+                              type="button"
+                              key={path}
+                              onClick={() => onSelectFile(path)}
+                              disabled={!availablePaths.has(path)}
+                              title={availablePaths.has(path) ? `Open current version of ${path}` : `${path} is no longer in the current build`}
+                              className="flex min-w-0 max-w-full items-center gap-1 rounded bg-[#1a1d2b] px-2 py-0.5 text-[10px] text-indigo-300 border border-[#2a2f44] enabled:hover:border-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                            >
+                              <FileCode2 size={10} />
+                              <span className="min-w-0 break-all font-mono">{path}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {isRunning && (
+              <div role="status" className="flex items-center gap-2 rounded-xl bg-[#141622] border border-[#212435] p-3 text-xs text-slate-400">
+                <Loader2 size={13} className="animate-spin text-indigo-400 shrink-0" />
+                <span className="text-[11px]">ICOGON AI is working on your application...</span>
+              </div>
+            )}
+
+            {trackingPaused && (
+              <div role="status" className="flex items-start gap-2 rounded-xl border border-amber-900/50 bg-amber-950/20 p-3 text-xs text-amber-200">
+                <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                <span>Generation tracking is paused. Use the workspace recovery controls before sending another instruction.</span>
+              </div>
+            )}
+
+            {runError && (
+              <div role="alert" className="flex items-start gap-2 rounded-xl bg-rose-950/30 border border-rose-900/50 p-3 text-xs text-rose-300">
+                <AlertCircle size={14} className="shrink-0 mt-0.5 text-rose-400" />
+                <span className="text-[11px] leading-relaxed">{runError}</span>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} aria-hidden="true" />
+          </div>
+        </div>
+        {showJumpToLatest && (
+          <button
+            type="button"
+            onClick={jumpToLatest}
+            aria-controls={feedId}
+            className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-[#333a50] bg-[#1a1d2b] px-3 py-1.5 text-[11px] text-slate-200 shadow-lg hover:border-indigo-400"
+          >
+            <ArrowDown size={12} /> Jump to latest
+          </button>
+        )}
+      </div>
+
+      {/* QUICK SUGGESTIONS */}
+      {!composerLocked && (
+        <div className="px-3 pb-2 flex gap-1.5 overflow-x-auto no-scrollbar">
+          {quickPrompts.map((qp) => (
+            <button
+              key={qp}
+              type="button"
+              onClick={() => {
+                setPrompt(qp);
+                promptRef.current?.focus();
+              }}
+              className="shrink-0 rounded-full border border-[#222636] bg-[#12141c] px-2.5 py-1 text-[10px] text-slate-400 hover:text-slate-200 hover:border-[#333a50] transition"
+            >
+              {qp}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* PROMPT COMPOSER (Lovable Style) */}
+      <div className="border-t border-[#1f222e] bg-[#0c0d12] p-3">
+        <div className="rounded-xl border border-[#232738] bg-[#13151f] p-2.5 shadow-lg focus-within:border-indigo-500/60 focus-within:ring-1 focus-within:ring-indigo-500/30 transition">
           <textarea
-            ref={textareaRef}
+            ref={promptRef}
+            aria-label="Instruction for ICOGON AI"
             value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
+            onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              isRunning
-                ? "ICOGON is building your changes…"
-                : "Ask ICOGON to build or change something…"
-            }
-            rows={2}
-            disabled={isRunning}
-            aria-label="Message ICOGON AI"
+            placeholder={isRunning ? "AI is generating changes..." : trackingPaused ? "Resume generation tracking first..." : "Ask ICOGON AI to make changes or build features..."}
+            rows={3}
+            disabled={composerLocked}
+            className="w-full resize-none bg-transparent text-xs text-slate-100 placeholder:text-slate-400 outline-none leading-relaxed"
           />
-          <div className="icogon-chat-composer-footer">
-            <div className="icogon-chat-mode">
-              <WandSparkles size={12} color="#7188e8" />
-              <span>Build mode</span>
+
+          <div className="mt-2 flex items-center justify-between border-t border-[#1d202d] pt-2">
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+              <WandSparkles size={11} className="text-indigo-400" />
+              <span>Fullstack App</span>
             </div>
+
             {isRunning ? (
               <button
                 type="button"
-                className="icogon-chat-stop"
                 onClick={onCancelRun}
                 disabled={isCancelling}
-                title="Stop current build"
+                title="Stop generation"
+                aria-label={isCancelling ? "Cancelling generation" : "Stop generation"}
+                className="flex h-7 items-center gap-1 rounded-lg bg-rose-600 px-2.5 text-[11px] font-medium text-white hover:bg-rose-700 transition"
               >
-                {isCancelling ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Square size={10} fill="currentColor" />
-                )}
+                {isCancelling ? <Loader2 size={11} className="animate-spin" /> : <Square size={10} fill="currentColor" />}
                 <span>{isCancelling ? "Stopping…" : "Stop"}</span>
               </button>
             ) : (
               <button
                 type="button"
-                className="icogon-chat-send"
-                onClick={onSendPrompt}
-                disabled={!prompt.trim()}
-                title="Send message"
-                aria-label="Send message"
+                onClick={handleSend}
+                disabled={composerLocked || !prompt.trim()}
+                title="Send instruction"
+                aria-label="Send instruction"
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-white transition hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed shadow-sm shadow-indigo-600/30"
               >
-                <Send size={13} />
+                <Send size={12} />
               </button>
             )}
           </div>
         </div>
-        <p className="icogon-chat-hint">Enter to send · Shift + Enter for a new line</p>
+
+        <p className="mt-2 text-center text-[10px] text-slate-400">
+          {trackingPaused ? "Resolve the pending generation to continue" : "Enter to send · Shift + Enter for newline"}
+        </p>
       </div>
     </aside>
   );
 };
-
-export default WorkspaceSidebar;

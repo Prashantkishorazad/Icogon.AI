@@ -10,6 +10,7 @@ import {
 import {
   Link,
   useLocation,
+  useNavigate,
 } from "react-router-dom";
 
 import {
@@ -26,16 +27,15 @@ import ResourcesMegaMenu from "../resources/ResourcesMegaMenu";
 import ResourceItem from "../resources/ResourceItem";
 import { resourcesData } from "../../data/resourcesData";
 
-import LoginModal from "../auth/LoginModal";
-import SignupModal from "../auth/SignupModal";
 
 interface NavbarProps {
   onLogin?: () => void;
   onSignup?: () => void;
 }
 
-const Navbar = (_props: NavbarProps) => {
+const Navbar = (props: NavbarProps) => {
   const location = useLocation();
+  const navigate = useNavigate();
 
   // ============================================================
   // NAVBAR STATE
@@ -52,8 +52,7 @@ const Navbar = (_props: NavbarProps) => {
   const [mobileResourcesOpen, setMobileResourcesOpen] =
     useState(false);
 
-  const [loginOpen, setLoginOpen] = useState(false);
-  const [signupOpen, setSignupOpen] = useState(false);
+
 
   const [scrolled, setScrolled] = useState(false);
 
@@ -141,9 +140,9 @@ const Navbar = (_props: NavbarProps) => {
 
   const handleLogin = () => {
     closeMenus();
-
-    setSignupOpen(false);
-    setLoginOpen(true);
+    // Login now lives on its own compact page, not a landing overlay.
+    if (props.onLogin) props.onLogin();
+    else navigate("/login");
   };
 
   // ============================================================
@@ -152,35 +151,21 @@ const Navbar = (_props: NavbarProps) => {
 
   const handleSignup = () => {
     closeMenus();
-
-    setLoginOpen(false);
-    setSignupOpen(true);
-  };
-
-  // ============================================================
-  // CLOSE LOGIN
-  // ============================================================
-
-  const handleCloseLogin = () => {
-    setLoginOpen(false);
+    if (props.onSignup) props.onSignup();
+    else navigate("/signup");
   };
 
   // ============================================================
   // CLOSE SIGNUP
   // ============================================================
 
-  const handleCloseSignup = () => {
-    setSignupOpen(false);
-  };
+
 
   // ============================================================
   // SIGNUP -> LOGIN
   // ============================================================
 
-  const handleSignupLogin = () => {
-    setSignupOpen(false);
-    setLoginOpen(true);
-  };
+
 
   // ============================================================
   // SOLUTIONS
@@ -222,8 +207,6 @@ const Navbar = (_props: NavbarProps) => {
     setSolutionsOpen(false);
     setResourcesOpen(false);
 
-    setLoginOpen(false);
-    setSignupOpen(false);
   };
 
   // ============================================================
@@ -1240,26 +1223,10 @@ const Navbar = (_props: NavbarProps) => {
       </motion.nav>
 
       {/* ========================================================
-          LOGIN MODAL
-      ======================================================== */}
-
-      <LoginModal
-        isOpen={loginOpen}
-        onClose={handleCloseLogin}
-      />
-
-      {/* ========================================================
           SIGNUP MODAL
       ======================================================== */}
 
-      <AnimatePresence>
-        {signupOpen && (
-          <SignupModal
-            onClose={handleCloseSignup}
-            onLogin={handleSignupLogin}
-          />
-        )}
-      </AnimatePresence>
+
     </>
   );
 };

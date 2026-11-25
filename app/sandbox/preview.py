@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 from collections import OrderedDict
 from pathlib import Path
 
@@ -58,33 +59,35 @@ async def compile_preview(changes: ChangeSet) -> dict:
             for k, v in os.environ.items()
             if k.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"}
         }
-        process = await asyncio.create_subprocess_exec(
-            node,
-            "--max-old-space-size=256",
-            str(COMPILER),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=environment,
-        )
+        # ICOGON FIX: threaded subprocess works on Windows selector event loops.
+        # Uvicorn --reload can run an event loop that cannot spawn async processes.
+        # subprocess.run also enforces a hard timeout and cleans up the child.
         try:
-            stdout, _ = await asyncio.wait_for(process.communicate(payload), timeout=20)
-        except (TimeoutError, asyncio.CancelledError) as exc:
-            if process.returncode is None:
-                process.kill()
-            await process.communicate()
-            if isinstance(exc, asyncio.CancelledError):
-                raise
+            completed = await asyncio.to_thread(
+                subprocess.run,
+                [node, "--max-old-space-size=256", str(COMPILER)],
+                input=payload,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=environment,
+                timeout=20,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
             raise PreviewError(
                 "Preview compilation was interrupted or exceeded 20 seconds"
             ) from None
+        except OSError as exc:
+            raise PreviewError(f"Preview compiler could not start: {exc}") from None
+
+        stdout = completed.stdout
         try:
             result = json.loads(stdout)
         except (ValueError, UnicodeDecodeError):
             raise PreviewError(
                 "Preview compiler unavailable. Run npm ci in icogon-frontend."
             ) from None
-        if process.returncode or "errors" in result:
+        if completed.returncode or "errors" in result:
             raise PreviewError("\n".join(result.get("errors", ["Compilation failed"])))
         result["compiler"] = "esbuild"
         _cache[key] = result
